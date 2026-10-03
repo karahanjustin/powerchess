@@ -1,0 +1,51 @@
+/* The web build's service worker (only registered when window.PC_WEB is set, see js/pwa.js).
+   - Offline: every file of the app is kept in a cache made for this version; the app opens without a network.
+   - Cross-origin isolation: the engines run threads (SharedArrayBuffer), which a browser only allows on a page
+     with the COOP/COEP headers. Hosts that cannot send them (GitHub Pages) still work: every answer from here
+     carries them.
+   - Updates: a new version fills its own cache in the background and takes over when the app is next started.
+   tools/build_web.py writes the version and the file list into the two lines below. */
+var VERSION = '1ffec60f6415';
+var FILES = ["./", "engine/LICENSE-stockfish.txt", "engine/stockfish-19-lite-single.js", "engine/stockfish-19-lite-single.wasm", "fairy/ffish.js", "fairy/ffish.wasm", "fairy/stockfish.js", "fairy/stockfish.wasm", "fairy/stockfish.worker.js", "icons/icon-180.png", "icons/icon-192.png", "icons/icon-512.png", "icons/icon-maskable-192.png", "icons/icon-maskable-512.png", "index.html", "js/app.js", "js/brain.js", "js/brainworker.js", "js/coach.js", "js/drawbacks.js", "js/drawbacks/core.js", "js/drawbacks/goals.js", "js/drawbacks/p1.js", "js/drawbacks/p2.js", "js/drawbacks/p3.js", "js/drawbacks/p4.js", "js/engine.js", "js/fairy.js", "js/fairybrain.js", "js/hex.js", "js/i18n.js", "js/i18n_de.js", "js/modes.js", "js/openings.js", "js/presets_checkers.js", "js/presets_more.js", "js/puzzles.js", "js/pwa.js", "js/review.js", "js/rules.js", "js/shotgun.js", "js/tablebase.js", "manifest.webmanifest", "pieces/bB.svg", "pieces/bK.svg", "pieces/bN.svg", "pieces/bP.svg", "pieces/bQ.svg", "pieces/bR.svg", "pieces/chessnut/bB.svg", "pieces/chessnut/bK.svg", "pieces/chessnut/bN.svg", "pieces/chessnut/bP.svg", "pieces/chessnut/bQ.svg", "pieces/chessnut/bR.svg", "pieces/chessnut/wB.svg", "pieces/chessnut/wK.svg", "pieces/chessnut/wN.svg", "pieces/chessnut/wP.svg", "pieces/chessnut/wQ.svg", "pieces/chessnut/wR.svg", "pieces/fairy/CREDITS.txt", "pieces/fairy/b_agentl.svg", "pieces/fairy/b_agentplus.svg", "pieces/fairy/b_agentstar.svg", "pieces/fairy/b_agentx.svg", "pieces/fairy/b_amazon.svg", "pieces/fairy/b_andromeda.svg", "pieces/fairy/b_archbishop.svg", "pieces/fairy/b_assassin.svg", "pieces/fairy/b_bannerman.svg", "pieces/fairy/b_berserker.svg", "pieces/fairy/b_bladedancer.svg", "pieces/fairy/b_blob.svg", "pieces/fairy/b_bowman.svg", "pieces/fairy/b_camel.svg", "pieces/fairy/b_cardinal.svg", "pieces/fairy/b_catapult.svg", "pieces/fairy/b_centaur.svg", "pieces/fairy/b_champion.svg", "pieces/fairy/b_chancellor.svg", "pieces/fairy/b_checker.svg", "pieces/fairy/b_checkerking.svg", "pieces/fairy/b_commoner.svg", "pieces/fairy/b_crusader.svg", "pieces/fairy/b_dabbaba.svg", "pieces/fairy/b_decoy.svg", "pieces/fairy/b_demon.svg", "pieces/fairy/b_devil.svg", "pieces/fairy/b_dragon.svg", "pieces/fairy/b_edea.svg", "pieces/fairy/b_egg.svg", "pieces/fairy/b_elephant.svg", "pieces/fairy/b_ferz.svg", "pieces/fairy/b_firechick.svg", "pieces/fairy/b_fool.svg", "pieces/fairy/b_general.svg", "pieces/fairy/b_giraffe.svg", "pieces/fairy/b_glassqueen.svg", "pieces/fairy/b_golem.svg", "pieces/fairy/b_gorgon.svg", "pieces/fairy/b_gryphon.svg", "pieces/fairy/b_guard.svg", "pieces/fairy/b_hydra.svg", "pieces/fairy/b_immortal.svg", "pieces/fairy/b_infiltrator.svg", "pieces/fairy/b_leper.svg", "pieces/fairy/b_manticore.svg", "pieces/fairy/b_marchingpawn.svg", "pieces/fairy/b_martyr.svg", "pieces/fairy/b_minotaur.svg", "pieces/fairy/b_mirrorqueen.svg", "pieces/fairy/b_mountedking.svg", "pieces/fairy/b_musketeer.svg", "pieces/fairy/b_nightrider.svg", "pieces/fairy/b_oucentaur.svg", "pieces/fairy/b_pegasus.svg", "pieces/fairy/b_phoenix.svg", "pieces/fairy/b_portalmage.svg", "pieces/fairy/b_prince.svg", "pieces/fairy/b_princess.svg", "pieces/fairy/b_quartermaster.svg", "pieces/fairy/b_reaper.svg", "pieces/fairy/b_royalguard.svg", "pieces/fairy/b_shotgunking.svg", "pieces/fairy/b_slime.svg", "pieces/fairy/b_sorcerer.svg", "pieces/fairy/b_tabitha.svg", "pieces/fairy/b_templar.svg", "pieces/fairy/b_troll.svg", "pieces/fairy/b_trollleft.svg", "pieces/fairy/b_unicorn.svg", "pieces/fairy/b_unicorncavalry.svg", "pieces/fairy/b_viking.svg", "pieces/fairy/b_warwagon.svg", "pieces/fairy/b_wazir.svg", "pieces/fairy/b_whelp.svg", "pieces/fairy/b_wizard.svg", "pieces/fairy/b_wyrm.svg", "pieces/fairy/b_zebra.svg", "pieces/fairy/duck_blue.svg", "pieces/fairy/duck_yellow.svg", "pieces/fairy/gun_alexander.svg", "pieces/fairy/gun_attila.svg", "pieces/fairy/gun_makeda.svg", "pieces/fairy/gun_montezuma.svg", "pieces/fairy/gun_ramesses.svg", "pieces/fairy/gun_richard.svg", "pieces/fairy/gun_solomon.svg", "pieces/fairy/gun_victoria.svg", "pieces/fairy/gun_yvan.svg", "pieces/fairy/w_agentl.svg", "pieces/fairy/w_agentplus.svg", "pieces/fairy/w_agentstar.svg", "pieces/fairy/w_agentx.svg", "pieces/fairy/w_amazon.svg", "pieces/fairy/w_andromeda.svg", "pieces/fairy/w_archbishop.svg", "pieces/fairy/w_assassin.svg", "pieces/fairy/w_bannerman.svg", "pieces/fairy/w_berserker.svg", "pieces/fairy/w_bladedancer.svg", "pieces/fairy/w_blob.svg", "pieces/fairy/w_bossking.svg", "pieces/fairy/w_bosspawn.svg", "pieces/fairy/w_bossqueen.svg", "pieces/fairy/w_bowman.svg", "pieces/fairy/w_camel.svg", "pieces/fairy/w_cardinal.svg", "pieces/fairy/w_catapult.svg", "pieces/fairy/w_centaur.svg", "pieces/fairy/w_champion.svg", "pieces/fairy/w_chancellor.svg", "pieces/fairy/w_checker.svg", "pieces/fairy/w_checkerking.svg", "pieces/fairy/w_commoner.svg", "pieces/fairy/w_crusader.svg", "pieces/fairy/w_dabbaba.svg", "pieces/fairy/w_decoy.svg", "pieces/fairy/w_demon.svg", "pieces/fairy/w_devil.svg", "pieces/fairy/w_dragon.svg", "pieces/fairy/w_edea.svg", "pieces/fairy/w_egg.svg", "pieces/fairy/w_elephant.svg", "pieces/fairy/w_ferz.svg", "pieces/fairy/w_firechick.svg", "pieces/fairy/w_fool.svg", "pieces/fairy/w_general.svg", "pieces/fairy/w_giraffe.svg", "pieces/fairy/w_glassqueen.svg", "pieces/fairy/w_golem.svg", "pieces/fairy/w_gorgon.svg", "pieces/fairy/w_gryphon.svg", "pieces/fairy/w_guard.svg", "pieces/fairy/w_hydra.svg", "pieces/fairy/w_immortal.svg", "pieces/fairy/w_infiltrator.svg", "pieces/fairy/w_leper.svg", "pieces/fairy/w_manticore.svg", "pieces/fairy/w_marchingpawn.svg", "pieces/fairy/w_martyr.svg", "pieces/fairy/w_minotaur.svg", "pieces/fairy/w_mirrorqueen.svg", "pieces/fairy/w_mountedking.svg", "pieces/fairy/w_musketeer.svg", "pieces/fairy/w_nightrider.svg", "pieces/fairy/w_oucentaur.svg", "pieces/fairy/w_pegasus.svg", "pieces/fairy/w_phoenix.svg", "pieces/fairy/w_portalmage.svg", "pieces/fairy/w_prince.svg", "pieces/fairy/w_princess.svg", "pieces/fairy/w_quartermaster.svg", "pieces/fairy/w_reaper.svg", "pieces/fairy/w_royalguard.svg", "pieces/fairy/w_shotgunking.svg", "pieces/fairy/w_slime.svg", "pieces/fairy/w_sorcerer.svg", "pieces/fairy/w_tabitha.svg", "pieces/fairy/w_templar.svg", "pieces/fairy/w_troll.svg", "pieces/fairy/w_trollleft.svg", "pieces/fairy/w_unicorn.svg", "pieces/fairy/w_unicorncavalry.svg", "pieces/fairy/w_viking.svg", "pieces/fairy/w_warwagon.svg", "pieces/fairy/w_wazir.svg", "pieces/fairy/w_whelp.svg", "pieces/fairy/w_wizard.svg", "pieces/fairy/w_wyrm.svg", "pieces/fairy/w_zebra.svg", "pieces/merida/bB.svg", "pieces/merida/bK.svg", "pieces/merida/bN.svg", "pieces/merida/bP.svg", "pieces/merida/bQ.svg", "pieces/merida/bR.svg", "pieces/merida/wB.svg", "pieces/merida/wK.svg", "pieces/merida/wN.svg", "pieces/merida/wP.svg", "pieces/merida/wQ.svg", "pieces/merida/wR.svg", "pieces/spatial/bB.svg", "pieces/spatial/bK.svg", "pieces/spatial/bN.svg", "pieces/spatial/bP.svg", "pieces/spatial/bQ.svg", "pieces/spatial/bR.svg", "pieces/spatial/wB.svg", "pieces/spatial/wK.svg", "pieces/spatial/wN.svg", "pieces/spatial/wP.svg", "pieces/spatial/wQ.svg", "pieces/spatial/wR.svg", "pieces/wB.svg", "pieces/wK.svg", "pieces/wN.svg", "pieces/wP.svg", "pieces/wQ.svg", "pieces/wR.svg", "puzzles/generated.json", "puzzles/power.json", "puzzles/puzzles.json", "sounds/Capture.mp3", "sounds/Check.mp3", "sounds/Correct.mp3", "sounds/Explosion.mp3", "sounds/GenericNotify.mp3", "sounds/LowTime.mp3", "sounds/Move.mp3", "sounds/Promotion.mp3", "sounds/Wrong.mp3"];
+
+var CACHE = 'powerchess-' + VERSION;
+self.addEventListener('install', function (e) {
+  e.waitUntil(caches.open(CACHE).then(function (c) {
+    // one by one, so a single missing file does not stop the rest
+    return Promise.all(FILES.map(function (f) { return c.add(new Request(f, { cache: 'reload' })).catch(function () {}); }));
+  }));
+});
+self.addEventListener('activate', function (e) {
+  e.waitUntil(caches.keys().then(function (keys) {
+    return Promise.all(keys.filter(function (k) { return k.indexOf('powerchess-') === 0 && k !== CACHE; }).map(function (k) { return caches.delete(k); }));
+  }).then(function () { return self.clients.claim(); }));
+});
+self.addEventListener('message', function (e) { if (e.data === 'skipWaiting') self.skipWaiting(); });
+
+function isolate(res) {
+  if (!res || res.status === 0 || res.type === 'opaque') return res;
+  var h = new Headers(res.headers);
+  h.set('Cross-Origin-Opener-Policy', 'same-origin');
+  h.set('Cross-Origin-Embedder-Policy', 'require-corp');
+  h.set('Cross-Origin-Resource-Policy', 'same-origin');
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers: h });
+}
+self.addEventListener('fetch', function (e) {
+  var req = e.request;
+  if (req.method !== 'GET') return;
+  var url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
+  var key = url.pathname.replace(/\/$/, '/index.html');
+  e.respondWith(caches.open(CACHE).then(function (c) {
+    return c.match(key, { ignoreSearch: true }).then(function (hit) {
+      if (hit) return isolate(hit);
+      return fetch(req).then(function (res) {
+        if (res.ok && res.type === 'basic') c.put(key, res.clone());
+        return isolate(res);
+      }).catch(function () {
+        // offline and not cached: for a page, the app itself
+        return req.mode === 'navigate' ? c.match(self.registration.scope + 'index.html').then(isolate) : Response.error();
+      });
+    });
+  }));
+});

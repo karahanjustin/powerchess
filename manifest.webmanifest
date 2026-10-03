@@ -1,0 +1,25 @@
+{
+  "id": "./",
+  "name": "Power Chess",
+  "short_name": "Power Chess",
+  "description": "Chess with power-ups, 60 variants, fairy pieces, puzzles, a game review and game modes like Shotgun King.",
+  "start_url": "./?app",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone"],
+  "orientation": "portrait",
+  "background_color": "#302e2b",
+  "theme_color": "#262522",
+  "categories": ["games", "board", "entertainment"],
+  "launch_handler": { "client_mode": "focus-existing" },
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "New game", "url": "./?tab=new", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Puzzles", "url": "./?tab=puzzles", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

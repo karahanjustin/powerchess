@@ -1,0 +1,45 @@
+w_guard.svg  from Chess Mlt45.svg  by Original: LithiumFlash This version: CheChe  licence CC BY-SA 4.0  https://creativecommons.org/licenses/by-sa/4.0
+b_guard.svg  from Chess Mdt45.svg  by Original: LithiumFlash This version: CheChe  licence CC BY-SA 4.0  https://creativecommons.org/licenses/by-sa/4.0
+w_ferz.svg  from Chess Flt45.svg  by Sammy2012  licence CC0  http://creativecommons.org/publicdomain/zero/1.0/deed.en
+b_ferz.svg  from Chess Fdt45.svg  by Sammy2012  licence CC0  http://creativecommons.org/publicdomain/zero/1.0/deed.en
+w_wazir.svg  from Chess Wlt45.svg  by Sammy2012  licence CC0  http://creativecommons.org/publicdomain/zero/1.0/deed.en
+b_wazir.svg  from Chess Wdt45.svg  by Sammy2012  licence CC0  http://creativecommons.org/publicdomain/zero/1.0/deed.en
+w_giraffe.svg  from Chess Glt45.svg  by Francois-Pier  licence CC BY-SA 3.0  http://creativecommons.org/licenses/by-sa/3.0/
+b_giraffe.svg  from Chess Gdt45.svg  by Francois-Pier  licence CC BY-SA 3.0  http://creativecommons.org/licenses/by-sa/3.0/
+w_unicorn.svg  from Chess Ult45.svg  by en:User:Cburnett (knight); Francois-Pier (unicorn)  licence CC BY-SA 3.0  http://creativecommons.org/licenses/by-sa/3.0/
+b_unicorn.svg  from Chess Udt45.svg  by en:User:Cburnett (knight); Francois-Pier (unicorn)  licence CC BY-SA 3.0  http://creativecommons.org/licenses/by-sa/3.0/
+w_zebra.svg  from Chess Zlt45.svg  by en:User:Cburnett (knight); Francois-Pier (zebra)  licence CC BY-SA 3.0  http://creativecommons.org/licenses/by-sa/3.0/
+b_zebra.svg  from Chess Zdt45.svg  by en:User:Cburnett (knight); Francois-Pier (zebra)  licence CC BY-SA 3.0  http://creativecommons.org/licenses/by-sa/3.0/
+w_wizard.svg  from Chess wlt45.svg  by File:Chess wll44.png: OmegaChessFan / *derivative work NikNaks93  licence CC BY-SA 3.0  http://creativecommons.org/licenses/by-sa/3.0/
+b_wizard.svg  from Chess wdt45.svg  by Chess_wdl44.png: OmegaChessFan derivative work: NikNaks93 (talk)  licence CC BY-SA 3.0  http://creativecommons.org/licenses/by-sa/3.0/
+w_champion.svg  from Chess zlt45.svg  by File:Chess zll44.png: OmegaChessFan / *derivative work NikNaks93  licence CC BY-SA 3.0  http://creativecommons.org/licenses/by-sa/3.0/
+b_champion.svg  from Chess zdt45.svg  by File:Chess zdl44.png: OmegaChessFan / *derivative work NikNaks93  licence CC BY-SA 3.0  http://creativecommons.org/licenses/by-sa/3.0/
+w_elephant.svg  from Chess elt45.svg  by NikNaks93  licence CC BY-SA 3.0  http://creativecommons.org/licenses/by-sa/3.0/
+b_elephant.svg  from Chess edt45.svg  by NikNaks93  licence CC BY-SA 3.0  http://creativecommons.org/licenses/by-sa/3.0/
+w_dabbaba.svg  from Chess vlt45.svg  by Sammy2012  licence CC0  http://creativecommons.org/publicdomain/zero/1.0/deed.en
+b_dabbaba.svg  from Chess vdt45.svg  by Sammy2012  licence CC0  http://creativecommons.org/publicdomain/zero/1.0/deed.en
+w_commoner.svg  from Chess xlt45.svg  by Uray M. János  licence GFDL  http://www.gnu.org/copyleft/fdl.html
+b_commoner.svg  from Chess xdt45.svg  by Sunny3113  licence CC BY-SA 4.0  https://creativecommons.org/licenses/by-sa/4.0
+w_nightrider.svg  from Chess Nlt45.svg  by NikNaks  licence CC BY-SA 3.0  https://creativecommons.org/licenses/by-sa/3.0
+b_nightrider.svg  from Chess Ndt45.svg  by modified by Antonsusi  licence CC BY-SA 3.0  https://creativecommons.org/licenses/by-sa/3.0
+w_camel.svg  from White chess camel.svg  by Kwamikagami  licence CC BY-SA 4.0  https://creativecommons.org/licenses/by-sa/4.0  (changed: the body filled white with its own outer outline, it was see-through)
+b_camel.svg  from Black chess camel.svg  by Kwamikagami  licence CC BY-SA 4.0  https://creativecommons.org/licenses/by-sa/4.0
+
+The Ouroboros King pieces (crusader, viking, berserker, bowman, catapult, sorcerer, manticore, gryphon,
+minotaur, hydra, phoenix, whelp, wyrm, cardinal, warwagon, bladedancer, musketeer, templar, royalguard,
+prince, immortal, assassin, firechick, egg, agentplus, agentx, agentl, agentstar, decoy, fool, infiltrator,
+marchingpawn, princess, leper, glassqueen, mirrorqueen, portalmage, troll, trollleft, reaper, bannerman,
+gorgon, martyr, quartermaster, mountedking, general, tabitha, andromeda, pegasus) are own drawings in the
+style of the set, made by tools/draw_ouroboros_pieces.py.
+
+Redrawn on 2026-10-01 after the original units' designs (all 49 pieces): each picture now follows the
+silhouette, pose and key features of the unit as The Ouroboros King shows it (crown in a laurel wreath for
+the prince, virus for the leper, jester hat for the fool, great helm for the knight templar, hooded figure
+with crossed blades for the blade dancer and so on). Every shape is drawn from scratch as vector paths in
+the cburnett style; no art from the game was used, traced or embedded. The pegasus rider reuses
+the cburnett knight outline (CC BY-SA 3.0). Agent +, Agent X, Agent L and Agent * kept their first drawings
+(the cburnett rook, bishop, knight and queen outlines with a sign, CC BY-SA 3.0), which the user preferred.
+checker, checkerking: drawn for Power Chess (2026-10-02), plain flat draughts discs with one inner ring, a crown for the king.
+devil, demon, slime, blob, duck_yellow, duck_blue: drawn for Power Chess (2026-10-03) in the same 45x45 line style; the duck after the usual Duck Chess duck (side view, yellow, orange bill).
+shotgunking, bosspawn, bossqueen, bossking: drawn for Power Chess (2026-10-03), Shotgun King mode (after Shotgun King: The Final Checkmate, own drawings).
+gun_solomon, gun_victoria, gun_richard, gun_makeda, gun_alexander, gun_yvan, gun_ramesses, gun_montezuma, gun_attila: drawn for Power Chess (2026-10-03), one gun per Shotgun King shotgun, laid over the normal king of the piece set in use. w_/b_shotgunking.svg = the default set's king plus gun_solomon.
