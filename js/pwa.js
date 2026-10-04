@@ -16,7 +16,7 @@
   PWA.web = !!root.PC_WEB;
 
   /* ---------- vibration ---------- */
-  var BUZZ = { move: 8, capture: 16, check: [10, 40, 14], shotgun: 26, boom: 38, win: [20, 60, 20, 60, 40], lose: [60, 80, 60], tap: 6, select: 5 };
+  var BUZZ = { move: 8, capture: 16, check: [10, 40, 14], shotgun: 26, boom: 38, win: [20, 60, 20, 60, 40], lose: [60, 80, 60], tap: 6, select: 5, hurt: [30, 30, 40], slash: 14 };
   PWA.haptics = true; // the app's setting ('Vibration')
   PWA.buzz = function (kind) {
     if (!PWA.touch || !PWA.haptics || !root.navigator.vibrate) return;

@@ -13,6 +13,14 @@
   var ARCH = ['B', 'N', 'archbishop'], CHAN = ['R', 'N', 'chancellor'], AMAZON = ['Q', 'N', 'amazon'];
   var ELEPHANT = ['B', '', 'elephant'], WIZARD = ['N', '', 'wizard'], CHAMPION = ['R', '', 'champion'], COMMONER = ['K', 'P', 'commoner'], FERZ = ['Q', '', 'ferz'], WAZIR = ['R', '', 'wazir'];
 
+  /* Shogi: the variant's own letters drawn as the koma of a real set (see tools/make_shogi_pieces.js); '+' marks the
+     promoted side. Base and badge say what each moves like, for the coach. */
+  var SHOGI_GLYPHS = {
+    k: ['K', '', 'shogi_king'], r: ['R', '', 'shogi_rook'], b: ['B', '', 'shogi_bishop'], g: ['K', 'R', 'shogi_gold'], s: ['K', 'B', 'shogi_silver'],
+    n: ['N', '', 'shogi_knight'], l: ['R', 'P', 'shogi_lance'], p: ['P', '', 'shogi_pawn'],
+    '+r': ['R', 'K', 'shogi_dragon'], '+b': ['B', 'K', 'shogi_horse'], '+s': ['K', 'R', 'shogi_psilver'], '+n': ['K', 'R', 'shogi_pknight'],
+    '+l': ['K', 'R', 'shogi_plance'], '+p': ['K', 'R', 'shogi_tokin']
+  };
   var VARIANTS = [
     { id: 'chess', group: 'Classic', name: 'Standard chess', fen: START,
       desc: 'Normal rules. The only mode Stockfish 19 can play. Like the two Dice Chess modes, it starts from the board editor\'s position.' },
@@ -132,6 +140,8 @@
     { id: 'knightmate', group: 'New pieces', name: 'Knightmate', glyphs: { k: ['K', 'N'], m: COMMONER }, fen: 'rmbqkbmr/pppppppp/8/8/8/8/PPPPPPPP/RMBQKBMR w KQkq - 0 1',
       desc: 'The king moves like a knight. The knights are replaced by commoners that move like a king.' },
 
+    { id: 'shogi', drops: true, shogi: true, group: 'Other boards', name: 'Shogi', glyphs: SHOGI_GLYPHS, fen: 'lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL[] w - - 0 1',
+      desc: 'Japanese chess on 9 x 9. A captured piece changes sides and waits in its taker\'s hand: instead of moving you may drop it on any empty square. The last three ranks are the promotion zone: a piece that moves into, out of or inside it may turn over, and must when it could never move again. No two unpromoted pawns of one side on a file, and no checkmate by dropping a pawn. The same position four times is a draw, unless one side gave check every move: that side loses. Played by Fairy-Stockfish.' },
     { id: 'capablanca', group: 'Other boards', name: 'Capablanca', glyphs: { a: ARCH, c: CHAN }, fen: 'rnabqkbcnr/pppppppppp/10/10/10/10/PPPPPPPPPP/RNABQKBCNR w KQkq - 0 1',
       desc: '10x8 board with an archbishop (bishop plus knight) and a chancellor (rook plus knight).' },
     { id: 'gothic', group: 'Other boards', name: 'Gothic', glyphs: { a: ARCH, c: CHAN }, fen: 'rnbqckabnr/pppppppppp/10/10/10/10/PPPPPPPPPP/RNBQCKABNR w KQkq - 0 1',
@@ -978,6 +988,7 @@
       var out;
       if (!m.kind) {
         posTo(s.fen, boardFor(s, m));
+        if (o.uci === 'shogi') return tmp.sanMove(m.uci, ffm.Notation.SHOGI_HODGES); // P-7f, Bx2b+ (the + is a promotion), B*5e
         out = tmp.sanMove(m.uci);
         if (!powers) return out;
         out = out.replace(/[+#]$/, '');

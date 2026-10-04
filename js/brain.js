@@ -15,7 +15,7 @@
 
   var VAL = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 0 };
   // the fairy pieces by their letters, with the values the rules give them
-  var FAIRY_N = 80, NCODES = 12 + 2 * FAIRY_N;
+  var FAIRY_N = 100, NCODES = 12 + 2 * FAIRY_N;
   R.FAIRY_LETTERS.forEach(function (l) { VAL[l] = R.FAIRY[l].value; });
   var BASE = [100, 320, 330, 500, 900, 0];        // by type index: p n b r q k
   var ATKV = [100, 320, 330, 500, 900, 10000];    // what an attacker risks
@@ -583,6 +583,12 @@
     if (s.shieldUsed) { a ^= Math.imul(Z1[Z_FREEZE], 43); c ^= Math.imul(Z2[Z_FREEZE], 47); }
     if (s.passed) for (i = 0; i < s.passed.length; i++) { k = Z_TURNED + (s.passed[i] === 'w' ? 0 : 1); a ^= Math.imul(Z1[k], 53 + i); c ^= Math.imul(Z2[k], 59 + i); } // passes used (Tempo)
     if (s.stun) for (i = 0; i < s.stun.length; i++) { k = Z_UP + 2 * MAXN + s.stun[i]; a ^= Math.imul(Z1[k], 29); c ^= Math.imul(Z2[k], 23); } // stunned by a helmet: frozen next turn
+    // The Ouroboros King: bombs, boulders put there in the game, the items of a turn, the turns of the Cursed staff
+    if (s.bombs) for (i = 0; i < s.bombs.length; i++) { k = Z_UP + 4 * MAXN + s.bombs[i]; a ^= Z1[k]; c ^= Z2[k]; }
+    if (s.boulders) for (i = 0; i < s.boulders.length; i++) { k = Z_UP + 5 * MAXN + s.boulders[i]; a ^= Z1[k]; c ^= Z2[k]; }
+    if (s.bottle || s.knife || s.boomer || s.glide) { var it = (s.bottle ? 'bnr'.indexOf(s.bottle) + 1 : 0) + (s.knife ? 4 : 0) + (s.boomer ? 8 : 0) + (s.glide ? 16 : 0); a ^= Math.imul(Z1[Z_MOVES + 5], 61 + it); c ^= Math.imul(Z2[Z_MOVES + 5], 67 + it); }
+    if (s.ouLock >= 0) { k = Z_UP + 4 * MAXN + s.ouLock; a ^= Math.imul(Z1[k], 71); c ^= Math.imul(Z2[k], 73); }
+    if (s.ouTurns) { a ^= Math.imul(Z1[Z_MOVES + 6], 79 + (s.ouTurns % 3)); c ^= Math.imul(Z2[Z_MOVES + 6], 83 + (s.ouTurns % 3)); }
     // ducks and the duck part of a turn, devils asleep, demons spawned this turn (the same keys, mixed apart)
     if (s.ducks) for (i = 0; i < s.ducks.length; i++) { k = Z_GOLD + s.ducks[i]; a ^= Math.imul(Z1[k], 7); c ^= Math.imul(Z2[k], 11); }
     if (s.bducks) for (i = 0; i < s.bducks.length; i++) { k = Z_GOLD + s.bducks[i]; a ^= Math.imul(Z1[k], 13); c ^= Math.imul(Z2[k], 19); }

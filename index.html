@@ -34,6 +34,19 @@ body[data-theme="brown"]{--sq-light:#edd6b0; --sq-dark:#b88762}
 body[data-theme="blue"]{--sq-light:#eae9d2; --sq-dark:#4b7399}
 body[data-theme="purple"]{--sq-light:#f0f1f0; --sq-dark:#8476ba}
 body[data-theme="gray"]{--sq-light:#dcdcdc; --sq-dark:#8b8987}
+/* the shogi boards: one colour, lines between the squares, four star points on 9 x 9 (data-theme shogi...; the computed
+   ones get their --sg-* colours from the app). In a game of Shogi a two-coloured board gets the star points too (shogigame) */
+body[data-theme="shogi"]{--sg-sq:#e5bd72; --sg-line:#2b1d0b; --sg-ink:#6b4c1e}
+body[data-theme="shogiw"]{--sg-sq:#f4f2ec; --sg-line:#1c1b19; --sg-ink:#55524c}
+body[data-theme="shogib"]{--sg-sq:#1d1c1a; --sg-line:#d9d4c8; --sg-ink:#a9a397}
+body[data-theme="shogig"]{--sg-sq:#9a9893; --sg-line:#1f1e1c; --sg-ink:#3a3936}
+body.shogigame{--star:rgba(20,20,20,.85)}
+body[data-theme^="shogi"]{--sq-light:var(--sg-sq); --sq-dark:var(--sg-sq); --star:var(--sg-line)}
+body[data-theme^="shogi"] .sq{box-shadow:inset .6px .6px 0 var(--sg-line),inset -.6px -.6px 0 var(--sg-line);color:var(--sg-ink)}
+body[data-theme^="shogi"] #board .squares{box-shadow:0 0 0 1.5px var(--sg-line)}
+body[data-theme^="shogi"] #board .squares.b9::after,body.shogigame #board .squares.b9::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:1;--r:calc(var(--cell) * .06);
+  background:radial-gradient(circle at 33.333% 33.333%,var(--star) 0 var(--r),transparent calc(var(--r) + .6px)),radial-gradient(circle at 66.667% 33.333%,var(--star) 0 var(--r),transparent calc(var(--r) + .6px)),
+  radial-gradient(circle at 33.333% 66.667%,var(--star) 0 var(--r),transparent calc(var(--r) + .6px)),radial-gradient(circle at 66.667% 66.667%,var(--star) 0 var(--r),transparent calc(var(--r) + .6px))}
 html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,"Segoe UI",system-ui,Helvetica,Arial,sans-serif;font-size:14px;overflow:hidden;-webkit-font-smoothing:antialiased}
 button{font-family:inherit;color:inherit;cursor:pointer;border:0;background:none;padding:0}
@@ -147,6 +160,133 @@ body.nocoords .sq span{display:none}
 .mark.portal{border-radius:50%;transform-origin:center;box-shadow:inset 0 0 0 calc(var(--S) / 110) #35a7ff,inset 0 0 calc(var(--S) / 30) calc(var(--S) / 80) rgba(53,167,255,.65)}
 .mark.portal.b{box-shadow:inset 0 0 0 calc(var(--S) / 110) #ff8a1f,inset 0 0 calc(var(--S) / 30) calc(var(--S) / 80) rgba(255,138,31,.65)}
 .mark.goldsq{background:radial-gradient(circle,rgba(255,205,40,.75) 0%,rgba(255,190,0,.35) 60%,rgba(255,190,0,0) 75%)}
+/* Pawnbarian: a muted blue board, the monsters' attacks as red ticks, Blight as red pips, gold outlines for the card picked */
+body[data-theme="pawnbarian"]{--sq-light:#69758f; --sq-dark:#545e7b}
+.piece.pbp{background-size:82% 82%}
+.piece.pbmon.pbboss{background-size:96% 96%}
+.piece.pbmon.pbchamp{filter:drop-shadow(0 0 calc(var(--cell) / 16) #ffd34d) drop-shadow(0 0 calc(var(--cell) / 30) #ffd34d)}
+.piece.pbmon.pbnimble::after{content:"";position:absolute;inset:4%;border-radius:50%;border:calc(var(--cell) / 45) dashed rgba(205,235,255,.7);animation:pbspin 7s linear infinite;pointer-events:none}
+@keyframes pbspin{to{transform:rotate(360deg)}}
+.piece.pbmon.pbimmune::before{content:"";position:absolute;right:1%;top:1%;width:27%;height:27%;background:url(pieces/pawnbarian/i_shield.svg) center/contain no-repeat;pointer-events:none}
+.piece.pbhero{filter:drop-shadow(0 0 calc(var(--cell) / 22) rgba(255,214,120,.8))}
+.piece.pbhero.pbshielded{filter:drop-shadow(0 0 calc(var(--cell) / 12) #dfe6f5) drop-shadow(0 0 calc(var(--cell) / 30) #fff)}
+.piece.pbitem{background-size:56% 56%}
+.piece.pbheart{background-size:46% 46%}
+.piece .pb-price{position:absolute;left:50%;bottom:4%;transform:translateX(-50%);font:800 calc(var(--cell) / 5.5)/1 system-ui,sans-serif;color:#ffd35a;text-shadow:0 1px 2px #000,0 0 4px #000}
+.piece .pb-price.poor{color:#e79a9a}
+.piece .pb-badge{position:absolute;right:4%;top:4%;display:flex;flex-direction:column;gap:2px}
+.piece .pb-badge .pb-up{width:calc(var(--cell) / 6.5);height:calc(var(--cell) / 6.5)}
+.pb-up{display:inline-block;width:15px;height:15px;background:center/contain no-repeat;flex:none}
+.pb-up.new{box-shadow:0 0 0 2px #ffd35a;border-radius:3px;background-color:rgba(0,0,0,.35)}
+.pb-up.old{opacity:.75}
+.pb-up.tiny{width:9px;height:9px}
+.mark.pbthreat{box-shadow:inset 0 0 0 calc(var(--cell) / 45) rgba(224,48,44,.6)}
+.mark.pbthreat.on{background:rgba(224,48,44,.3)}
+.mark.pbthreat i{position:absolute;left:7%;top:6%;display:flex;gap:calc(var(--cell) / 36)}
+.mark.pbthreat u{display:block;width:calc(var(--cell) / 20);height:calc(var(--cell) / 5.5);background:#e3302b;border-radius:2px;transform:skewX(-20deg);box-shadow:0 0 0 1px rgba(0,0,0,.45)}
+.mark.pbthreat i.skull{width:calc(var(--cell) / 3.4);height:calc(var(--cell) / 3.4);background:url(pieces/pawnbarian/i_skull.svg) center/contain no-repeat}
+.mark.pbtgt{background:rgba(255,90,60,.2)}
+.mark.pbblight{background:radial-gradient(circle,rgba(190,20,70,.42) 0%,rgba(150,10,50,.28) 70%)}
+.mark.pbblight i{position:absolute;right:6%;bottom:6%;display:flex;flex-wrap:wrap-reverse;justify-content:flex-end;gap:2px;width:46%}
+.mark.pbblight u{display:block;width:calc(var(--cell) / 11);height:calc(var(--cell) / 11);border-radius:50%;background:#e02a55;box-shadow:0 0 0 1px rgba(0,0,0,.5)}
+.mark.pbblight b{position:absolute;right:8%;top:8%;color:#ff9db0;font:800 calc(var(--cell) / 6)/1 system-ui,sans-serif}
+.mark.pbward{background:url(pieces/pawnbarian/i_ward.svg) center/72% no-repeat;opacity:.9}
+.mark.pbreach{box-shadow:inset 0 0 0 calc(var(--cell) / 32) rgba(255,211,90,.6)}
+.hint.dot.pbdot::after{background:none!important;left:6%;top:6%;width:88%;height:88%;margin:0;border-radius:8%;box-shadow:inset 0 0 0 calc(var(--cell) / 28) rgba(244,196,70,.9)}
+.hint.ring.pbring{border-radius:8%;box-shadow:inset 0 0 0 calc(var(--cell) / 16) rgba(255,190,50,.95)}
+.fx .pbsplash{box-shadow:inset 0 0 0 4px rgba(255,80,60,.75)}
+.gm-card.pb .gm-head h2{font-family:Georgia,"Times New Roman",serif;font-variant:small-caps;letter-spacing:.02em}
+.pb-heroes{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:5px}
+.pb-hb{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 2px 5px;border-radius:8px;background:#2f2d2a;color:#ddd;border:2px solid transparent;font:inherit;cursor:pointer;min-width:0}
+.pb-hb.on{border-color:#e8b33a;background:#3a3528}
+.pb-hb.locked i{filter:brightness(0) opacity(.45)}.pb-hb.locked b{color:#8d8a94}
+.pb-hb.locked::after{content:"";position:absolute;right:5px;top:5px;width:12px;height:12px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='3' y='7' width='10' height='8' rx='1.5' fill='%23a9a59d'/%3E%3Cpath d='M5 7V5a3 3 0 0 1 6 0v2' fill='none' stroke='%23a9a59d' stroke-width='1.8'/%3E%3C/svg%3E") center/contain no-repeat}
+.pb-hb{position:relative}
+.pb-hb i{width:44px;height:44px;background:center/contain no-repeat}
+.pb-hb b{font-size:10.5px;line-height:1.1;text-align:center}
+.pb-hb em{font-style:normal;font-size:9px;color:#e8b33a;letter-spacing:1px}
+.pb-heroinfo{display:flex;gap:10px;margin-top:9px;padding:10px;border-radius:8px;background:#2f2d2a}
+.pb-heroinfo .pb-port{flex:none;width:64px;height:64px;background:center/contain no-repeat}
+.pb-heroinfo div{display:flex;flex-direction:column;gap:4px;min-width:0}
+.pb-heroinfo b{font-family:Georgia,serif;font-variant:small-caps;font-size:16px}
+.pb-heroinfo em,.pb-flavour,.pb-hov em{font-family:Georgia,serif;font-style:italic;color:#bdb8ad;font-size:12.5px;line-height:1.35}
+.pb-heroinfo span{font-size:12.5px;line-height:1.4;color:#ddd}
+.pb-flavour{margin:7px 2px}
+.pb-duns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.pb-duns .sk-gun span{font-size:11px;color:#a9a59d}
+.pb-chains{grid-template-columns:repeat(11,minmax(0,1fr))!important}
+.pb-chainlist{margin:7px 0 4px;padding:0;list-style:none;font-size:12px;color:#bdb8ad;display:flex;flex-direction:column;gap:2px}
+.pb-chainlist b{display:inline-block;min-width:30px;color:#e8b33a}
+.pb-strip{display:flex;flex-wrap:wrap;gap:3px;margin-top:7px}
+.pb-strip span{display:flex;flex-direction:column;align-items:center;gap:1px;width:30px;padding:2px 0;border-radius:5px;background:#e9e4d7}
+.pb-strip span>i{width:26px;height:26px;background:center/contain no-repeat}
+.pb-strip span>.pb-up{width:9px;height:9px}
+.pb-strip.small span{width:24px}.pb-strip.small span>i{width:20px;height:20px}.pb-strip.small span>.pb-up{width:8px;height:8px}
+.pb-ic{display:inline-block;width:20px;height:20px;background:center/contain no-repeat;vertical-align:middle;flex:none}
+.pb-loot{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:8px;background:#1f1e24;margin:6px 0}
+.pb-gold{display:flex;align-items:center;gap:4px;padding-right:8px;border-right:1px solid #3a3842}.pb-gold b{color:#ffd35a;font-size:15px}
+.pb-track{display:flex;flex-wrap:wrap;gap:1px}.pb-track .pb-ic{width:17px;height:17px}.pb-track em{font-size:12px;color:#8d8a94}
+.pb-hearts{display:flex;align-items:center;gap:3px;margin:4px 0}.pb-hearts .pb-ic.heart{width:24px;height:24px}
+.pb-hearts.hurt{animation:pbhurt .8s ease-out}
+@keyframes pbhurt{0%,40%{filter:drop-shadow(0 0 6px #ff3030)}100%{filter:none}}
+.pb-shield{display:flex;align-items:center;gap:2px;margin-left:8px}.pb-shield b{font-size:14px;color:#dfe6f5}
+.pb-status{gap:6px}
+.pb-acts{display:flex;align-items:center;gap:2px}.pb-acts u{width:12px;height:16px;background:#e8b33a;clip-path:polygon(0 0,55% 0,100% 50%,55% 100%,0 100%,45% 50%)}.pb-acts em{font-style:normal;font-size:12px;color:#8d8a94}
+.pb-tag{font-size:12px;padding:2px 7px;border-radius:10px;background:#3a3842;color:#ddd}.pb-tag.red{background:#6b1d24;color:#ffd0d0}
+.pb-hand{display:flex;gap:8px;margin:8px 0 4px}
+.pb-card{position:relative;flex:1 1 0;max-width:110px;min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px;padding:20px 4px 7px;border-radius:9px;background:#ece7da;color:#222;border:3px solid transparent;font:inherit;cursor:pointer;box-shadow:0 2px 0 rgba(0,0,0,.35)}
+.pb-card:hover{transform:translateY(-2px)}
+.pb-card.on{border-color:#e8b33a;transform:translateY(-4px);box-shadow:0 0 0 2px rgba(232,179,58,.35),0 4px 0 rgba(0,0,0,.35)}
+.pb-card.promo{background:#f6e2b0}
+.pb-card.dead{opacity:.55}
+.pb-card>i{width:62px;height:62px;background:center/contain no-repeat}
+.pb-card b{font-family:Georgia,serif;font-variant:small-caps;font-size:12.5px;line-height:1.1;text-align:center}
+.pb-card .pb-ups{position:absolute;top:3px;left:0;right:0;display:flex;justify-content:center;gap:2px}
+.pb-card kbd{position:absolute;right:6px;bottom:5px;font:700 10px/1 system-ui,sans-serif;color:#000;opacity:.35;background:none;border:0;padding:0}
+#pbHover.pb-hov{display:flex;flex-direction:column;align-items:flex-start;text-align:left;gap:3px;min-height:18px}
+.pb-hov b{color:#eee}.pb-hov .pb-dmg{color:#ff9a8a}.pb-hov .pb-imm{color:#ffd35a}.pb-hov .pb-atk{color:#d9d4c8}
+#pbHover b{font-family:Georgia,serif;font-variant:small-caps;font-size:14px}
+.pb-offers{display:flex;flex-direction:column;gap:5px}
+.pb-offer{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:7px;background:#2f2d2a;font-size:12.5px}
+.pb-offer>.pb-ic:first-child{width:26px;height:26px;background-color:#e9e4d7;border-radius:4px}
+.pb-offer span{flex:1;display:flex;gap:6px;align-items:baseline}.pb-offer small{font-size:12px;color:#bdb8ad}.pb-moves .pb-tag{display:inline-flex;align-items:center;gap:3px}.pb-moves .pb-ic{width:16px;height:16px}.pb-offer em{font-style:normal;color:#ffd35a;font-weight:700}
+.pb-offer.sold{opacity:.45}.pb-offer.sold em{color:#a9a59d}
+/* Pawnbarian: the effects and the previews of a move */
+.skshard.pbw,.skdust.pbw,.skdmg.pbw{width:calc(100% / var(--W));height:calc(100% / var(--H))}
+.skdmg.pbw{font-size:calc(var(--cell) / 3.2)}
+.skdmg.pbblock{color:#dfe6f5}
+.skdmg.pbbubble::before{content:"";position:absolute;inset:20%;border-radius:50%;background:radial-gradient(circle,rgba(230,40,90,.85),rgba(150,10,50,0) 70%);animation:pbbubble .6s ease-out forwards}
+@keyframes pbbubble{from{transform:scale(.4);opacity:1}to{transform:scale(1.5);opacity:0}}
+.piece.pbouch{animation:pbouch .42s ease-out}
+@keyframes pbouch{0%{filter:brightness(1.6) sepia(1) saturate(6) hue-rotate(-30deg) drop-shadow(0 0 8px #f00)}60%{filter:sepia(1) saturate(4) hue-rotate(-30deg)}100%{filter:none}}
+.piece.pbhero.pbcheck{filter:drop-shadow(0 0 calc(var(--cell) / 14) rgba(255,40,30,.95));animation:pbcheck 1.1s ease-in-out infinite}
+@keyframes pbcheck{50%{filter:drop-shadow(0 0 calc(var(--cell) / 7) rgba(255,40,30,.95))}}
+.piece.pbpop{animation:pbpop .42s cubic-bezier(.3,1.6,.5,1)}
+@keyframes pbpop{from{background-size:0 0;opacity:.2}to{background-size:82% 82%;opacity:1}}
+.pbslash{position:absolute;width:calc(100% / var(--W));height:calc(100% / var(--H));pointer-events:none;background:linear-gradient(135deg,transparent 44%,rgba(255,90,60,.95) 48%,#fff 50%,rgba(255,90,60,.95) 52%,transparent 56%);animation:pbslash .42s ease-out forwards}
+@keyframes pbslash{from{clip-path:inset(0 100% 100% 0);opacity:1}60%{clip-path:inset(0 0 0 0);opacity:1}to{opacity:0}}
+.pb-card.deal{animation:pbdeal .38s ease-out both;animation-delay:calc(var(--i) * 90ms)}
+@keyframes pbdeal{from{transform:translateY(26px) rotate(-6deg);opacity:0}to{transform:none;opacity:1}}
+.pb-check{font-weight:700;animation:pbwarn 1.1s ease-in-out infinite}
+@keyframes pbwarn{50%{background:rgba(214,58,42,.32)}}
+.hint.pbkills{display:flex;align-items:flex-start;justify-content:flex-end;padding:5%;box-sizing:border-box}
+.hint.pbkills b{min-width:calc(var(--cell) / 4.2);height:calc(var(--cell) / 4.2);padding:0 3px;box-sizing:border-box;border-radius:999px;background:#d8302a;color:#fff;font:800 calc(var(--cell) / 6.5)/calc(var(--cell) / 4.2) system-ui,sans-serif;text-align:center;box-shadow:0 0 0 2px #1d1a22,0 2px 4px rgba(0,0,0,.5)}
+.hint.pbkills.dodge b{background:#3e8fd8}
+.hint.pbrisk{display:flex;align-items:flex-end;justify-content:center;padding-bottom:5%;box-sizing:border-box}
+.hint.pbrisk b{font:800 calc(var(--cell) / 7)/1 system-ui,sans-serif;color:#ff8f80;text-shadow:0 0 3px #000,0 0 2px #000}
+.hint.pbrisk.big{padding-bottom:2%}.hint.pbrisk.big b{font-size:calc(var(--cell) / 7);padding:2px 5px;border-radius:6px;background:rgba(150,20,20,.85);color:#fff;text-shadow:none;white-space:nowrap}
+.hint.pbrisk.big.safe b{background:rgba(60,120,50,.85)}
+.hint.pbatk{box-sizing:border-box}
+.hint.pbatk.dead{background:rgba(230,40,30,.38);box-shadow:inset 0 0 0 calc(var(--cell) / 22) #ff4a32}
+.hint.pbatk.dead::after{content:"";position:absolute;inset:8%;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cpath d='M6 6L34 34M34 6L6 34' stroke='%23ff3b26' stroke-width='5' stroke-linecap='round' opacity='.9'/%3E%3C/svg%3E") center/contain no-repeat}
+.hint.pbatk.dodged{background:rgba(62,143,216,.3);box-shadow:inset 0 0 0 calc(var(--cell) / 26) #5aa8ee}
+.hint.pbatk.immune{background:rgba(120,120,130,.35);box-shadow:inset 0 0 0 calc(var(--cell) / 26) #c9c6bf}
+.hint.pbatk.immune::after{content:"";position:absolute;inset:30%;background:url(pieces/pawnbarian/i_shield.svg) center/contain no-repeat}
+.hint.pbatk.empty{background:rgba(255,90,60,.16);box-shadow:inset 0 0 0 calc(var(--cell) / 40) rgba(255,110,80,.7)}
+.hint.pbdodge{border-radius:50%;box-shadow:inset 0 0 0 calc(var(--cell) / 26) rgba(90,168,238,.8);background:rgba(90,168,238,.15)}
+.hint.pbarrow::after{content:"";position:absolute;left:50%;top:50%;width:70%;height:22%;margin:-11% 0 0 0;transform-origin:0 50%;transform:rotate(var(--a));background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 70 22'%3E%3Cpath d='M2 11H58M48 3L62 11L48 19' fill='none' stroke='%235aa8ee' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat}
+.hint.pbghost{background:center/70% no-repeat;opacity:.45}
+.pb-prev{color:#d9d4c8}.pb-prev.ok{color:#9fd47a}
 /* Shotgun King */
 .piece .skhp{position:absolute;left:16%;right:16%;top:3%;height:4%;background:rgba(0,0,0,.28);border-radius:2px;overflow:hidden;pointer-events:none}
 .piece .skhp b{position:absolute;left:0;top:0;bottom:0;background:#e5503d}
@@ -164,6 +304,8 @@ body.nocoords .sq span{display:none}
 .piece .skmark{position:absolute;left:3%;top:2%;font-size:calc(var(--S) / 42);color:#c9b6ff;text-shadow:0 0 3px #000;pointer-events:none}
 .piece.skboss{filter:drop-shadow(0 0 7px rgba(255,190,40,.95)) drop-shadow(0 0 2px rgba(255,230,120,.9));background-color:rgba(255,196,64,.2);border-radius:50%}
 .piece.skleader:not(.skboss){filter:drop-shadow(0 0 4px rgba(255,215,90,.6))}
+.mark.danger{background:rgba(222,48,36,.26);box-shadow:inset 0 0 0 1px rgba(255,90,70,.22)}
+.mark.danger.hit{background:rgba(222,48,36,.5);box-shadow:inset 0 0 0 2px rgba(255,70,50,.85)}
 .hint.skdanger{background:rgba(222,48,36,.3);box-shadow:inset 0 0 0 1px rgba(255,90,70,.25)}
 .hint.sksoul::after{background:rgba(120,90,230,.7)!important}
 /* Shotgun King: the newer black cards. Allies glow green with a green hourglass, the hologram is a pale king, a
@@ -204,7 +346,11 @@ body.nocoords .sq span{display:none}
 .skdust{position:absolute;width:12.5%;height:12.5%;background:radial-gradient(circle,rgba(230,225,215,.7),rgba(180,175,165,.25) 45%,transparent 70%);pointer-events:none;animation:skdust .65s ease-out forwards}
 @keyframes skdust{from{transform:scale(.4);opacity:1}to{transform:scale(1.8);opacity:0}}
 .gm-card.sk .sk-h{margin:14px 0 6px;font-size:14px;color:#c9c6bf}
-.sk-guns{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px}
+.sk-guns{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:6px}
+.sk-guns .sk-gun{align-items:center;text-align:center;padding:8px 4px 7px}
+.sk-guns .sk-gun b{font-size:13px}
+.sk-gunsel{margin-top:8px;padding:10px 12px;border-radius:8px;background:#2f2d2a}
+.sk-gstats.two{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;margin:0}
 .sk-gunpic{display:block;width:64px;height:64px;margin:-2px auto 2px;background-size:contain,contain;background-position:center,center;background-repeat:no-repeat;border-radius:8px;background-color:rgba(115,149,82,.35)}
 .sk-gunpic.small{display:inline-block;width:32px;height:32px;margin:0;border-radius:6px}
 .sk-gun{display:flex;flex-direction:column;gap:3px;text-align:left;padding:8px 9px;border-radius:8px;background:#2f2d2a;color:#ddd;border:2px solid transparent;font:inherit;cursor:pointer}
@@ -273,6 +419,7 @@ body.nocoords .sq span{display:none}
 .duckrow .duckicon.blue{background-image:url(pieces/fairy/duck_blue.svg)}
 .mark.water{background:linear-gradient(180deg,rgba(70,150,230,.62),rgba(40,110,205,.72));box-shadow:inset 0 0 calc(var(--S) / 60) rgba(255,255,255,.35)}
 .mark.water::after{content:"";position:absolute;left:12%;right:12%;top:38%;height:24%;background:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 20'><path d='M0 6q7-6 15 0t15 0 15 0 15 0' fill='none' stroke='rgba(255,255,255,.55)' stroke-width='2.4' stroke-linecap='round'/><path d='M0 15q7-6 15 0t15 0 15 0 15 0' fill='none' stroke='rgba(255,255,255,.35)' stroke-width='2.4' stroke-linecap='round'/></svg>") center/100% 100% no-repeat}
+.mark.bomb{background:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='46' cy='58' r='27' fill='%23262422' stroke='%23000' stroke-width='3'/><circle cx='37' cy='49' r='7' fill='%23fff' fill-opacity='.35'/><rect x='54' y='26' width='14' height='12' rx='2' transform='rotate(40 61 32)' fill='%234a4643' stroke='%23000' stroke-width='2'/><path d='M66 24q6-9 14-6' fill='none' stroke='%238a6a3a' stroke-width='4' stroke-linecap='round'/><circle cx='82' cy='17' r='5' fill='%23ffb02e'/><circle cx='82' cy='17' r='2.5' fill='%23fff3c0'/></svg>") center/80% no-repeat}
 .mark.wall{background:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><path d='M18 72q-10-22 8-40t44-10q22 10 18 36t-28 24q-32 4-42-10z' fill='%238a8278' stroke='%23463f38' stroke-width='4' stroke-linejoin='round'/><path d='M30 42q12-18 36-12' fill='none' stroke='%23b8afa2' stroke-width='5' stroke-linecap='round'/><path d='M40 70q16 2 30-6' fill='none' stroke='%23574f46' stroke-width='4' stroke-linecap='round'/></svg>") center/82% no-repeat}
 .terrain{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .terrain button{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:left}
@@ -340,6 +487,9 @@ body.nocoords .sq span{display:none}
 .mlegend svg{width:18px;height:18px;flex:none}
 .mlegend.none{display:block;font-size:11px;color:var(--dim)}
 .piece{position:absolute;left:0;top:0;width:calc(100% / var(--W));height:calc(100% / var(--H));background:center/100% no-repeat;will-change:transform;pointer-events:none;font-size:calc(var(--cell) * .42)}
+/* a shogi piece on a turned board: the picture drawn turned round (the piece itself keeps its place transform) */
+.piece.sgturn{background-size:0 0}
+.piece.sgturn::before{content:"";position:absolute;inset:0;background-image:inherit;background-position:center;background-repeat:no-repeat;background-size:100%;transform:rotate(180deg);pointer-events:none}
 /* Skins. The vine of a sniper and the gold of a statue are painted into the piece images once at start
    (see buildSkins in app.js), so a piece is a plain image here. Ghosts are done with styles. */
 .piece.ghost{opacity:.66;filter:drop-shadow(0 0 calc(var(--cell) / 11) rgba(150,232,255,.95));-webkit-mask-image:linear-gradient(to bottom,#000 52%,rgba(0,0,0,.3) 100%);mask-image:linear-gradient(to bottom,#000 52%,rgba(0,0,0,.3) 100%)}
@@ -813,7 +963,6 @@ select.field{font-family:inherit;font-size:13.5px}
 #edmsg.bad{background:rgba(250,65,45,.14);color:#ff9d90}
 .langs{display:flex;gap:10px;margin-bottom:6px}
 /* German has long compounds: let them break with a hyphen in narrow buttons and labels */
-html[lang="de"] .gm-switch>*{-webkit-hyphens:auto;hyphens:auto;overflow-wrap:break-word}
 .langs .flag{width:54px;height:36px;padding:3px;border-radius:7px;border:2px solid transparent;background:var(--line);cursor:pointer;display:flex}
 .langs .flag svg{width:100%;height:100%;border-radius:3px;display:block}
 .langs .flag:hover{border-color:var(--dim)}
@@ -824,7 +973,9 @@ html[lang="de"] .gm-switch>*{-webkit-hyphens:auto;hyphens:auto;overflow-wrap:bre
 .sw::after{content:"";position:absolute;left:3px;top:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .15s}
 .sw.on{background:var(--green)}
 .sw.on::after{transform:translateX(18px)}
-.themes{display:flex;gap:8px}
+.themes{display:flex;flex-wrap:wrap;gap:8px}
+.thgroup + .thgroup{margin-top:10px}
+.thgroup > span{display:block;margin:0 0 6px;font-size:12px;color:var(--muted)}
 .themes button{width:44px;height:44px;border-radius:6px;overflow:hidden;display:grid;grid-template-columns:1fr 1fr}
 .themes button.on{outline:2px solid var(--green);outline-offset:2px}
 .themes i{display:block}
@@ -887,7 +1038,72 @@ kbd{background:#454340;border-radius:3px;padding:1px 6px;font-size:12px;font-fam
 .nav.dot::after{content:"";position:absolute;top:8px;right:9px;width:8px;height:8px;border-radius:50%;background:#e6912c;box-shadow:0 0 0 2px #262421}
 .chip.gm{background:rgba(230,145,44,.18);color:#f4b35e}
 .mark.homesq{background:rgba(129,182,76,.28);box-shadow:inset 0 0 0 2px rgba(129,182,76,.6)}
-.gm-switch{margin-bottom:10px}
+/* the Game Modes page: the runs as big cards, the other modes as tiles, a way back on each mode */
+.gm-cat{margin:4px 2px 8px;font-size:11.5px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.gm-cat:not(:first-child){margin-top:18px}
+.gm-big{display:flex;align-items:center;gap:12px;width:100%;margin-bottom:8px;padding:12px;border:0;border-radius:10px;background:var(--panel2);color:inherit;text-align:left;cursor:pointer}
+.gm-big:hover,.gm-tile:hover{background:var(--raise)}
+.gm-art{flex:none;width:52px;height:52px;border-radius:9px;background:#3a3836 center/82% no-repeat}
+.gm-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.gm-txt b{font-size:15px;color:#fff}
+.gm-txt span{font-size:12.5px;color:var(--muted)}
+.gm-big em{flex:none;font-style:normal;font-size:12px;font-weight:700;color:var(--green-h)}
+.gm-tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.gm-tile{display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-width:0;padding:12px;border:0;border-radius:10px;background:var(--panel2);color:inherit;text-align:left;cursor:pointer}
+.gm-ic{display:block;width:26px;height:26px;margin-bottom:5px;color:var(--green-h)}
+.gm-ic svg{width:100%;height:100%}
+.gm-tile b{font-size:14px;color:#fff}
+.gm-tile span{font-size:12px;color:var(--muted)}
+.sg-boards{margin-bottom:4px}
+.sg-pieces{display:flex;flex-direction:column;gap:4px}
+.sg-p{display:flex;align-items:center;gap:4px;padding:5px 10px 5px 6px;border-radius:8px;background:#2f2d2a}
+.sg-p i{flex:none;width:30px;height:30px;background:center/contain no-repeat}
+.sg-p b{flex:1;min-width:0;padding-left:6px;font-size:13px;color:#fff}
+.sg-p span{font-size:12px;color:var(--muted);text-align:right}
+/* The Ouroboros King: the act, gold and Rewinds, relics and items as chips, the map (bottom to top), the battle */
+.ou-top{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:2px 0 8px;font-size:13px}
+.ou-top b{flex:1;min-width:0;color:#fff}
+.ou-gold{color:#e3c35a;font-weight:700}
+.ou-rw{color:#9cc7e8;font-weight:700}
+.ou-chips{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px}
+.ou-chip{display:inline-block;padding:3px 8px;border-radius:11px;font-size:11.5px;background:#3a3836;color:#ddd;border:0;cursor:default}
+.ou-chip.relic{background:#3b3550;color:#d9d2f0}
+.ou-chip.relic.prem{background:#4d3a1f;color:#f0d8a0}
+.ou-chip.item{background:#2c3f33;color:#cfe8d4}
+button.ou-chip{cursor:pointer}
+button.ou-chip.all{background:#5a2d2d;color:#f3d0d0}
+.ou-map{display:block;width:100%;max-width:340px;margin:0 auto 8px}
+.ou-map line{stroke:#5d5a55;stroke-width:2.2;stroke-dasharray:4 4}
+.ou-map line.walked{stroke:#c9b37a;stroke-dasharray:none}
+.ou-node circle{stroke:#1d1c1a;stroke-width:2}
+.ou-node.done circle{opacity:.38}
+.ou-node.here circle{stroke:#f2e3b0;stroke-width:3}
+.ou-node.can{cursor:pointer}
+.ou-node.can circle{stroke:#8fd06a;stroke-width:3}
+.ou-node.sel circle{stroke:#fff;stroke-width:4}
+.ou-sel{display:flex;gap:10px;align-items:center;padding:8px 10px;margin-bottom:8px;border-radius:8px;background:#2f2d2a}
+.ou-sel div{display:flex;flex-direction:column;gap:2px}
+.ou-sel span{font-size:12.5px;color:var(--muted)}
+.ou-ic{flex:none;color:#e8dcc0}
+.ou-battle .ou-place{display:flex;align-items:center;gap:8px;font-size:13px;color:#e8dcc0}
+.ou-battle h3{margin:6px 0 4px}
+.ou-battle p{margin:0 0 6px;font-size:12.5px;color:var(--muted)}
+.ou-hint{font-size:12.5px}
+.ou-picks{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px}
+.ou-pick{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;border-radius:8px;background:#2f2d2a;border:2px solid transparent;color:#ddd;cursor:pointer;font:inherit}
+.ou-pick.on{border-color:var(--green);background:#353a2c}
+.ou-pick b{font-size:12px}
+.ou-pick .unit{display:block;width:40px;height:40px;background:center/contain no-repeat}
+.ou-pick em{font-style:normal;font-size:10.5px;color:#e3c35a}
+.ou-price{font-style:normal;font-weight:700;color:#e3c35a;margin-left:4px}
+.gm-pick.ou-card{grid-template-columns:auto auto auto minmax(0,1fr)}
+.gm-pick.ou-card b,.gm-pick.ou-card span{grid-column:4}
+.gm-pick.off{opacity:.45}
+.gm-pick.on{outline:2px solid var(--green)}
+.ou-reward{color:#e3c35a}
+.gm-back{display:inline-flex;align-items:center;gap:6px;margin:0 0 10px;padding:6px 10px 6px 6px;border:0;border-radius:7px;background:none;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer}
+.gm-back::before{content:"";width:7px;height:7px;border:solid currentColor;border-width:0 0 2px 2px;transform:rotate(45deg);margin-left:4px}
+.gm-back:hover{background:var(--panel2);color:#fff}
 .gm-card{background:var(--panel2);border-radius:9px;padding:12px 12px 10px;margin-bottom:12px}
 .gm-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .gm-head h2{margin:0;font-size:16px}
@@ -906,15 +1122,11 @@ kbd{background:#454340;border-radius:3px;padding:1px 6px;font-size:12px;font-fam
 .gm-block{margin:6px 0;font-size:12px;color:#f4b35e}
 .gm-tier .gm-rec{color:var(--dim)}
 @media (max-width:600px){
-  .gm-tiers{grid-template-columns:1fr}
-  .gm-switch button{font-size:12px;padding:0 4px}
   /* narrow screens: a long label wraps onto a second line instead of running under the next button */
   .seg button{white-space:normal;height:auto;min-height:38px;line-height:1.15;padding:4px 5px;font-size:12px}
   #pzSeg button{flex:1 1 22%} /* four to a row */
-  .gm-switch button{flex:1 1 40%} /* four modes: two to a row */
   .dice{--die:64px;gap:7px} /* three big dice still fit next to the label */
 }
-.gm-switch button{white-space:normal;height:auto;min-height:38px;line-height:1.15;padding:4px 6px} /* three modes: a long name wraps */
 /* Drawback Chess: the settings, the index of drawbacks (green border: won with it), the drawbacks in the game panel */
 .db-set{display:flex;flex-direction:column;gap:8px;margin:10px 0}
 .db-check{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
@@ -1078,10 +1290,46 @@ body.touch .keyskeys,body.touch .keyshead{display:none}
   /* playing: the panel as tall as its content, the board in the middle of the room left (no hole under the moves) */
   body[data-tab=play] #panel{flex:none}
   body[data-tab=play] #boardcol{margin:auto 0}
-  /* the Game Modes: one row of chips to swipe through, as in an app's filter bar */
-  .gm-switch{flex-wrap:nowrap !important;overflow-x:auto;scrollbar-width:none;gap:6px;margin:0 -12px 10px;padding:0 12px;scroll-padding:0 12px}
-  .gm-switch::-webkit-scrollbar{display:none}
-  .gm-switch button{flex:none !important;white-space:nowrap !important;min-height:36px;padding:0 14px !important;border-radius:18px;font-size:13px !important}
+  .tp-set .setrow small{display:none}
+  /* the Ouroboros King's page: a smaller board (the formation, the battle to come), the map and the rewards get the room */
+  body[data-tab=modes][data-gm=run]{
+    --S:min(calc(100vw - 20px), 36dvh);
+    --BW:calc(var(--S) * var(--W) / var(--M) * var(--Z)); --BH:calc(var(--S) * var(--H) / var(--M) * var(--Z)); --cell:calc(var(--S) / var(--M) * var(--Z));
+    --VW:min(var(--BW), calc(var(--S) * var(--W) / var(--M) * max(1, min(var(--Z), var(--M) / var(--W))))); --VH:min(var(--BH), calc(var(--S) * var(--H) / var(--M) * max(1, min(var(--Z), var(--M) / var(--H)))));
+  }
+  body[data-tab=modes][data-gm=run] .pbar{display:none}
+  /* Pawnbarian: the 5 x 5 board a little smaller, the hand right under it */
+  body[data-tab=modes][data-gm=pb]{--S:min(calc(100vw - 20px), 44dvh)}
+  body[data-tab=modes][data-gm=pb] .pbar{display:none}
+  .pb-heroes{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .pb-card{padding:16px 3px 5px}.pb-card>i{width:46px;height:46px}
+  .pb-chains{grid-template-columns:repeat(6,minmax(0,1fr))!important}
+  /* the Game Modes list needs no board */
+  body[data-tab=modes][data-gm=home] #boardcol{display:none}
+  body[data-tab=modes][data-gm=home] #panel{margin-top:0;border-radius:0}
+  /* the board editor: the pieces stay in reach under the board, the rest folds away */
+  body[data-tab=editor]{--S:min(calc(100vw - 20px), 46dvh)}
+  body[data-tab=editor] .pbar,body[data-tab=editor] #summary,#view-editor .edsub{display:none}
+  body[data-tab=editor]:not(.bigboard) #zoombar{display:none}
+  body[data-tab=editor] #startbox{padding:8px 12px 10px}
+  body[data-tab=editor] #startbox .btn.green{height:42px}
+  #view-editor .scroll{display:flex;flex-direction:column;padding-top:0}
+  #view-editor .edpieces{order:-1;position:sticky;top:0;z-index:4;margin:0 -12px;padding:8px 12px;background:var(--panel);box-shadow:0 6px 10px -8px rgba(0,0,0,.7)}
+  #view-editor .edsec.edpieces > h3{display:none}
+  #view-editor .edsec.edpieces{border-top:0;padding-bottom:8px}
+  #view-editor #palette{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+  #view-editor #palette button{width:auto;height:40px}
+  #view-editor .edpick{position:static;margin:8px 0 4px;min-height:0;padding:8px 10px;border-radius:8px;box-shadow:none}
+  #view-editor .edpick .pic{width:34px;height:34px;font-size:20px}
+  #view-editor .edpick.withdia{display:flex}
+  #view-editor .edpick .eddia,#view-editor .edpick .mlegend{display:none}
+  #view-editor .edsec{border-top:1px solid var(--line)}
+  #view-editor .edsec > h3{display:flex;align-items:center;justify-content:space-between;margin:0;padding:13px 2px;cursor:pointer;font-size:13px}
+  #view-editor .edsec > h3::after{content:"";width:8px;height:8px;border:solid var(--muted);border-width:0 2px 2px 0;transform:rotate(45deg);margin:-4px 4px 0 0;transition:transform .15s}
+  #view-editor .edsec.open > h3::after{transform:rotate(-135deg);margin-top:4px}
+  #view-editor .edsec:not(.open) > :not(h3){display:none !important}
+  #view-editor .edsec.open{padding-bottom:12px}
+  #view-editor .edsec #edCastleWrap h3{margin-top:12px}
   /* setting up a game: the board is only a preview, the choices get the room */
   body[data-tab=new],body[data-tab=variants],body[data-tab=powers]{
     --S:min(calc(100vw - 20px), 30dvh);
@@ -1336,33 +1584,33 @@ body.touch .keyskeys,body.touch .keyshead{display:none}
         <div class="scroll">
           <div class="edpick" id="edPick"></div>
           <div class="note" id="edNote"></div>
-          <h3>Board size</h3>
+          <div class="edsec edpieces open"><h3>Pieces</h3>
+          <div class="palette" id="palette"></div></div>
+          <div class="edsec"><h3>Board size</h3>
           <div class="edsize"><label>Width <input class="field" id="edW" type="number" min="3" max="26"></label><label>Height <input class="field" id="edH" type="number" min="3" max="26"></label></div>
           <div class="edsizes" id="edSizes"><button data-w="8" data-h="8">8 x 8</button><button data-w="10" data-h="10">10 x 10</button><button data-w="12" data-h="12">12 x 12</button><button data-w="16" data-h="16">16 x 16</button><button data-w="20" data-h="20">20 x 20</button><button data-w="26" data-h="26">26 x 26</button><button data-w="4" data-h="20">4 x 20</button><button data-w="7" data-h="13">7 x 13</button></div>
-          <p class="sub edsub">Up to 26 by 26. Typing a size keeps the position, a button sets up both armies. Castling only exists on 8 by 8.</p>
-          <h3>Pieces</h3>
-          <div class="palette" id="palette"></div>
-          <h3>Fairy pieces</h3>
-          <div class="palette" id="fairyPalette"></div>
-          <h3>Terrain</h3>
-          <div class="terrain" id="terrainPalette"></div>
-          <h3>Upgrades</h3>
+          <p class="sub edsub">Up to 26 by 26. Typing a size keeps the position, a button sets up both armies. Castling only exists on 8 by 8.</p></div>
+          <div class="edsec"><h3>Fairy pieces</h3>
+          <div class="palette" id="fairyPalette"></div></div>
+          <div class="edsec"><h3>Terrain</h3>
+          <div class="terrain" id="terrainPalette"></div></div>
+          <div class="edsec"><h3>Upgrades</h3>
           <div class="terrain" id="upgradePalette"></div>
-          <p class="sub edsub">With the hand you drag pieces around, or off the board to remove them. Fairy pieces, terrain and boards other than 8 by 8 are played and judged by the power-up search.</p>
-          <h3>Side to move</h3>
+          <p class="sub edsub">With the hand you drag pieces around, or off the board to remove them. Fairy pieces, terrain and boards other than 8 by 8 are played and judged by the power-up search.</p></div>
+          <div class="edsec"><h3>Side to move</h3>
           <div class="seg" id="edTurn"></div>
           <div id="edCastleWrap"><h3>Castling</h3>
-          <div class="row" id="edCastle"></div></div>
-          <h3>Presets</h3>
+          <div class="row" id="edCastle"></div></div></div>
+          <div class="edsec"><h3>Presets</h3>
           <button class="btn" id="edPresetBtn" style="width:100%">Browse preset positions</button>
           <div class="edbtns">
             <button class="btn" id="edStart">Start position</button>
             <button class="btn" id="edClear">Clear board</button>
             <button class="btn" id="edFromGame">From game</button>
-          </div>
-          <h3>FEN</h3>
+          </div></div>
+          <div class="edsec"><h3>FEN</h3>
           <input class="field" id="edFen" spellcheck="false">
-          <div id="edmsg"></div>
+          <div id="edmsg"></div></div>
         </div>
       </section>
 
@@ -1375,9 +1623,11 @@ body.touch .keyskeys,body.touch .keyshead{display:none}
           <h3>Language</h3>
           <div class="langs" id="langs"></div>
           <h3>Board colors</h3>
-          <div class="themes" id="themes"></div>
+          <div id="themes"></div>
           <h3>Pieces</h3>
           <div class="piecesets" id="pieceSets"></div>
+          <h3>Shogi pieces</h3>
+          <div class="piecesets" id="shogiStyle"></div>
           <h3>Options</h3>
           <div id="setrows"></div>
           <h3>App</h3>
@@ -1437,9 +1687,11 @@ body.touch .keyskeys,body.touch .keyshead{display:none}
 <script src="js/coach.js"></script>
 <script src="js/puzzles.js"></script>
 <script src="js/brain.js"></script>
+<script src="js/ouro.js"></script>
 <script src="js/modes.js"></script>
 <script src="js/hex.js"></script>
 <script src="js/shotgun.js"></script>
+<script src="js/pawnbarian.js"></script>
 <script src="js/drawbacks.js"></script>
 <script src="js/drawbacks/core.js"></script>
 <script src="js/drawbacks/p1.js"></script>

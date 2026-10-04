@@ -16,6 +16,8 @@
   }
   // Piece pictures: the classic set lives in pieces/, the others in a folder of their own.
   const PIECE_SETS = [['cburnett', 'Classic'], ['merida', 'Merida'], ['chessnut', 'Chessnut'], ['spatial', 'Spatial']];
+  // a fairy piece's picture; the shogi pieces come in wood (as the original) or in black and white (Settings > Pieces)
+  const fairyPic = (c, pic) => 'pieces/fairy/' + c + '_' + (settings.shogiBW && pic.indexOf('shogi_') === 0 ? 'shogibw_' + pic.slice(6) : pic) + '.svg';
   function pieceDir(set) { const id = set || settings.pieces; return 'pieces/' + (id && id !== 'cburnett' ? id + '/' : ''); }
   function pieceUrl(p) { return pieceDir() + R.colorOf(p) + p.toUpperCase() + '.svg'; }
   const imgUrl = (code) => 'url(' + pieceDir() + code + '.svg)';
@@ -29,7 +31,8 @@
     'crusader', 'viking', 'berserker', 'bowman', 'catapult', 'sorcerer', 'manticore', 'gryphon', 'minotaur', 'hydra', 'phoenix', 'whelp', 'wyrm', 'cardinal', 'warwagon', 'pegasus', 'bladedancer', 'musketeer', 'templar', 'royalguard',
     'prince', 'immortal', 'assassin', 'firechick', 'egg', 'agentplus', 'agentx', 'agentl', 'agentstar', 'decoy', 'fool', 'infiltrator', 'marchingpawn', 'princess', 'leper', 'glassqueen', 'mirrorqueen', 'portalmage',
     'troll', 'trollleft', 'reaper', 'bannerman', 'gorgon', 'martyr', 'quartermaster', 'mountedking', 'general', 'tabitha', 'andromeda',
-    'edea', 'unicorncavalry', 'oucentaur', 'golem', 'checker', 'checkerking', 'devil', 'demon', 'slime', 'blob', 'shotgunking'];
+    'edea', 'unicorncavalry', 'oucentaur', 'golem', 'checker', 'checkerking', 'devil', 'demon', 'slime', 'blob', 'shotgunking'].concat(
+    ['king', 'rook', 'dragon', 'bishop', 'horse', 'gold', 'silver', 'psilver', 'knight', 'pknight', 'lance', 'plance', 'pawn', 'tokin'].map((n) => 'shogi_' + n));
 
   /* ---------- data ---------- */
 
@@ -337,19 +340,22 @@
       });
     };
 
+    const turned = (img) => { const cv = canvas(), x = cv.getContext('2d'); x.translate(size, size); x.rotate(Math.PI); x.drawImage(img, 0, 0, size, size); return cv; };
     let left = codes.length;
     codes.forEach((code, idx) => {
       const img = new Image();
       img.onload = () => {
         // statue and ice, for both colours, from the white drawing (the black code's own picture only gets its vine)
         if (code[0] === 'w') ['w', 'b'].forEach((c) => {
-          const bc = c + code.slice(1), gcv = tint(img, TINTS.gold[c], 0), icv = tint(img, TINTS.ice[c], c === 'w' ? 0.55 : 0.4);
+          // a shogi piece points at the other side: Black's statue and ice are the white drawing turned round
+          const src = c === 'b' && code.indexOf('_shogi') > 0 ? turned(img) : img;
+          const bc = c + code.slice(1), gcv = tint(src, TINTS.gold[c], 0), icv = tint(src, TINTS.ice[c], c === 'w' ? 0.55 : 0.4);
           try {
             SKIN.gold[bc] = gcv.toDataURL('image/png');
             SKIN.ice[bc] = icv.toDataURL('image/png');
-            vine(icv.getContext('2d'), img, 17 + idx % 6 * 31); // the same vine as the sniper skin below
+            vine(icv.getContext('2d'), src, 17 + idx % 6 * 31); // the same vine as the sniper skin below
             SKIN.icecamo[bc] = icv.toDataURL('image/png');
-            vine(gcv.getContext('2d'), img, 17 + idx % 6 * 31); // a statue keeps its vine too
+            vine(gcv.getContext('2d'), src, 17 + idx % 6 * 31); // a statue keeps its vine too
             SKIN.goldcamo[bc] = gcv.toDataURL('image/png');
           } catch (e) { /* the plain piece stays */ }
         });
@@ -361,7 +367,7 @@
         if (--left === 0) { SKIN.ready = true; renderPowers(); renderAll(); }
       };
       img.onerror = () => { if (--left === 0) { SKIN.ready = true; renderAll(); } };
-      img.src = code.indexOf('_') > 0 ? 'pieces/fairy/' + code + '.svg' : pieceDir() + code + '.svg';
+      img.src = code.indexOf('_') > 0 ? fairyPic(code[0], code.slice(2)) : pieceDir() + code + '.svg';
     });
   }
   const skinUrl = (kind, code) => (SKIN[kind][code] ? 'url(' + SKIN[kind][code] + ')' : imgUrl(code));
@@ -495,6 +501,37 @@
   BOARD_PRESETS.push(...(window.BOARD_PRESETS_CHECKERS || [])); // Checkers starts, openings and endings, js/presets_checkers.js
   const THEMES = [['green', '#ebecd0', '#739552'], ['brown', '#edd6b0', '#b88762'], ['blue', '#eae9d2', '#4b7399'],
     ['purple', '#f0f1f0', '#8476ba'], ['gray', '#dcdcdc', '#8b8987']];
+  /* The shogi boards (one colour, lines between the squares, four star points on 9 x 9): wood as the original, white,
+     gray and black, and each two-coloured board drawn the shogi way (shogi-green ...: a tone between its light and dark
+     square, lines in its dark colour). Every game takes settings.theme, a game of Shogi settings.shogiBoard, and a
+     two-coloured board in a game of Shogi gets the star points. [square, line, coordinates] */
+  const SG_BOARDS = { shogi: ['#e5bd72', '#2b1d0b', '#6b4c1e'], shogiw: ['#f4f2ec', '#1c1b19', '#55524c'], shogig: ['#9a9893', '#1f1e1c', '#3a3936'], shogib: ['#1d1c1a', '#d9d4c8', '#a9a397'] };
+  const SHOGI_BOARDS = ['shogi', 'shogiw', 'shogig', 'shogib'].concat(THEMES.map((t) => 'shogi-' + t[0]));
+  const BOARD_NAMES = { green: 'Green', brown: 'Brown', blue: 'Blue', purple: 'Purple', gray: 'Gray', shogi: 'Wood', shogiw: 'White', shogig: 'Gray', shogib: 'Black' };
+  const boardName = (id) => (/^shogi-/.test(id) ? 'Shogi, ' + BOARD_NAMES[id.slice(6)].toLowerCase() : /^shogi/.test(id) ? 'Shogi, ' + BOARD_NAMES[id].toLowerCase() : BOARD_NAMES[id] || id);
+  function sgBoardColors(id) {
+    if (SG_BOARDS[id]) return SG_BOARDS[id];
+    const t = THEMES.find((x) => 'shogi-' + x[0] === id) || THEMES[0];
+    const rgb = (hx) => [1, 3, 5].map((i) => parseInt(hx.slice(i, i + 2), 16));
+    const mix = (a, b, k) => '#' + rgb(a).map((v, i) => Math.round(v + (rgb(b)[i] - v) * k).toString(16).padStart(2, '0')).join('');
+    return [mix(t[1], t[2], 0.38), mix(t[2], '#000000', 0.55), mix(t[2], '#000000', 0.35)];
+  }
+  // a board's colours for the small pictures: [light, dark, line or null]
+  const boardColors = (id) => { if (/^shogi/.test(id)) { const c = sgBoardColors(id); return [c[0], c[0], c[1]]; } const t = THEMES.find((x) => x[0] === id) || THEMES[0]; return [t[1], t[2], null]; };
+  // a button for a board colour: four squares, or one colour with its lines
+  function boardSwatch(id, on, attr) {
+    const c = boardColors(id), sq = (bg) => '<i style="background:' + bg + (c[2] ? ';box-shadow:inset 0 0 0 .6px ' + c[2] : '') + '"></i>';
+    return '<button ' + attr + ' class="' + (on ? 'on' : '') + '" title="' + boardName(id) + '">' + sq(c[0]) + sq(c[1]) + sq(c[1]) + sq(c[0]) + '</button>';
+  }
+  const boardGroups = (cur, attr) => '<div class="thgroup"><span>Two colours</span><div class="themes">' + THEMES.map((t) => boardSwatch(t[0], cur === t[0], attr + '="' + t[0] + '"')).join('') + '</div></div>' +
+    '<div class="thgroup"><span>Shogi boards</span><div class="themes">' + SHOGI_BOARDS.map((id) => boardSwatch(id, cur === id, attr + '="' + id + '"')).join('') + '</div></div>';
+  // the board on screen: its colours (data-theme, and the shogi colours of a computed one), the star points in Shogi
+  function applyBoard(id, shogiGame) {
+    document.body.dataset.theme = id;
+    const c = /^shogi-/.test(id) ? sgBoardColors(id) : null;
+    ['sq', 'line', 'ink'].forEach((k, i) => { if (c) document.body.style.setProperty('--sg-' + k, c[i]); else document.body.style.removeProperty('--sg-' + k); });
+    document.body.classList.toggle('shogigame', !!shogiGame);
+  }
   const THINK = [[1000, '1 s'], [3000, '3 s'], [5000, '5 s'], [10000, '10 s'], [30000, '30 s']];
   const CLOCKS = [[0, 'None'], [180, '3 min'], [300, '5 min'], [600, '10 min'], [915, '15 | 10']];
 
@@ -603,7 +640,7 @@
     if (V.dice) return { on: true, why: 'Dice Chess is played this way: a throw can leave the king in check with no die to answer it.' };
     const pcs = setup.fen.split(' ')[0];
     if (/[ґҐ]/.test(pcs)) return { on: false, why: '' };
-    const ouro = R.FAIRY_LETTERS.slice(R.FAIRY_LETTERS.indexOf('o')).filter((l) => ['є', 'ї', 'ѓ', 'ќ', 'ў', 'џ', 'ґ'].indexOf(l) < 0);
+    const ouro = R.FAIRY_LETTERS.slice(R.FAIRY_LETTERS.indexOf('o')).filter((l) => ['є', 'ї', 'ѓ', 'ќ', 'ў', 'џ', 'ґ'].indexOf(l) < 0 && !R.FAIRY[l].shogi);
     if (pcs.split('').some((ch) => ouro.indexOf(ch.toLowerCase()) >= 0)) return { on: true, why: 'The Ouroboros King\'s units are on the board, and their game is played this way.' };
     if (setup.kcPreset) return { on: true, why: 'The position is a preset from The Ouroboros King, and that game is played this way.' };
     return { on: false, why: '' };
@@ -720,6 +757,25 @@
     tone(t, 0.26, 880, 0.07, 'sawtooth', 110);
     tone(t + 0.02, 0.18, 150, 0.16, 'square', 55);
   }
+  /* Pawnbarian: the hero takes a hit. A heavy body blow (a falling thump), the crunch of it, and a short rough
+     grunt under it, so a point of damage is never mistaken for a move or a capture. */
+  function hurtSound(t) {
+    tone(t, 0.2, 150, 0.42, 'sine', 42);              // the thump
+    burst(t, 0.13, 3, 'lowpass', 1300, 0.7, 0.75);    // the impact
+    burst(t + 0.012, 0.07, 4, 'bandpass', 3200, 1.1, 0.3); // the crunch
+    tone(t + 0.03, 0.2, 210, 0.1, 'sawtooth', 80);    // the grunt
+  }
+  // a monster cut down: a quick blade swish, rising, then the cut
+  function slashSound(t) {
+    const len = Math.ceil(AC.sampleRate * 0.16), buf = AC.createBuffer(1, len, AC.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.sin(Math.PI * i / len);
+    const src = AC.createBufferSource(), f = AC.createBiquadFilter(), g = AC.createGain();
+    src.buffer = buf; f.type = 'bandpass'; f.Q.value = 2.2;
+    f.frequency.setValueAtTime(900, t); f.frequency.exponentialRampToValueAtTime(5200, t + 0.15);
+    g.gain.value = 0.38;
+    src.connect(f); f.connect(g); g.connect(AC.destination); src.start(t);
+    burst(t + 0.12, 0.06, 3, 'bandpass', 2600, 1, 0.28);
+  }
   // a shell goes in: the pump, back and forth (chk-chk)
   function pumpSound(t) {
     [0, 0.09].forEach((dt, i) => burst(t + dt, 0.025, 3, 'bandpass', i ? 1800 : 2500, 1.2, 0.22)); // a soft click-clack
@@ -763,6 +819,8 @@
     if (kind === 'shotgun') { gunshot(AC.currentTime + 0.005 + (delay || 0)); return; }
     if (kind === 'shell') { pumpSound(AC.currentTime + 0.005 + (delay || 0)); return; }
     if (kind === 'zap') { zapSound(AC.currentTime + 0.005 + (delay || 0)); return; }
+    if (kind === 'hurt') { hurtSound(AC.currentTime + 0.005 + (delay || 0)); return; }
+    if (kind === 'slash') { slashSound(AC.currentTime + 0.005 + (delay || 0)); return; }
     const key = SAMPLE_FOR[kind];
     if (key && sampleBuf[key]) {
       sample(key, SAMPLE_VOL[kind] || 0.8, delay || 0);
@@ -815,7 +873,7 @@
   /* Hexagonal Chess: the board is 91 hexagons, flat side up, in 11 files. A cell's box (for its piece, hints and
      marks) is one hexagon high and as wide; the files stand 0.866 boxes apart, neighbours in the next file half a
      box higher or lower. BHEX says the board on screen is the hex one; BW then holds its width in boxes. */
-  let BHEX = false;
+  let BHEX = false, BSHOGI = false;
   const HEXW = 10 * 0.8660254 + 1.1547005;
   function hexCenter(i) {
     const c = Hex.CELLS[i];
@@ -828,6 +886,7 @@
     if (hex) { W = HEXW; H = 11; }
     if (W === BW && H === BH && hex === BHEX && L.squares.children.length) return;
     BW = W; BH = H; BHEX = hex;
+    document.body.classList.toggle('bigboard', Math.max(W, H) > 10); // the phone's editor shows the zoom buttons only where zooming helps
     board.classList.toggle('hex', hex);
     const st = document.documentElement.style;
     st.setProperty('--W', W); st.setProperty('--H', H); st.setProperty('--M', Math.max(W, H));
@@ -886,12 +945,13 @@
   function buildSquares() {
     L.squares.innerHTML = '';
     L.squares.classList.toggle('hexg', BHEX);
+    L.squares.classList.toggle('b9', BW === 9 && BH === 9 && !BHEX); // the shogi board's star points
     if (BHEX) { L.squares.innerHTML = hexBoardSvg(); return; }
     for (let row = 0; row < BH; row++) for (let col = 0; col < BW; col++) {
       const r = ui.flipped ? BH - 1 - row : row, f = ui.flipped ? BW - 1 - col : col;
       const d = h('div', 'sq' + (((f + BH - 1 - r) % 2 === 0) ? ' d' : ''));
-      if (col === 0) d.appendChild(h('span', 'rk', String(BH - r)));
-      if (row === BH - 1) d.appendChild(h('span', 'fl', Fairy.FILES[f]));
+      if (col === 0) d.appendChild(h('span', 'rk', BSHOGI ? Fairy.FILES[r] : String(BH - r)));
+      if (row === BH - 1) d.appendChild(h('span', 'fl', BSHOGI ? String(BW - f) : Fairy.FILES[f]));
       L.squares.appendChild(d);
     }
   }
@@ -929,9 +989,11 @@
     if (!g && R.isFairy(p)) { const fd = R.fairyOf(p); g = [fd.base, fd.badge, fd.pic]; } // a fairy piece on the plain board
     if (g) {
       const role = fairyRole(g);
+      // a shogi piece points at the other side: on a turned board each one is turned round too (statues and ice as well)
+      if (role && role.indexOf('shogi_') === 0 && ui.flipped && el.classList.contains('piece')) el.classList.add('sgturn');
       if (role && camo && SKIN.camo[c + '_' + role]) el.style.backgroundImage = skinUrl('camo', c + '_' + role);
       else if (role === 'shotgunking' && !camo) el.style.backgroundImage = skGunKing(c);
-      else if (role && !camo) el.style.backgroundImage = 'url(pieces/fairy/' + c + '_' + role + '.svg)';
+      else if (role && !camo) el.style.backgroundImage = 'url(' + fairyPic(c, role) + ')';
       else {
         el.style.backgroundImage = camo ? skinUrl('camo', c + g[0]) : imgUrl(c + g[0]);
         if (g[1]) {
@@ -951,7 +1013,12 @@
     if (e.freeze != null) return [e.freeze];
     if (e.shield != null) return [e.shield];
     if (e.convert != null) return [e.convert];
-    if (e.stop || e.m.storm) return [];
+    if (e.powerup != null) return [e.powerup];
+    if (e.downgrade != null) return [e.downgrade];
+    if (e.spike != null) return [e.spike];
+    if (e.horn != null) return [e.horn];
+    if (e.ouItem) return [e.a, e.b].filter((q) => q >= 0);
+    if (!e.m || e.stop || e.m.storm) return [];
     if (e.m.drop) return [e.m.to];
     const out = [e.m.from, e.m.to];
     if (e.tp >= 0) out.push(e.tp);
@@ -962,6 +1029,11 @@
     const v = view(), s = v.s, md = mode(), inGame = md === 'game', an = md === 'analysis';
     if (s && s.duckPhase && ((inGame && G && isLive() && canAct()) || (an && canAnalyse()))) duckAuto(s, an ? A.legal : G.legal);
     setDims(v.W, v.H, v.hex);
+    const shogi = !!(v.glyphs && v.glyphs['+p']); // a game of Shogi: a shogi board, with its files 9 to 1 and ranks a to i
+    // a board of only shogi pieces takes the Shogi board too (its squares keep the chess names: the moves use them)
+    const onlyShogi = !shogi && s && s.board.some(Boolean) && s.board.every((p) => !p || (R.isFairy(p) && R.fairyOf(p).shogi));
+    applyBoard(v.pb ? 'pawnbarian' : shogi || onlyShogi ? settings.shogiBoard || 'shogi' : settings.theme, !v.pb && (shogi || onlyShogi));
+    if (shogi !== BSHOGI) { BSHOGI = shogi; buildSquares(); }
     L.marks.innerHTML = '';
     const mark = (sq, cls) => L.marks.appendChild(place(h('div', 'mark ' + cls), sq));
     const trial = reviewing() && rv.trial ? rv.trial : rvPeek();
@@ -974,6 +1046,9 @@
       const pts = ui.mode === 'portal' ? ui.draft : s.portals;
       pts.forEach((sq, i) => mark(sq, 'portal' + (i ? ' b' : '')));
       if (isLive()) ui.premoves.forEach((pm) => { mark(pm.from, 'premove'); mark(pm.to, 'premove'); });
+      if (settings.danger && dangerGame() && !G.over) dangerSquares(s, G.cfg, R.other(G.auto ? s.turn : mySide())).forEach((q) => mark(q, 'danger' + (s.board[q] ? ' hit' : '')));
+      // the Alarm bell (The Ouroboros King): the King's square is marked while it is under attack, guarded by a Prince or not
+      else if (runGame() && Ouro.has(ouroRun(), 'bell') && !G.over) { const me = mySide(), ks = s.board.findIndex((p) => p && R.colorOf(p) === me && R.isRoyal(p)); if (ks >= 0 && R.attacked(s, ks, R.other(me), G.cfg)) mark(ks, 'danger hit'); }
     } else if (an) {
       if (A.cur.m) lastSquares({ m: A.cur.m, tp: A.cur.state.fx ? A.cur.state.fx.tp : -1 }).forEach((sq) => mark(sq, 'last'));
       s.gold.forEach((sq) => mark(sq, 'goldsq'));
@@ -997,6 +1072,9 @@
       if (ter.portals && ter.portals.length === 2 && !(inGame && s.portals.length === 2)) ter.portals.forEach((sq, i) => mark(sq, 'portal' + (i ? ' b' : '')));
       else if (ter.portals && ter.portals.length === 1 && md === 'editor') mark(ter.portals[0], 'portal');
     }
+    // The Ouroboros King: boulders put there during the game, and bombs
+    (s.boulders || []).forEach((sq) => mark(sq, 'wall'));
+    (s.bombs || []).forEach((sq) => mark(sq, 'bomb'));
     // ducks: where they stand now in a game, where the editor puts them otherwise
     const dsrc = (inGame || an || md === 'puzzle') && s.ducks ? s : (ter || {});
     (dsrc.ducks || []).forEach((sq) => mark(sq, 'duck'));
@@ -1015,13 +1093,15 @@
       const gold = s.gold.indexOf(sq) >= 0, ice = !gold && !!s.ice && s.ice.indexOf(sq) >= 0;
       const d = h('div', 'piece' + (gold ? ' gold' : '') + (ice ? ' ice' : '') + (s.reborn && s.reborn.indexOf(sq) >= 0 ? ' spent' : '') + (s.guard && s.guard.indexOf(sq) >= 0 ? ' shielded' : '')); // spent: a fire chick or phoenix that already came back; shielded: Shield
       const up = (s.snipers && s.snipers.indexOf(sq) >= 0 && !/camo/.test(d.className) ? ' camo' : '') + (s.ghosts && s.ghosts.indexOf(sq) >= 0 ? ' ghost' : '');
-      paint(d, p, v.glyphs, v.cfg, up);
+      // a variant's raw token where it is drawn differently: a promoted shogi piece is '+B' (the board holds the bare 'B')
+      const tok = s.raw && s.raw[sq] && s.raw[sq] !== p && v.glyphs && v.glyphs[s.raw[sq].toLowerCase()] ? s.raw[sq] : p;
+      paint(d, tok, v.glyphs, v.cfg, up);
       wearOn(d, s, sq);
       if (gold || ice) {
         /* a statue or a frozen piece keeps its shape and the shade of its side: bright gold or pale ice for
            White, deep gold or dark blue for Black. A frozen sniper keeps its vine, a ghost its style. */
         const kind = (gold ? 'gold' : 'ice') + (d.classList.contains('camo') ? 'camo' : ''), c = R.colorOf(p);
-        const gl = v.glyphs && v.glyphs[p.toLowerCase()];
+        const gl = v.glyphs && v.glyphs[tok.toLowerCase()];
         let role = fairyRole(gl);
         if (!gl && R.isFairy(p) && !(v.glyphs && Object.keys(v.glyphs).length)) role = R.fairyOf(p).pic; // a fairy piece on the plain board
         if (!gl && !R.isFairy(p) && v.cfg && 'nq'.indexOf(p.toLowerCase()) >= 0) {
@@ -1045,6 +1125,7 @@
       els[sq] = d;
     }
     if (v.sk) skDecorate(els);
+    if (v.pb) pbDecorate(els);
     if (anims && settings.anim) anims.forEach((a) => {
       const dropped = ui.dropFrom >= 0; // the piece was carried there by hand: nothing left to slide
       if (a.ghost) {
@@ -1080,7 +1161,9 @@
       const PB = md === 'puzzle' ? pz.cur.B : G.B, plg = md === 'puzzle' ? pz.cur.legal : G.legal;
       // the free actions belong to the live game (or the puzzle): never mark them on a board that shows another position
       const freeOk = md === 'puzzle' || (inGame && canAct() && s === live());
-      if (ui.mode && !freeOk && (ui.mode === 'gild' || ui.mode === 'freeze' || ui.mode === 'convert' || ui.mode === 'shield')) ui.mode = null;
+      if (ui.mode && !freeOk && (ui.mode === 'gild' || ui.mode === 'freeze' || ui.mode === 'convert' || ui.mode === 'shield' || ui.mode === 'powerup' || ui.mode === 'downgrade' || ui.mode.indexOf('ou:') === 0)) ui.mode = null;
+      if ((ui.mode === 'powerup' || ui.mode === 'downgrade') && inGame) ouTargets(ui.mode, s).forEach((sq) => hint(sq, ui.mode === 'powerup' ? 'gild' : 'turn'));
+      if (ui.mode && ui.mode.indexOf('ou:') === 0 && inGame && freeOk) { ouRuleTargets(ui.mode.slice(3), s).forEach((sq) => hint(sq, 'shieldh')); if (ui.ouA >= 0) mark(ui.ouA, 'sel'); }
       if (ui.mode === 'gild') PB.gildTargets(s, plg).forEach((sq) => hint(sq, 'gild'));
       else if (ui.mode === 'freeze') PB.freezeTargets(s).forEach((sq) => hint(sq, 'cold'));
       else if (ui.mode === 'shield') PB.shieldTargets(s).forEach((sq) => hint(sq, 'shieldh'));
@@ -1103,6 +1186,7 @@
       }
     }
     if (v.sk) skHints(hint);
+    if (v.pb) pbHints(hint);
     // a look at a piece of the other side: where it could go
     if (ui.peek && ui.peek.state === s && (inGame || an)) {
       hint(ui.peek.sq, 'peeksel');
@@ -1438,7 +1522,7 @@
     $('#showEnd').style.display = G && G.over && !G.endOpen && ui.tab === 'play' ? '' : 'none';
     $('#rvResult').style.display = G && G.over ? '' : 'none';
     document.querySelector('.nav[data-tab="play"]').classList.toggle('live', !!G && !G.over);
-    if (window.PWA) PWA.awake((!!G && !G.over && ui.tab === 'play') || (ui.tab === 'modes' && gmTab === 'sk' && skLive())); // the screen stays on during a game
+    if (window.PWA) PWA.awake((!!G && !G.over && ui.tab === 'play') || (ui.tab === 'modes' && ((gmTab === 'sk' && skLive()) || (gmTab === 'pb' && pbLive())))); // the screen stays on during a game
   }
 
   function statusText() {
@@ -1452,8 +1536,15 @@
     if (G.local && !ui.mode && !(ui.sel && ui.sel.drop)) return (s.turn === 'w' ? 'White' : 'Black') + ' to move' + (G.B.checks(s).length ? ', in check' : '');
     if (s.turn !== G.cfg.side) return G.botName + ' is thinking' + (ui.premoves.length > 1 ? ', ' + ui.premoves.length + ' premoves set' : ui.premoves.length ? ', premove set' : '');
     if (ui.mode === 'gild') return 'Midas Touch: click a glowing piece';
-    if (ui.mode === 'freeze') return 'Freeze Ray: click the piece to freeze';
-    if (ui.mode === 'shield') return 'Shield: click the piece to shield';
+    if (ui.mode === 'freeze') return runGame() ? 'Shackles: click the enemy unit to bind' : 'Freeze Ray: click the piece to freeze';
+    if (ui.mode === 'shield') return runGame() ? 'Sphere of protection: click the unit to protect' : 'Shield: click the piece to shield';
+    if (ui.mode === 'powerup') return 'Power up: click the unit to upgrade';
+    if (ui.mode === 'ou:boulder') return 'Pocket boulder: click an empty square';
+    if (ui.mode === 'ou:rock') return 'Exploding rock: click an empty square for the bomb';
+    if (ui.mode === 'ou:hammer') return 'Hammer: click the boulder to break';
+    if (ui.mode === 'ou:snow') return 'Snow bottle: click the bomb to defuse';
+    if (ui.mode === 'ou:teleporter') return ui.ouA >= 0 ? 'Teleporter: click the unit it changes places with' : 'Teleporter: click the first of your two units';
+    if (ui.mode === 'downgrade') return 'Downgrade: click the upgraded enemy unit';
     if (ui.mode === 'convert') return 'Turncoat: click the piece that should join you';
     if (ui.mode === 'portal') return ui.draft.length ? 'Click the square for the orange portal' : 'Click the square for the blue portal';
     if (ui.sel && ui.sel.drop) return 'Click an empty square to drop the piece';
@@ -1656,8 +1747,9 @@
     const sv = G.states[G.view];
     const fl = $('#cardFloat');
     fl.innerHTML = '';
-    if (ui.info != null && (G.B.kind === 'std' || G.hex) && mode() === 'game' && sv.board[ui.info]) {
-      const card = G.hex ? hexCard(sv.board[ui.info]) : pieceCard(sv.board[ui.info], cfg, sv);
+    const sgCard = G.glyphs && G.glyphs['+p'] && sv.board[ui.info] ? SHOGI_OWN[((sv.raw && sv.raw[ui.info]) || sv.board[ui.info]).toLowerCase()] : null; // Shogi: the card of the app's own shogi piece
+    if (ui.info != null && (G.B.kind === 'std' || G.hex || sgCard) && mode() === 'game' && sv.board[ui.info]) {
+      const card = G.hex ? hexCard(sv.board[ui.info]) : sgCard ? pieceCard(R.colorOf(sv.board[ui.info]) === 'w' ? sgCard.toUpperCase() : sgCard, { pw: { w: null, b: null } }, null) : pieceCard(sv.board[ui.info], cfg, sv);
       if (sv.helmets && sv.helmets.indexOf(ui.info) >= 0) card.insertAdjacentHTML('beforeend', '<div class="pc-wear"><i class="wear helmet"></i>Spiked helmet: the next capture of this piece bounces off, breaks the helmet and freezes the attacker for a turn</div>');
       if (sv.vests && sv.vests.indexOf(ui.info) >= 0) card.insertAdjacentHTML('beforeend', '<div class="pc-wear"><i class="wear vest"></i>Explosive vest: instead of moving it can go up and take the 3 x 3 square around it with it</div>');
       if (ui.peek && ui.peek.sq === ui.info) card.insertAdjacentHTML('beforeend', peekLegend()); // what the red marks on the board mean
@@ -1707,7 +1799,8 @@
       row.appendChild(h('span', '', used ? 'Used this turn' : (n ? n + (n === 1 ? ' piece' : ' pieces') + ' in reach' + (mine.midasPerTurn === -1 ? ', uses your move' : '') : 'Nothing in reach')));
       bar.appendChild(row);
     }
-    if (mine.freeze) {
+    if (runGame() && !G.over) ouroBar(bar, s, act);
+    if (mine.freeze && !runGame()) {
       const row = h('div', 'prow');
       const ready = act && !s.freezeUsed;
       const b = h('button', 'btn' + (ui.mode === 'freeze' ? ' on' : ''), ui.mode === 'freeze' ? 'Cancel' : 'Freeze Ray');
@@ -1728,7 +1821,7 @@
       row.appendChild(h('span', '', bl ? 'The ' + (R.fairyOf(s.board[ui.sel.sq]) ? R.fairyOf(s.board[ui.sel.sq]).name : { q: 'queen', r: 'rook', b: 'bishop', n: 'knight', p: 'pawn' }[s.board[ui.sel.sq].toLowerCase()] || 'piece').toLowerCase() + ' on ' + sqLabel(ui.sel.sq) + ' goes up, and everything around it' : 'Select a piece with a vest, or double-click it'));
       bar.appendChild(row);
     }
-    if (mine.shield) {
+    if (mine.shield && !runGame()) {
       const row = h('div', 'prow');
       const ready = act && !s.shieldUsed && G.B.shieldTargets(s).length > 0;
       const b = h('button', 'btn' + (ui.mode === 'shield' ? ' on' : ''), ui.mode === 'shield' ? 'Cancel' : 'Shield');
@@ -1739,7 +1832,7 @@
       row.appendChild(h('span', '', mineG.length ? mineG.map(sqLabel).join(', ') + ' shielded' : (s.shieldUsed && s.turn === me ? 'Used this turn' : 'Ready')));
       bar.appendChild(row);
     }
-    if (mine.tempo) {
+    if (mine.tempo && !runGame()) {
       const row = h('div', 'prow'), pass = act ? G.legal.find((x) => x.pass) : null, left = 2 - ((s.passed || '').split(me).length - 1);
       const b = h('button', 'btn', 'Pass');
       b.disabled = !pass;
@@ -1795,18 +1888,22 @@
         G.puppetNow ? 'You are moving for the engine' : G.puppetArmed ? 'Armed: after your move you play the engine\'s reply' : (G.puppetLeft ? 'Once per game' : 'Used'), G.puppetArmed);
     }
     if (G.variantGame && (G.hand || s.pockets.w.length || s.pockets.b.length)) {
+      // in Shogi the captured pieces are "in hand"
+      const sh = !!(G.glyphs && G.glyphs['+p']), wp = sh ? 'White\'s hand' : 'White\'s pocket', bp = sh ? 'Black\'s hand' : 'Black\'s pocket';
       if (G.auto) {
-        bar.appendChild(pocketRow('White\'s pocket', s.pockets.w, 'w', false, false));
-        bar.appendChild(pocketRow('Black\'s pocket', s.pockets.b, 'b', false, false));
+        bar.appendChild(pocketRow(wp, s.pockets.w, 'w', false, false));
+        bar.appendChild(pocketRow(bp, s.pockets.b, 'b', false, false));
       } else {
-        bar.appendChild(pocketRow(G.local ? (me === 'w' ? 'White\'s pocket' : 'Black\'s pocket') : 'Your pocket', s.pockets[me], me, true, act));
-        bar.appendChild(pocketRow(G.local ? (me === 'w' ? 'Black\'s pocket' : 'White\'s pocket') : 'Their pocket', s.pockets[R.other(me)], R.other(me), false, false));
+        bar.appendChild(pocketRow(G.local ? (me === 'w' ? wp : bp) : sh ? 'In your hand' : 'Your pocket', s.pockets[me], me, true, act));
+        bar.appendChild(pocketRow(G.local ? (me === 'w' ? bp : wp) : sh ? 'In their hand' : 'Their pocket', s.pockets[R.other(me)], R.other(me), false, false));
       }
     }
     if (G.variantGame) {
       const chk = /\s(\d+)\+(\d+)\s/.exec(s.fen);
       if (chk) bar.appendChild(h('div', 'prow', '<b>Checks still needed</b><span>White ' + chk[1] + ', Black ' + chk[2] + '</span>'));
     }
+    // Danger (the Ouroboros King's rules, as in Shotgun King): every square the other side could take on next turn
+    if (dangerGame()) simple('Danger', true, () => { settings.danger = !settings.danger; save(); renderAll(); }, settings.danger ? 'Red: what the other side could take next turn' : 'Show what the other side could take next turn', !!settings.danger);
     // what the text next to a button says, also as its hold text (a phone shows the buttons only)
     bar.querySelectorAll('.prow').forEach((row) => { const b = row.querySelector('button'), t = row.querySelector(':scope > span'); if (b && t && t.textContent && !b.title) b.title = t.textContent; });
     bar.classList.toggle('on', bar.children.length > 0);
@@ -1901,9 +1998,10 @@
     box.style.left = Math.max(0, Math.min(100 - n * cw, (xy[0] + 0.5 - n / 2) * cw)) + '%';
     box.style.top = (xy[1] < BH / 2 ? xy[1] + 1 : xy[1] - 1) * 100 / BH + '%';
     cands.forEach((m) => {
-      const letter = m.promo || m.piece;
+      // Shogi: the '+' of a promotion is the piece turned over
+      const letter = m.promo === '+' ? '+' + m.piece.replace('+', '') : m.promo || m.piece;
       const b = paint(h('button'), white ? letter.toUpperCase() : letter.toLowerCase(), curGlyphs(), null);
-      b.title = m.promo ? '' : 'Plain move';
+      b.title = m.promo === '+' ? 'Promote' : m.promo ? '' : cands.some((x) => x.promo === '+') ? 'Do not promote' : 'Plain move';
       b.onclick = () => { closeOverlay(); dispatch(m); };
       box.appendChild(b);
     });
@@ -1948,6 +2046,7 @@
       stopped: 'before it was decided',
       checkmate: 'by checkmate', stalemate: 'by stalemate', repetition: 'by repetition', timeout: 'on time', resignation: 'by resignation',
       explosion: 'a royal piece was caught in a martyr\'s blast', 'king captured': 'by taking the king',
+      finisher: 'by The Finisher: the enemy General stood alone', smoke: 'gone in a cloud of smoke', hourglass: 'the sand runs back',
       variant: 'by the rules of ' + G.vname, drawrule: 'by repetition, the 50 move rule or too little material',
       drawback: G.db ? (G.auto || G.local ? (st.by === 'w' ? 'White' : 'Black') + ' lost by its drawback, ' : (st.by === side ? 'you lost by your drawback, ' : G.botName + ' lost by its drawback, ')) + dbName(G.db[st.by]) : '',
       'no legal moves': (G.auto || G.local ? (st.by === 'w' ? 'White' : 'Black') + ' had' : st.by === side ? 'you had' : G.botName + ' had') + ' no legal move left by the drawback'
@@ -2162,6 +2261,7 @@
       const o = { double: pw.double || 0, midasPerTurn: pw.midasPerTurn == null ? 1 : pw.midasPerTurn };
       POWER_KEYS.forEach((k) => { o[k] = !!pw[k]; });
       o.helmet = +pw.helmet || 0; o.vest = +pw.vest || 0; // which pieces wear it: 1 chess pieces, 2 all but pawns, 3 all
+      if (pw.ou) o.ou = pw.ou; if (pw.firegem) o.firegem = true; if (pw.tempoMax) o.tempoMax = pw.tempoMax; // The Ouroboros King: relics, Fire gem, the Rocking chair
       return o;
     };
     /* cfg carries the player's own flags (that is what the panel reads) plus cfg.pw with one set per
@@ -2176,7 +2276,7 @@
     const me = auto ? 'w' : spec.side, pw = { w: null, b: null };
     const setPw = () => {
       pw.w = pw.b = null;
-      if (R.anyPower(mine)) pw[me] = mine;
+      if (R.anyPower(mine) || mine.ou || mine.firegem) pw[me] = mine; // The Ouroboros King's relics count too
       if (theirs && R.anyPower(theirs)) pw[R.other(me)] = theirs;
     };
     setPw();
@@ -2185,7 +2285,7 @@
     if (std && V.dice) { cfg.dice = true; if (spec.diceV !== 2) { cfg.legacyDice = true; cfg.seed = spec.seed || 1; } }
     if (std && !cfg.seed && spec.seed) cfg.seed = spec.seed; // a Shotgun King's luck: the same game replays the same way
     if (std && V.dice3) { cfg.dice3 = true; cfg.kingCapture = true; } // three dice, all of them used, and the king is taken
-    if (std && hasTerrain(spec.terrain)) cfg.terrain = JSON.parse(JSON.stringify(spec.terrain));
+    if (std && (hasTerrain(spec.terrain) || (spec.terrain && spec.gameMode && spec.gameMode.kind === 'run'))) cfg.terrain = JSON.parse(JSON.stringify(spec.terrain)); // a run's battle always has one (bombs, boulders to come)
     if (std && spec.kingCapture) cfg.kingCapture = true; // Ouroboros rules: no check, the king is simply taken
     if (std && hasTraits(spec.traits)) cfg.traits = JSON.parse(JSON.stringify(spec.traits)); // upgrades placed by hand
     const anySf = auto ? (spec.bots.w.engine === 'sf' || spec.bots.b.engine === 'sf') : spec.engine === 'sf';
@@ -2461,6 +2561,11 @@
       else if (e.shield != null) out.push('h|' + e.shield);
       else if (e.stop) out.push('t|');
       else if (e.convert != null) out.push('c|' + e.convert);
+      else if (e.powerup != null) out.push('u|' + e.powerup + ':' + e.to);
+      else if (e.downgrade != null) out.push('v|' + e.downgrade + ':' + e.to);
+      else if (e.spike != null) out.push('x|' + e.spike);
+      else if (e.horn != null) out.push('q|' + e.horn);
+      else if (e.ouItem) out.push('o|' + e.ouItem + ':' + e.a + ':' + e.b);
       else if (e.roll) out.push('r|' + e.roll.join(','));
       else out.push((e.puppet ? 'M|' : 'm|') + moveKey(e.m));
     });
@@ -2480,6 +2585,10 @@
       else if (kind === 'f') { n = g.B.freeze(s, +arg); entry = { by: by, freeze: +arg, san: '❄' + Fairy.sqName(+arg, g.W, g.H), removed: [] }; }
       else if (kind === 'h') { n = g.B.shield(s, +arg); entry = { by: by, shield: +arg, san: '\u26e8' + Fairy.sqName(+arg, g.W, g.H), removed: [] }; }
       else if (kind === 't') { n = g.B.timeStop(s); entry = { by: by, stop: true, san: '⧖', removed: [] }; }
+      else if (kind === 'u' || kind === 'v') { const a2 = arg.split(':'); n = ouEdit(g.B, s, +a2[0], a2[1], kind === 'v'); entry = { by: by, to: a2[1], san: (kind === 'u' ? '\u21e7' : '\u21e9') + Fairy.sqName(+a2[0], g.W, g.H), removed: [] }; entry[kind === 'u' ? 'powerup' : 'downgrade'] = +a2[0]; }
+      else if (kind === 'x') { const t0 = s.board[+arg]; n = ouEdit(g.B, s, +arg, '', false); entry = { by: by, spike: +arg, spiked: t0, san: '\u2736' + Fairy.sqName(+arg, g.W, g.H), removed: [{ sq: +arg, p: t0 }] }; }
+      else if (kind === 'o') { const a3 = arg.split(':'); n = R.ouItem(s, g.cfg, a3[0], +a3[1], +a3[2]); entry = { by: by, ouItem: a3[0], a: +a3[1], b: +a3[2], san: (OU_SAN[a3[0]] || '') + (+a3[1] >= 0 ? Fairy.sqName(+a3[1], g.W, g.H) : '') + (+a3[2] >= 0 ? Fairy.sqName(+a3[2], g.W, g.H) : ''), removed: [] }; }
+      else if (kind === 'q') { n = ouEdit(g.B, s, +arg, by === 'w' ? 'Q' : 'q', false); entry = { by: by, horn: +arg, san: '+Q' + Fairy.sqName(+arg, g.W, g.H), removed: [] }; }
       else if (kind === 'c') { n = g.B.convert(s, +arg); entry = { by: by, convert: +arg, san: '⇄' + Fairy.sqName(+arg, g.W, g.H), removed: [] }; }
       else if (kind === 'r') { const f = arg.split(','); n = g.B.roll(s, f); entry = { by: by, roll: f, san: '', removed: [], wasted: !!(n && n.wasted) }; }
       else {
@@ -2795,6 +2904,7 @@
       if (G.keys[k] >= 3) st = { over: true, result: 'draw', reason: 'repetition' };
     }
     if (st.over) { finish(st); return; }
+    if (ouRelics()) return;
     kick();
   }
 
@@ -2810,6 +2920,150 @@
     if (p && R.colorOf(p) === G.cfg.side) select(keep);
   }
 
+  /* ---------- The Ouroboros King in a battle: items and relics ----------
+     The run's items are actions here: Shackles and the Sphere of protection work like Freeze Ray and Shield, the
+     Rocking chair like a pass, Power up and Downgrade change a piece for the rest of the battle; Rewinds take back a
+     move. How many are used is kept with the game (G.ouUsed, also in MS.pending) and taken off when it is settled. */
+  const runGame = () => !!(G && G.spec && G.spec.gameMode && G.spec.gameMode.kind === 'run' && ouroRun() && ouroRun().battle);
+  const ouUsed = () => (G && G.ouUsed) || (MS.pending && MS.pending.used) || {};
+  const itemsLeft = (id) => { const run = ouroRun(); return run ? Math.max(0, (run.items[id] || 0) - (ouUsed()[id] || 0)) : 0; };
+  function useItem(id) {
+    if (!G.ouUsed) G.ouUsed = (MS.pending && MS.pending.used) || {};
+    G.ouUsed[id] = (G.ouUsed[id] || 0) + 1;
+    if (MS.pending) { MS.pending.used = G.ouUsed; saveModes(); }
+  }
+  const ouroMoves = () => G.log.filter((e) => e.m).length;
+  // what the battle brought: the moves (the gold drops with each), what was taken by whom, what was lost
+  function ouroInfo() {
+    const me = G.cfg.side, kills = [], lost = [];
+    G.log.forEach((e) => {
+      if (e.m && e.m.cap) { if (e.by === me) kills.push([e.m.piece, e.m.cap]); else lost.push(e.m.cap); }
+      (e.removed || []).forEach((r) => { if (r && r.p && R.colorOf(r.p) === me) lost.push(r.p); });
+      if (e.spike != null && e.spiked) kills.push(['', e.spiked]);
+    });
+    return { moves: ouroMoves(), kills: kills, lost: lost, used: ouUsed() };
+  }
+  // a piece changed by an item or a relic; pass: the change uses the turn (Downgrade)
+  function ouEdit(B, s, sq, to, pass) {
+    let n = Object.assign({}, s, { board: s.board.slice() });
+    n.board[sq] = to;
+    n.fairy = R.hasFairy(n.board);
+    if (pass) n = B.play(n, { from: -1, to: -1, piece: '', cap: '', capSq: -1, pass: true });
+    n.fx = null;
+    return n;
+  }
+  function ouTargets(mode, s) {
+    const me = G.cfg.side, out = [];
+    s.board.forEach((p, q) => {
+      if (!p || s.gold.indexOf(q) >= 0) return;
+      if (mode === 'powerup' && R.colorOf(p) === me && Ouro.upgradeOf(p)) out.push(q);
+      if (mode === 'downgrade' && R.colorOf(p) !== me && Ouro.downgradeOf(p)) out.push(q);
+    });
+    return out;
+  }
+  function doOuItem(mode, sq) {
+    const s = live(), p = s.board[sq];
+    if (!runGame() || !itemsLeft(mode) || ouTargets(mode, s).indexOf(sq) < 0) return;
+    const to = mode === 'powerup' ? Ouro.upgradeOf(p) : Ouro.downgradeOf(p), n = ouEdit(G.B, s, sq, to, mode === 'downgrade');
+    const e = { by: s.turn, to: to, san: (mode === 'powerup' ? '\u21e7' : '\u21e9') + sqLabel(sq), removed: [] };
+    e[mode] = sq;
+    pushState(n, e);
+    useItem(mode);
+    ui.sel = null; ui.mode = null;
+    renderAll();
+    fxRing(sq, mode === 'powerup' ? 'glint' : 'blue');
+    snd('gold');
+    afterAction();
+  }
+  const OU_SAN = { knife: '\u2020', bottle_b: 'B!', bottle_n: 'N!', bottle_r: 'R!', boomerang: '\u21ba', glider: '\u21e1', boulder: '\u25aa', hammer: '\u2692', snow: '\u2744\ufe0e', rock: '\u2739', teleporter: '\u21c4' };
+  // where an item can be used: an empty square for a boulder or a bomb, a boulder for the Hammer, a bomb for the Snow bottle, your units for the Teleporter
+  function ouRuleTargets(id, s) {
+    const out = [], me = G.cfg.side, por = (G.cfg.terrain && G.cfg.terrain.portals) || [];
+    for (let q = 0; q < s.board.length; q++) {
+      const p = s.board[q];
+      if ((id === 'boulder' || id === 'rock') && !p && !R.isWall(G.cfg, q, s) && por.indexOf(q) < 0) out.push(q);
+      else if (id === 'hammer' && R.isRock(G.cfg, q, s)) out.push(q);
+      else if (id === 'snow' && R.bombAt(s, q)) out.push(q);
+      else if (id === 'teleporter' && p && R.colorOf(p) === me && s.gold.indexOf(q) < 0 && q !== ui.ouA) out.push(q);
+    }
+    return out;
+  }
+  function doOuRule(id, a, b) {
+    const s = live();
+    if (!runGame() || !itemsLeft(id)) return;
+    const n = R.ouItem(s, G.cfg, id, a, b);
+    if (!n) { toast('That cannot be done there'); return; }
+    pushState(n, { by: s.turn, ouItem: id, a: a, b: b, san: OU_SAN[id] + (a >= 0 ? sqLabel(a) : '') + (b >= 0 ? sqLabel(b) : ''), removed: [] });
+    useItem(id);
+    ui.sel = null; ui.mode = null; ui.ouA = -1;
+    renderAll();
+    if (a >= 0) fxRing(a, id === 'rock' ? 'boom' : 'blue');
+    snd(id === 'rock' || id === 'hammer' ? 'capture' : 'gold');
+    afterAction();
+  }
+  function doRewind() {
+    const run = ouroRun(), j = undoTarget();
+    if (!runGame() || j < 0 || !run || run.rewinds <= 0) return;
+    Ouro.useRewind(run);
+    saveModes();
+    undoTo(j);
+    toast(run.rewinds + (run.rewinds === 1 ? ' Rewind' : ' Rewinds') + ' left');
+  }
+  function ouSmoke() {
+    if (!runGame() || !itemsLeft('smoke') || ouroRun().battle.boss) return;
+    if (!confirm('Use the Smoke bomb? The battle ends at once, with no reward.')) return;
+    useItem('smoke');
+    finish({ over: true, result: 'draw', reason: 'smoke' });
+  }
+  function ouHourglass() {
+    if (!runGame() || !itemsLeft('hourglass')) return;
+    if (!confirm('Turn the Sand hourglass? The battle starts again, the positions and the terrain may differ.')) return;
+    useItem('hourglass');
+    finish({ over: true, result: 'draw', reason: 'hourglass' }, true);
+    setTimeout(() => startMode('run'), 60);
+  }
+  /* The relics that act in a battle, at the start of the player's turn: The Finisher (the enemy General alone: won),
+     the Bodyguard horn (the King alone: a Queen joins him, once), the Spiked shield (the first unit of yours taken by
+     anything but a king: the taker is destroyed, once), the Alarm bell (the King in danger: a warning). True when the
+     battle ended. */
+  function ouRelics() {
+    const run = ouroRun(), s = live(), me = G.cfg.side;
+    if (!runGame() || s.turn !== me || G.over) return false;
+    const has = (id) => Ouro.has(run, id), mine = [], theirs = [];
+    s.board.forEach((p, q) => { if (p) (R.colorOf(p) === me ? mine : theirs).push(q); });
+    if (has('finisher') && theirs.length && theirs.every((q) => R.isRoyal(s.board[q])) && mine.some((q) => !R.isRoyal(s.board[q]))) {
+      finish({ over: true, result: me, reason: 'finisher' });
+      return true;
+    }
+    const last = G.log[G.log.length - 1];
+    if (has('spiked') && !G.log.some((e) => e.spike != null) && last && last.by !== me && last.m && last.m.cap && R.colorOf(last.m.cap) === me && !R.isRoyal(last.m.piece)) {
+      const at = s.board[last.m.to] === last.m.piece ? last.m.to : s.board[last.m.from] === last.m.piece ? last.m.from : -1;
+      if (at >= 0) {
+        const taken = s.board[at];
+        pushState(ouEdit(G.B, s, at, '', false), { by: me, spike: at, spiked: taken, san: '\u2736' + sqLabel(at), removed: [{ sq: at, p: taken }] });
+        fxRing(at, 'boom'); snd('capture');
+        toast('Spiked shield: the ' + Ouro.title(taken).toLowerCase() + ' that took your unit is destroyed');
+        return ouRelics();
+      }
+    }
+    if (has('horn') && !G.log.some((e) => e.horn != null) && mine.length === 1 && R.isRoyal(s.board[mine[0]])) {
+      const k = mine[0], r0 = Math.floor(k / 8), f0 = k % 8, cand = [];
+      [[-1, 0], [-1, -1], [-1, 1], [0, -1], [0, 1], [1, 0], [1, -1], [1, 1]].forEach((d) => { const r = r0 + d[0], f = f0 + d[1]; if (r >= 0 && r < 8 && f >= 0 && f < 8 && !s.board[r * 8 + f] && !R.isWall(G.cfg, r * 8 + f, s)) cand.push(r * 8 + f); });
+      if (cand.length) {
+        pushState(ouEdit(G.B, s, cand[0], me === 'w' ? 'Q' : 'q', false), { by: me, horn: cand[0], san: '+Q' + sqLabel(cand[0]), removed: [] });
+        fxRing(cand[0], 'glint'); snd('gold');
+        toast('Bodyguard horn: a Queen comes to your King\'s side');
+      }
+    }
+    if (has('bell')) {
+      const ks = s.board.findIndex((p) => p && R.colorOf(p) === me && R.isRoyal(p));
+      const key = G.log.length;
+      // a King a Prince guards cannot be taken: no alarm then (his square is still marked as under attack, see renderBoard)
+      if (ks >= 0 && R.attacked(s, ks, R.other(me), G.cfg) && !R.guarded(s, ks, me) && G.bellAt !== key) { G.bellAt = key; toast('Alarm bell: your King is in danger!'); snd('check'); }
+    }
+    return false;
+  }
+
   /* The king guard, under king capture: a player who leaves the king to be taken while a safe move exists gets
      the move back, three times a game. The piece slides there and back, and for the rest of the turn every
      square the other side attacks is tinted, with arrows from the pieces that would have taken the king. */
@@ -2817,8 +3071,10 @@
   function kingGuard(s, m) {
     const by = s.turn, cfg = G.cfg;
     if (!cfg.kingCapture || G.B.kind !== 'std' || G.auto || (!G.local && by !== cfg.side) || G.puppetNow) return false;
+    const angel = runGame(); // in a run it is the Guardian angel: 3 Rewinds each time, as long as they last
+    if (angel && (!Ouro.has(ouroRun(), 'angel') || ouroRun().rewinds < 3)) return false;
     if (G.guardLeft == null) G.guardLeft = GUARDS;
-    if (G.guardLeft <= 0) return false;
+    if (!angel && G.guardLeft <= 0) return false;
     let n;
     try { n = G.B.play(s, m); } catch (e) { return false; }
     if (n.lost || n.turn === by || !R.checkedSquares(n, by, cfg).length) return false;
@@ -2828,7 +3084,7 @@
       try { const n2 = G.B.play(s, m2); return n2.turn === by || !R.checkedSquares(n2, by, cfg).length; } catch (e) { return false; }
     });
     if (!safe) return false;
-    G.guardLeft--;
+    if (angel) { ouroRun().rewinds -= 3; saveModes(); } else G.guardLeft--;
     const foe = R.other(by), squares = [], arrows = [];
     for (let q = 0; q < s.board.length; q++) if (!R.isWall(cfg, q, s) && R.attacked(s, q, foe, cfg)) squares.push(q);
     try { R.pseudoMoves(n, cfg, true).forEach((x) => { if (x.cap && R.isRoyal(x.cap) && R.colorOf(x.cap) === by) arrows.push({ from: x.from, to: x.capSq != null && x.capSq >= 0 ? x.capSq : x.to, color: '#e04040' }); }); } catch (e) { /* the tint alone */ }
@@ -2838,7 +3094,8 @@
     const el = L.pieces.querySelector('[data-sq="' + m.from + '"]');
     if (el && settings.anim && m.from >= 0) el.animate([{ transform: trans(m.from) }, { transform: trans(m.to), offset: 0.45 }, { transform: trans(m.from) }], { duration: 650, easing: 'ease-in-out' });
     snd('wrong');
-    toast('Your king would be taken there, so the move is taken back. The other side\'s attacks are shown for this turn. ' + (G.guardLeft ? G.guardLeft + ' of ' + GUARDS + ' take-backs left this game.' : 'That was the last take-back of this game.'));
+    toast(angel ? 'Guardian angel: your King would be taken there, so the move is taken back for 3 Rewinds (' + ouroRun().rewinds + ' left). The enemy\'s attacks are shown for this turn.'
+      : 'Your king would be taken there, so the move is taken back. The other side\'s attacks are shown for this turn. ' + (G.guardLeft ? G.guardLeft + ' of ' + GUARDS + ' take-backs left this game.' : 'That was the last take-back of this game.'));
     return true;
   }
   // a Shotgun King's shot: the pellets fly, the hit pieces show their damage, the ones it killed break apart
@@ -2849,6 +3106,7 @@
     (fx.removed || []).forEach((r) => skShatter(r.sq, pieceSrc(r.p), false));
   }
   function applyMove(m) {
+    if (m.pass && runGame()) { if (!itemsLeft('chair')) return; useItem('chair'); } // the Rocking chair
     if (kingGuard(live(), m)) return;
     const s = live(), by = s.turn, puppet = G.puppetNow && by !== G.cfg.side;
     if (by !== G.cfg.side) G.puppetNow = false;
@@ -2882,9 +3140,40 @@
     snd('gold');
     afterAction();
   }
+  // The battle's row of the run: the gold it still pays, the Rewinds, and a button for each item the run holds
+  function ouroBar(bar, s, act) {
+    const run = ouroRun(), b = run.battle, left = Ouro.rewardAfter(b, ouroMoves());
+    bar.appendChild(h('div', 'prow ou-reward', '<b>Reward</b><span>' + num(left) + ' gold, 4 less a move' + (Ouro.has(run, 'bounty') ? ' (doubled)' : '') + '</span>'));
+    const btn = (label, on, enabled, click, text) => {
+      const row = h('div', 'prow'), x = h('button', 'btn' + (on ? ' on' : ''), label);
+      x.disabled = !enabled; x.onclick = click; x.title = text;
+      row.appendChild(x); row.appendChild(h('span', '', text)); bar.appendChild(row);
+    };
+    btn('Rewind (' + run.rewinds + ')', false, act && run.rewinds > 0 && undoTarget() >= 0, doRewind, 'Take back your last move and the answer to it');
+    // item: the run's item, m: the board's mode for it (Shackles freeze, the Sphere shields)
+    const mode = (item, m, label, ready, text) => { if (!itemsLeft(item)) return; btn(ui.mode === m ? 'Cancel' : label + ' (' + itemsLeft(item) + ')', ui.mode === m, ready || ui.mode === m, () => { ui.mode = ui.mode === m ? null : m; ui.sel = null; renderAll(); }, text); };
+    mode('shackles', 'freeze', 'Shackles', act && !s.freezeUsed && G.B.freezeTargets(s).length > 0, Ouro.ITEMS.shackles.text);
+    mode('sphere', 'shield', 'Sphere', act && !s.shieldUsed && G.B.shieldTargets(s).length > 0, Ouro.ITEMS.sphere.text);
+    mode('powerup', 'powerup', 'Power up', act && ouTargets('powerup', s).length > 0, Ouro.ITEMS.powerup.text);
+    mode('downgrade', 'downgrade', 'Downgrade', act && ouTargets('downgrade', s).length > 0, Ouro.ITEMS.downgrade.text);
+    // the items the rules carry out (R.ouItem): some at once, some on a square
+    const now = (id, label, on, ready) => { if (itemsLeft(id)) btn(label + (on ? ' (on)' : ' (' + itemsLeft(id) + ')'), on, act && ready && !on, () => doOuRule(id, -1, -1), Ouro.ITEMS[id].text); };
+    now('knife', 'Backstabbing knife', !!s.knife, true);
+    now('bottle_b', 'Bishop in a bottle', s.bottle === 'b', !s.bottle);
+    now('bottle_n', 'Knight in a bottle', s.bottle === 'n', !s.bottle);
+    now('bottle_r', 'Rook in a bottle', s.bottle === 'r', !s.bottle);
+    now('boomerang', 'Boomerang', !!s.boomer, true);
+    now('glider', 'Hang glider', !!s.glide, true);
+    [['boulder', 'Pocket boulder'], ['hammer', 'Hammer'], ['rock', 'Exploding rock'], ['snow', 'Snow bottle'], ['teleporter', 'Teleporter']].forEach((x) => mode(x[0], 'ou:' + x[0], x[1], act && ouRuleTargets(x[0], s).length > (x[0] === 'teleporter' ? 1 : 0), Ouro.ITEMS[x[0]].text));
+    if (itemsLeft('chair')) { const pass = act ? G.legal.find((x) => x.pass) : null; btn('Rocking chair (' + itemsLeft('chair') + ')', false, !!pass, () => { if (pass) applyMove(pass); }, Ouro.ITEMS.chair.text); }
+    if (itemsLeft('smoke')) btn('Smoke bomb (' + itemsLeft('smoke') + ')', false, act && !b.boss, ouSmoke, b.boss ? 'Not against a witch' : Ouro.ITEMS.smoke.text);
+    if (itemsLeft('hourglass')) btn('Sand hourglass (' + itemsLeft('hourglass') + ')', false, act, ouHourglass, Ouro.ITEMS.hourglass.text);
+  }
   function doShield(sq) {
+    if (runGame() && !itemsLeft('sphere')) return; // the Sphere of protection
     const s = live(), n = G.B.shield(s, sq);
     if (!n) return;
+    if (runGame()) useItem('sphere');
     n.fx = null;
     pushState(n, { by: s.turn, shield: sq, san: '\u26e8' + sqLabel(sq), removed: [] });
     ui.sel = null; ui.mode = null; ui.hintArrow = null;
@@ -2894,8 +3183,10 @@
     afterAction();
   }
   function doFreeze(sq) {
+    if (runGame() && !itemsLeft('shackles')) return; // Shackles
     const s = live(), n = G.B.freeze(s, sq);
     if (!n) return;
+    if (runGame()) useItem('shackles');
     n.fx = null;
     pushState(n, { by: s.turn, freeze: sq, san: '❄' + sqLabel(sq), removed: [] });
     ui.sel = null; ui.mode = null; ui.hintArrow = null;
@@ -3568,9 +3859,13 @@
     return -1;
   }
   function undo() {
+    if (runGame() && !G.over) { doRewind(); return; } // The Ouroboros King: a Rewind
     if (modeGame()) return; // no take-backs in a game mode, not even after it ended (it is settled)
     const j = undoTarget();
     if (j < 0) return;
+    undoTo(j);
+  }
+  function undoTo(j) {
     stopEngines();
     G.states.length = j + 1;
     G.log.length = j;
@@ -4766,7 +5061,9 @@
     const sq = evSq(e);
     if (sq < 0) return;
     if (e.pointerType === 'touch' && e.button === 0) {
+      if (ui.tab === 'modes' && gmTab === 'pb') { pbUi.hover = sq; pbHoverInfo(); modesDown(sq); return; }
       if (ui.tab === 'modes' && gmTab === 'sk') { touch.aim = 'sk'; skUi.hover = sq; renderArrows(); skHoverInfo(); return; }
+      if (ui.tab === 'editor') { touch.lp = null; touch.last = { sq: -1, t: 0 }; editorDown(sq, e); return; } // no marks or double taps here: a held piece is a drag
       const now = performance.now();
       if (touch.last.sq === sq && now - touch.last.t < 330) { touch.last.t = 0; if (dblAt(sq)) return; }
       touch.last = { sq: sq, t: now };
@@ -4808,6 +5105,7 @@
     if (ui.peek && ui.peek.sq !== sq) ui.peek = null;
     const seen = p && !(!anl && fogged(R.colorOf(p))); // Fog of War: a hidden piece cannot be looked at
     if (stdRules) ui.info = seen ? sq : null;
+    else if (!anl && G.glyphs && G.glyphs['+p']) ui.info = seen ? sq : null; // Shogi: the card of the piece, how it moves
     if (seen && stdRules && !ui.mode && !mine && !(ui.sel && ui.sel.moves.some((m) => m.to === sq))) { peekAt(sq, s, anl ? A.cfg : G.cfg); return; }
     if (stdRules && !trying && !canAct() && !canPremove()) { renderAll(); return; } // not your turn: the card of your own piece still opens
 
@@ -4838,6 +5136,18 @@
     }
     if (ui.mode === 'shield') {
       if (G.B.shieldTargets(s).indexOf(sq) >= 0) doShield(sq); else { ui.mode = null; renderAll(); }
+      return;
+    }
+    if (ui.mode && ui.mode.indexOf('ou:') === 0) {
+      const id = ui.mode.slice(3);
+      if (ouRuleTargets(id, s).indexOf(sq) < 0) { ui.mode = null; ui.ouA = -1; renderAll(); return; }
+      if (id === 'teleporter' && !(ui.ouA >= 0)) { ui.ouA = sq; renderAll(); return; } // the first of the two
+      doOuRule(id, id === 'teleporter' ? ui.ouA : sq, id === 'teleporter' ? sq : -1);
+      return;
+    }
+    if (ui.mode === 'powerup' || ui.mode === 'downgrade') {
+      if (ouTargets(ui.mode, s).indexOf(sq) >= 0) doOuItem(ui.mode, sq);
+      else { ui.mode = null; renderAll(); }
       return;
     }
     if (ui.mode === 'freeze') {
@@ -4950,6 +5260,14 @@
     renderAll();
   }
   // Where the piece on sq could go on its own turn, and what else it covers (the red marks of a look at a piece).
+  /* Danger: a game under the Ouroboros King's rules (king capture) against a bot, a run stage above all. The squares
+     the other side could take on its next turn; a piece of yours standing on one is marked harder. */
+  const dangerGame = () => !!(G && G.cfg && G.cfg.kingCapture && G.B.kind === 'std' && !G.local && !G.hex);
+  function dangerSquares(s, cfg, by) {
+    const out = [];
+    try { for (let q = 0; q < s.board.length; q++) { const p = s.board[q]; if ((!p || R.colorOf(p) !== by) && !R.isWall(cfg, q, s) && R.attacked(s, q, by, cfg)) out.push(q); } } catch (e) { /* none then */ }
+    return out;
+  }
   function peekOf(sq, s, cfg) {
     if (s.hex) return null;
     const c = R.colorOf(s.board[sq]), t = Object.assign({}, s, { turn: c, dice: null, rolled: null, again: -1, ep: -1 });
@@ -5003,7 +5321,7 @@
   }
   function pieceCard(letter, cfg, s) {
     const c = R.colorOf(letter), def = R.isFairy(letter) ? R.fairyOf(letter) : null;
-    const name = (c === 'w' ? 'White ' : 'Black ') + (def ? def.name : Modes.title(letter));
+    const name = (c === 'w' ? 'White ' : 'Black ') + (def ? def.name : Ouro.title(letter));
     const now = mimicNow(letter, s), kinds = now ? now.map(pieceName) : null;
     const nowText = now && now.length ? ' <em class="mimicnow">Right now it moves like: ' + (kinds.length > 1 ? kinds.slice(0, -1).join(', ') + ' and ' + kinds[kinds.length - 1] : kinds[0]) + '.</em>' : '';
     const card = h('div', 'pinfo', edDiagram(letter, cfg, now) + '<div class="edinfo"><b>' + name + '</b><span class="how">' + unitHow(letter) + '.' + nowText + '</span></div>' + moveLegend(edDiagram.used));
@@ -5025,6 +5343,13 @@
     const sq = evSq(e);
     if (sq !== skUi.hover) { skUi.hover = sq; renderArrows(); skHoverInfo(); }
   });
+  // Pawnbarian: the panel names the monster under the mouse, the board shows the squares it attacks
+  board.addEventListener('pointermove', (e) => {
+    if (ui.tab !== 'modes' || gmTab !== 'pb') return;
+    const sq = evSq(e);
+    if (sq !== pbUi.hover) { pbUi.hover = sq; if (!pbUi.busy) renderBoard(); pbHoverInfo(); } // not while the attacks are being shown
+  });
+  board.addEventListener('pointerleave', () => { if (pbUi.hover !== -1 && gmTab === 'pb') { pbUi.hover = -1; renderBoard(); pbHoverInfo(); } });
   board.addEventListener('pointerleave', () => { if (skUi.hover !== -1) { skUi.hover = -1; renderArrows(); skHoverInfo(); } if (ui.sgHover >= 0) { ui.sgHover = -1; renderArrows(); } });
   // a selected Shotgun King in a normal game: the cone follows the mouse too
   board.addEventListener('pointermove', (e) => {
@@ -5044,7 +5369,7 @@
         return;
       }
       if (ui.paint.v && (holes.indexOf(sq) >= 0 || T.walls.indexOf(sq) >= 0)) return; // no piece where there is no square or a boulder
-      if (ed.board[sq] !== ui.paint.v) { ed.board[sq] = ui.paint.v; edSync(); }
+      if (ed.board[sq] !== ui.paint.v) { ed.board[sq] = ui.paint.v; oneKing(ed.board, sq); edSync(); }
       return;
     }
     if (touch.lp && !touch.lp.fired && Math.hypot(e.clientX - touch.lp.x, e.clientY - touch.lp.y) > 10) { clearTimeout(touch.lp.timer); touch.lp = null; }
@@ -5135,6 +5460,7 @@
   const TAB_KEYS = { 1: 'play', 2: 'new', 3: 'modes', 4: 'puzzles', 5: 'review', 6: 'analysis', 7: 'archive', 0: 'settings' };
   document.addEventListener('keydown', (e) => {
     if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName) || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (pbKey(e)) return; // Pawnbarian: the digits pick a card, Space ends the turn
     // the same everywhere: a digit picks a tab, letters press the buttons of the bar under the board
     if (TAB_KEYS[e.key] !== undefined) { setTab(TAB_KEYS[e.key]); return; }
     const press = (id) => { const b = $('#' + id); if (b && !b.disabled && b.offsetParent) { b.click(); return true; } return false; };
@@ -5532,12 +5858,8 @@
   function renderSettings() {
     const th = $('#themes');
     th.innerHTML = '';
-    THEMES.forEach((t) => {
-      const b = h('button', settings.theme === t[0] ? 'on' : '', '<i style="background:' + t[1] + '"></i><i style="background:' + t[2] + '"></i><i style="background:' + t[2] + '"></i><i style="background:' + t[1] + '"></i>');
-      b.title = t[0];
-      b.onclick = () => { settings.theme = t[0]; changed(); };
-      th.appendChild(b);
-    });
+    th.innerHTML = boardGroups(settings.theme, 'data-board');
+    th.querySelectorAll('[data-board]').forEach((b) => { b.onclick = () => { settings.theme = b.dataset.board; changed(); }; });
     const ps = $('#pieceSets');
     ps.innerHTML = '';
     PIECE_SETS.forEach((t) => {
@@ -5550,6 +5872,20 @@
         changed();
       };
       ps.appendChild(b);
+    });
+    // the shogi pieces: wood as the original (the sides told apart by where they point), or a white and a black piece
+    const ss = $('#shogiStyle');
+    ss.innerHTML = '';
+    [[false, 'Wood', 'shogi'], [true, 'Black and white', 'shogibw']].forEach((t) => {
+      const b = h('button', !!settings.shogiBW === t[0] ? 'on' : '', '<i style="background-image:url(pieces/fairy/w_' + t[2] + '_king.svg)"></i><i style="background-image:url(pieces/fairy/b_' + t[2] + '_rook.svg)"></i><span>' + t[1] + '</span>');
+      b.onclick = () => {
+        if (!!settings.shogiBW === t[0]) return;
+        settings.shogiBW = t[0];
+        SKIN.camo = {}; SKIN.gold = {}; SKIN.ice = {}; SKIN.icecamo = {}; SKIN.goldcamo = {}; SKIN.ready = false;
+        buildSkins();
+        changed();
+      };
+      ss.appendChild(b);
     });
     const rows = [
       ['evalBar', 'Evaluation bar', 'With power-ups in standard chess or Dice Chess the bar comes from the power-up search, which knows gold and frozen pieces. In the other variants Fairy-Stockfish judges the plain position and a short power-up search corrects it'],
@@ -5629,7 +5965,7 @@
 
   function applySettings() {
     if (window.PWA) PWA.haptics = settings.haptics !== false;
-    document.body.dataset.theme = settings.theme;
+    applyBoard(settings.theme, document.body.classList.contains('shogigame'));
     document.body.classList.toggle('nocoords', !settings.coords);
   }
 
@@ -5665,9 +6001,9 @@
      A mode game in progress is saved after every action and can be resumed after a reload or a restart, so
      leaving a game neither loses it nor gets anyone out of a lost one. */
   const MODES_KEY = 'powerchess_modes';
-  let MS = Modes.fresh(), msTimer = null, msSel = null, gmTab = 'dice';
+  let MS = Modes.fresh(), msTimer = null, msSel = null, gmTab = 'home';
   let msPeek = null; // a piece kind whose card is open, picked from the army list or the reward offers
-  try { const t0 = localStorage.getItem('powerchess_gmtab'); gmTab = t0 === 'run' || t0 === 'drawback' || t0 === 'hex' || t0 === 'sk' || t0 === 'daily' ? t0 : 'daily'; } catch (e) { /* first visit */ }
+  try { const t0 = localStorage.getItem('powerchess_gmtab'); gmTab = ['run', 'sk', 'pb', 'daily', 'dice', 'drawback', 'hex', 'shogi'].indexOf(t0) >= 0 ? t0 : 'home'; } catch (e) { /* first visit */ }
   // Hexagonal Chess settings, like Drawback Chess
   let hexSet = { bot: 'b3', side: 'w', match: null };
   try { hexSet = Object.assign(hexSet, JSON.parse(localStorage.getItem('powerchess_hexset')) || {}); } catch (e) { /* first visit */ }
@@ -5675,8 +6011,12 @@
   // the Dice Arena's own switches: two players on this device, and turning the board
   let diceSet = { twoP: false, flip: true };
   try { diceSet = Object.assign(diceSet, JSON.parse(localStorage.getItem('powerchess_diceset')) || {}); } catch (e) { /* first visit */ }
-  const SETS = { db: () => dbSet, hx: () => hexSet, dc: () => diceSet };
-  const saveSets = () => { saveDbSet(); saveHexSet(); try { localStorage.setItem('powerchess_diceset', JSON.stringify(diceSet)); } catch (e) { /* private mode */ } };
+  // Shogi on the Game Modes page: the opponent, who moves first, two players
+  let sgSet = { bot: 'b3', side: 'w', twoP: false, flip: true };
+  try { sgSet = Object.assign(sgSet, JSON.parse(localStorage.getItem('powerchess_shogiset')) || {}); } catch (e) { /* first visit */ }
+  const saveSgSet = () => { try { localStorage.setItem('powerchess_shogiset', JSON.stringify(sgSet)); } catch (e) { /* private mode */ } };
+  const SETS = { db: () => dbSet, hx: () => hexSet, dc: () => diceSet, sg: () => sgSet };
+  const saveSets = () => { saveDbSet(); saveHexSet(); saveSgSet(); try { localStorage.setItem('powerchess_diceset', JSON.stringify(diceSet)); } catch (e) { /* private mode */ } };
   /* Two players at one device (Drawback Chess, the Dice Arena, Hexagonal Chess): nothing is counted, no credits, no
      wins, no drawback progress. The board can turn to whoever is to move. */
   function twoPRows(key) {
@@ -5744,7 +6084,7 @@
     if (gm.kind === 'dice') { const t = Modes.tier(gm.tier); return 'Dice Arena, ' + t.name + (t.cost ? ': ' + num(t.cost) + ' staked' : ''); }
     if (gm.kind === 'drawback') return 'Drawback Chess';
     if (gm.kind === 'hex') return 'Hexagonal Chess';
-    return 'Ouroboros Run, stage ' + gm.stage;
+    return 'Ouroboros King, battle ' + gm.stage;
   }
   function modeProgress() {
     const gm = G && G.spec && G.spec.gameMode;
@@ -5790,9 +6130,18 @@
       const bots = o.match && !o.twoP ? { w: { engine: 'fairy', bot: o.match.w }, b: { engine: 'fairy', bot: o.match.b } } : null;
       spec = modeSpec('drawback', { id: 'x' + Date.now(), bot: o.bot, side: side, bots: bots, local: !!o.twoP, flip: o.flip, drawback: Drawbacks.deal(seed), opts: JSON.parse(JSON.stringify(o)) });
     } else {
-      const run = MS.run;
-      if (!run || !run.next) return; // only a stage that has been revealed
-      spec = modeSpec('run', { id: 'r' + Date.now(), stage: run.stage, bot: run.next.bot, side: 'w', fen: Modes.stageFen(run), terrain: Modes.terrainIdx(run.next.terrain) });
+      const run = ouroRun();
+      if (!run || !run.battle) return; // only a battle that has been dealt
+      const cfg = Ouro.battleCfg(run);
+      spec = modeSpec('run', { id: 'r' + Date.now(), stage: run.won + 1, bot: run.battle.bot, side: 'w', fen: Ouro.battleFen(run), terrain: cfg.terrain });
+      // the items the run holds, as the power-ups they work like (how many are left is counted by the app), and the Fire gem
+      const it = run.items, pw = spec.powers;
+      if (it.shackles) pw.freeze = true;
+      if (it.sphere) pw.shield = true;
+      if (it.chair) { pw.tempo = true; pw.tempoMax = 99; }
+      if (Ouro.has(run, 'firegem')) pw.firegem = true;
+      const ou = Ouro.battleFlags(run);
+      if (ou) pw.ou = ou;
     }
     if (!leaveRunning('A game is still running. Starting this one counts as a resignation. Resign it?')) return;
     let g;
@@ -5830,6 +6179,7 @@
     g.keys = {};
     g.states.forEach((s, i) => { if (i && g.log[i - 1].roll) return; const k = g.B.key(s); g.keys[k] = (g.keys[k] || 0) + 1; }); // throws are no repetitions (see afterAction)
     installGame(g);
+    if (p.used) G.ouUsed = p.used;
     botBrain.fresh(); evalBrain.fresh();
     setTab('play');
     afterAction(true);
@@ -5849,7 +6199,7 @@
     const p = MS.pending;
     if (!p || !confirm(p.kind === 'dice' ? (Modes.tier(p.tier).cost ? 'Give up this game? The stake is lost.' : 'Give up this game? It counts as a loss.') : 'Give up this stage? That ends the run.')) return;
     if (G && G.spec && G.spec.gameMode && G.spec.gameMode.id === p.id && !G.over) { finish({ over: true, result: R.other(G.cfg.side), reason: 'resignation' }); setTab('play'); return; } // the game on the board: an ordinary resignation
-    if (p.kind === 'dice') Modes.settleDice(MS, p.tier, 'l'); else if (p.kind === 'drawback') Modes.settleDrawback(MS, p.spec.drawback[p.spec.side].id, 'l'); else Modes.settleRun(MS, 'l');
+    if (p.kind === 'dice') Modes.settleDice(MS, p.tier, 'l'); else if (p.kind === 'drawback') Modes.settleDrawback(MS, p.spec.drawback[p.spec.side].id, 'l'); else Ouro.settle(MS, 'l', {});
     MS.pending = null;
     saveModes();
     renderModes();
@@ -5885,11 +6235,17 @@
       line = (res === 'w' ? 'You won ' + num(pay) + (pay === 1 ? ' credit' : ' credits') : res === 'd' ? 'A draw: your ' + num(t.cost) + ' credits came back' : t.cost ? 'You lost your ' + num(t.cost) + ' credits' : 'No credits lost at the free table') + '. Balance: ' + num(MS.dice.credits) + '.';
       G.modeEnd = { kind: 'dice', tier: gm.tier, outcome: res };
     } else {
-      const out = Modes.settleRun(MS, res);
-      line = out === 'cleared' ? 'Stage ' + gm.stage + ' cleared. Pick your reward under Game Modes.'
-        : out === 'again' ? 'A draw: the stage is played again.'
-          : 'The run is over after ' + (gm.stage - 1) + (gm.stage - 1 === 1 ? ' stage' : ' stages') + '. Longest run: ' + MS.runs.best + '.';
-      G.modeEnd = { kind: 'run', outcome: out };
+      const run = ouroRun(), reason = G.over && G.over.reason;
+      if (reason === 'hourglass') { Ouro.restart(run); G.modeEnd = { kind: 'run', outcome: 'again' }; saveModes(); return 'The sand runs back: the battle starts again.'; }
+      const r = Ouro.settle(MS, reason === 'smoke' ? 'f' : res, ouroInfo()), out = r ? r.outcome : 'over';
+      line = out === 'cleared' ? 'Battle won: +' + num(r.gold) + ' gold. Your reward waits under Game Modes.'
+        : out === 'boss' ? 'The witch falls: +' + num(r.gold) + ' gold.'
+          : out === 'won' ? 'The Coven falls. Thessalonia is free!'
+            : out === 'again' ? 'A draw: the boss battle is fought again.'
+              : out === 'fled' ? 'You slip away in the smoke: no reward.'
+                : out === 'draw' || out === 'draw-reward' ? 'A draw: no gold' + (out === 'draw-reward' ? ', but the Secret key keeps the reward.' : ' and no reward.')
+                  : 'Your King has fallen. The run ends after ' + MS.runs.history[0].cleared + (MS.runs.history[0].cleared === 1 ? ' battle' : ' battles') + ' won.';
+      G.modeEnd = { kind: 'run', outcome: out === 'boss' || out === 'won' || out === 'draw-reward' || out === 'draw' || out === 'fled' ? 'cleared' : out };
     }
     saveModes();
     return line;
@@ -5903,7 +6259,7 @@
     nw.style.display = me.kind === 'run' && me.outcome === 'cleared' ? 'none' : ''; // 'Choose reward' leads there already
     if (me.kind === 'dice') { re.textContent = 'Bet again'; re.disabled = !Modes.canBet(MS, me.tier); endLead(!re.disabled); } // betting again is the suggested way on
     else if (me.kind === 'drawback' || me.kind === 'hex') { re.textContent = G.auto ? 'Another match' : 'Play again'; re.disabled = false; }
-    else { re.textContent = me.outcome === 'cleared' ? 'Choose reward' : me.outcome === 'again' ? 'Play the stage again' : 'New run'; re.disabled = false; endLead(true); } // the run goes on first: the reward, the stage again, or a new run
+    else { re.textContent = me.outcome === 'cleared' ? 'Back to the map' : me.outcome === 'again' ? 'Fight again' : 'New run'; re.disabled = false; endLead(true); } // the run goes on first: the reward, the stage again, or a new run
   }
   // Which end button leads (green, first): Game Review, or the rematch (Bet again in the Dice Arena)
   function endLead(rematch) {
@@ -5920,7 +6276,6 @@
     if (me.kind === 'drawback') { startMode('drawback', me.opts || dbSet); return; }
     if (me.kind === 'hex') { startMode('hex', me.opts || hexSet); return; }
     if (me.outcome === 'again') { startMode('run'); return; }
-    if (me.outcome !== 'cleared' && !MS.run) { Modes.newRun(MS, Modes.newSeed()); saveModes(); }
     setTab('modes');
   }
 
@@ -5928,45 +6283,46 @@
   function modesView() {
     const run = MS.run;
     if (gmTab === 'hex') return { s: Hex.initial(), W: 11, H: 11, glyphs: {}, cfg: null, hex: true };
-    if (gmTab === 'daily') return { s: R.fromFen(R.START_FEN), W: 8, H: 8, glyphs: {}, cfg: null };
+    if (gmTab === 'daily' || gmTab === 'home') return { s: R.fromFen(R.START_FEN), W: 8, H: 8, glyphs: {}, cfg: null };
     if (gmTab === 'sk') return skView();
+    if (gmTab === 'pb') return pbView();
+    if (gmTab === 'shogi') return { s: R.fromFen(SHOGI_START, { side: 'w', freeArmy: true }), W: 9, H: 9, glyphs: Fairy.byId('shogi').glyphs, cfg: null };
     if (gmTab === 'dice' || gmTab === 'drawback') return { s: R.fromFen(R.START_FEN), W: 8, H: 8, glyphs: {}, cfg: null };
-    if (!run) return { s: blank(Modes.boardOf([['e1', 'K'], ['e2', 'P']], []), 'w'), W: 8, H: 8, glyphs: {}, cfg: null }; // the king and his pawn; the rest is drawn at the start
-    const b = Modes.boardOf(run.army, run.next ? run.next.black : []);
-    const t = run.next && run.next.terrain ? Modes.terrainIdx(run.next.terrain) : null;
-    return { s: blank(b, 'w'), W: 8, H: 8, glyphs: {}, cfg: { side: 'w', terrain: t } };
+    return ouroView(ouroRun());
   }
   function modesMarks(mark) {
     // Shotgun King: a king in check is marked as in every other game
     if (gmTab === 'sk') { skMarks(mark); return; }
-    const run = MS.run;
-    if (gmTab !== 'run' || !run) return;
-    if (run.edit && run.edit.kind === 'place') Modes.freeHome(run, run.edit.piece).map(Modes.sq).forEach((q) => mark(q, 'homesq'));
-    else if (Modes.canArrange(run)) {
-      Modes.HOME.forEach((q) => mark(q, 'homesq'));
-      if (msSel) mark(Modes.sq(msSel), 'sel');
+    if (gmTab === 'pb') { pbMarks(mark); return; }
+    const run = ouroRun();
+    if (gmTab !== 'run' || !run || run.battle || run.reward) return;
+    if (run.edit && run.edit.kind === 'place') Ouro.freeCells(run, run.edit.piece).map(Ouro.sq).forEach((q) => mark(q, 'homesq'));
+    else if (!run.edit) {
+      Ouro.CELLS.forEach((c) => mark(Ouro.sq(c), 'homesq'));
+      if (msSel) mark(Ouro.sq(msSel), 'sel');
     }
   }
   function modesDown(sq) {
     if (gmTab === 'sk') { skDown(sq); return; }
+    if (gmTab === 'pb') { pbDown(sq); return; }
     syncModes();
-    const run = MS.run;
-    if (gmTab !== 'run' || !run || sq < 0) return;
-    const name = Modes.sqName(sq), v = modesView().s;
-    ui.info = v.board[sq] ? sq : null; // the card of the piece clicked, yours or the stage's, to plan the layout with
+    const run = ouroRun();
+    if (gmTab !== 'run' || sq < 0) return;
+    const name = Ouro.sqName(sq), v = modesView().s;
+    ui.info = v.board[sq] ? sq : null; // the card of the piece clicked, yours or the enemy's, to plan with
     msPeek = null;
-    if (!(run.edit || Modes.canArrange(run))) { renderModes(); return; }
+    if (!run || run.battle || run.reward) { renderModes(); return; }
     if (run.edit && run.edit.kind === 'place') {
       if (v.board[sq]) { renderModes(); return; } // an occupied square: just its card
-      if (!Modes.placeRecruit(run, name)) { toast(name[1] === '1' && Modes.pawnish(run.edit.piece) ? 'This piece cannot stand on the first rank' : 'Pick a free square on your two home ranks'); return; }
+      if (!Ouro.placeRecruit(run, name)) { toast(!Ouro.fits(run.edit.piece, name) ? 'This piece cannot stand on the first rank' : 'Pick a free square of your formation: files a to d, ranks 1 and 2'); return; }
       snd('move');
     } else {
       const own = run.army.some((x) => x[0] === name);
       if (!msSel) { if (own) msSel = name; }
       else if (msSel === name) msSel = null;
-      else if (Modes.movePiece(run, msSel, name)) { msSel = null; ui.info = sq; snd('move'); }
-      else if (name[1] === '1' && run.army.some((x) => x[0] === msSel && Modes.pawnish(x[1]))) toast('This piece cannot stand on the first rank');
-      else if (msSel[1] === '1' && run.army.some((x) => x[0] === name && Modes.pawnish(x[1]))) toast('That swap would put a pawn-like piece on the first rank');
+      else if (Ouro.movePiece(run, msSel, name)) { msSel = null; ui.info = sq; snd('move'); }
+      else if (Ouro.CELLS.indexOf(name) < 0) { toast('The formation is files a to d of ranks 1 and 2'); msSel = null; }
+      else if (run.army.some((x) => (x[0] === msSel && !Ouro.fits(x[1], name)) || (x[0] === name && !Ouro.fits(x[1], msSel)))) toast('A pawn-like piece cannot stand on the first rank');
       else msSel = own ? name : null;
     }
     saveModes();
@@ -5974,15 +6330,19 @@
   }
   function modesBar(color) {
     const run = MS.run;
+    if (gmTab === 'shogi') return color === 'w' ? { you: true, name: 'You', tag: 'Shogi' } : { you: false, name: sgSet.twoP ? 'Second player' : botLabel(botById(sgSet.bot), true).name, tag: sgSet.twoP ? '' : botLabel(botById(sgSet.bot), true).elo };
+    if (gmTab === 'home') return color === 'w' ? { you: true, name: 'You', tag: '' } : { you: false, name: 'Game Modes', tag: '' };
+    if (gmTab === 'pb') { const r = pbRun(); return color === 'w' ? { you: true, name: PBM.HERO[r ? r.hero : pbUi.hero].name, tag: r ? r.hearts + ' of ' + r.maxHearts + ' Hearts' : '' } : { you: false, name: PBM.DUNGEON[r ? r.dungeon : pbUi.dungeon].name, tag: r ? pbFloorName(r) : '' }; }
     if (gmTab === 'dice') return color === 'w' ? { you: true, name: 'You', tag: num(MS.dice.credits) + ' credits' } : { you: false, name: 'Dice Arena', tag: 'pick a table' };
     // Shotgun King: the White army at the top, the Black King at the bottom (the bars go by colour, so it is turned round here)
     if (gmTab === 'sk') { const r = skRun(); return color === 'w' ? { you: true, name: 'The Black King', tag: r ? SKM.GUN[r.gun].name : 'Shotgun King' } : { you: false, name: 'The White Army', tag: r ? 'floor ' + Math.min(r.floor, 12) + ', rank ' + r.rank : 'rank ' + Math.min(skUi.rank, skData().maxRank) }; }
     if (gmTab === 'daily') { const d = dailyOf(dayKeyOf(new Date())); return color === d.side ? { you: true, name: 'You', tag: 'Daily challenge' } : { you: false, name: botLabel(botById(d.bot), false).name, tag: botLabel(botById(d.bot), false).elo }; }
     if (gmTab === 'hex') return color === 'w' ? { you: true, name: 'You', tag: 'Hexagonal Chess' } : { you: false, name: botLabel(botById(hexSet.bot), true).name, tag: 'hex engine' };
     if (gmTab === 'drawback') return color === 'w' ? { you: true, name: 'You', tag: 'a hidden drawback' } : { you: false, name: botLabel(botById(dbSet.bot), true).name, tag: 'a hidden drawback' };
-    if (color === 'w') return { you: true, name: 'You', tag: run ? 'stage ' + run.stage : '' };
-    if (run && run.next) { const lab = botLabel(botById(run.next.bot), true); return { you: false, name: run.next.title, tag: lab.elo }; }
-    return { you: false, name: run ? 'Next stage' : 'Ouroboros Run', tag: '' };
+    const ou = ouroRun();
+    if (color === 'w') return { you: true, name: 'You', tag: ou ? num(ou.gold) + ' gold' : '' };
+    if (ou && ou.battle) { const lab = botLabel(botById(ou.battle.bot), true); return { you: false, name: ou.battle.title, tag: lab.elo }; }
+    return { you: false, name: ou ? Ouro.ACTS[ou.act].name : 'Ouroboros King', tag: '' };
   }
 
   /* ---------- the Game Modes page ---------- */
@@ -5996,6 +6356,76 @@
     const nav = document.querySelector('.nav[data-tab="modes"]');
     if (nav) nav.classList.toggle('dot', !!MS.pending || !!(MS.run && (MS.run.reward || MS.run.edit)));
   }
+  /* The Game Modes page: the two roguelike runs as big cards, the four other modes as tiles. A mode opens on its own
+     page with a way back here. */
+  const GM_ICON = {
+    daily: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/><path d="M8.5 14.5l2.2 2.2 4.8-4.7"/></svg>',
+    dice: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="3.5"/><g fill="currentColor" stroke="none"><circle cx="8.5" cy="8.5" r="1.5"/><circle cx="15.5" cy="15.5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="15.5" cy="8.5" r="1.5"/><circle cx="8.5" cy="15.5" r="1.5"/></g></svg>',
+    drawback: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v5.5"/><circle cx="12" cy="16.5" r=".6" fill="currentColor"/></svg>',
+    hex: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 2.8l8 4.6v9.2l-8 4.6-8-4.6V7.4z"/><path d="M12 8l3.5 2v4L12 16l-3.5-2v-4z"/></svg>'
+  };
+  // the shogi start in the app's own letters, for the board on the Shogi page (the game itself is Fairy-Stockfish's)
+  // the Shogi variant's letters (Fairy-Stockfish) and the app's own shogi pieces
+  const SHOGI_OWN = { k: 'ѣ', r: 'ѥ', '+r': 'ѧ', b: 'ѩ', '+b': 'ѫ', g: 'ѭ', s: 'ѯ', '+s': 'ѱ', n: 'ѳ', '+n': 'ѵ', l: 'ѹ', '+l': 'ѻ', p: 'ѽ', '+p': 'ѿ' };
+  const SHOGI_START = 'ѹѳѯѭѣѭѯѳѹ/1ѥ5ѩ1/ѽѽѽѽѽѽѽѽѽ/9/9/9/ѼѼѼѼѼѼѼѼѼ/1Ѩ5Ѥ1/ѸѲѮѬѢѬѮѲѸ w - - 0 1';
+  // the eight pieces and what they promote to, for the Shogi page
+  const SHOGI_TABLE = [['ѣ'], ['ѥ', 'ѧ'], ['ѩ', 'ѫ'], ['ѭ'], ['ѯ', 'ѱ'], ['ѳ', 'ѵ'], ['ѹ', 'ѻ'], ['ѽ', 'ѿ']];
+  function shogiModeCard() {
+    const bots = BOTS.filter((b) => !b.style && !b.hidden), opt = (sel) => bots.map((b) => { const lab = botLabel(b, true); return '<option value="' + b.id + '"' + (b.id === sel ? ' selected' : '') + '>' + (b.max ? 'Max' : lab.name + ' (' + lab.elo + ')') + '</option>'; }).join('');
+    const short = (l) => R.FAIRY[l].name.replace(/ \(.*\)$/, '');
+    let html = '<section class="gm-card"><div class="gm-head"><h2>Shogi</h2></div>' +
+      '<p class="gm-fixed">Japanese chess. What you take joins your hand, and instead of a move you may drop it back on the board.</p>' +
+      twoPRows('sg') + '<div class="db-set">' +
+      (sgSet.twoP ? '' : '<div class="db-row"><span>Opponent</span><select id="sgBot">' + opt(sgSet.bot) + '</select></div><div class="seg db-side">' + [['w', 'Move first'], ['r', 'Random'], ['b', 'Move second']].map((x) => '<button data-sgside="' + x[0] + '" class="' + (sgSet.side === x[0] ? 'on' : '') + '">' + x[1] + '</button>').join('') + '</div>') +
+      '<button class="btn green gm-wide" data-gm="sgstart">' + (sgSet.twoP ? 'Play two players' : 'Play') + '</button></div>';
+    // the board of a Shogi game: any of them; a two-coloured one gets the star points
+    html += '<h3 class="sk-h">Board</h3><div class="sg-boards">' + boardGroups(settings.shogiBoard || 'shogi', 'data-sgboard') + '</div>';
+    html += '<h3 class="sk-h">The pieces</h3><div class="sg-pieces">' + SHOGI_TABLE.map((row) => {
+      const up = row[1], d = R.FAIRY[row[0]];
+      return '<div class="sg-p" title="' + d.how + (up ? '. ' + R.FAIRY[up].how : '') + '"><i style="background-image:url(' + fairyPic('w', d.pic) + ')"></i>' + (up ? '<i style="background-image:url(' + fairyPic('w', R.FAIRY[up].pic) + ')"></i>' : '<i></i>') +
+        '<b>' + short(row[0]) + '</b><span>' + (up ? '\u2192 ' + short(up) : '') + '</span></div>';
+    }).join('') + '</div>';
+    return html + '</section>';
+  }
+  async function startShogi() {
+    if (starting || !leaveRunning('A game is still running. Starting a new one counts as a resignation. Resign it?')) return;
+    const two = !!sgSet.twoP;
+    const spec = { mode: two ? 'local' : 'human', variant: 'shogi', engine: 'fairy', bot: sgSet.bot, bots: null, flipEach: two && sgSet.flip !== false,
+      side: two ? 'w' : sgSet.side === 'r' ? (Math.random() < 0.5 ? 'w' : 'b') : sgSet.side, powers: noPowers(), powers2: null, ai: { anticipate: false, use: 'none' },
+      seed: Math.floor(Math.random() * 0x7fffffff) + 1, fen: null, customIni: null, clock: 0, terrain: null, kingCapture: false, diceV: 2, traits: null };
+    starting = true;
+    let g;
+    try { g = await createGame(spec); } catch (e) { toast(e.message || 'The game could not be set up'); return; } finally { starting = false; }
+    installGame(g);
+    botBrain.fresh(); evalBrain.fresh();
+    snd('start');
+    setTab('play');
+    afterAction(true);
+  }
+  function wireShogi(box) {
+    box.querySelectorAll('[data-sgboard]').forEach((x) => { x.onclick = () => { settings.shogiBoard = x.dataset.sgboard; changed(); renderModes(); }; });
+    const b = box.querySelector('#sgBot');
+    if (b) b.onchange = () => { sgSet.bot = b.value; saveSgSet(); renderAll(); };
+    box.querySelectorAll('[data-sgside]').forEach((x) => { x.onclick = () => { sgSet.side = x.dataset.sgside; saveSgSet(); renderModes(); renderAll(); }; });
+  }
+  function gmHome() {
+    const run = MS.run, sk = skData(), skr = sk.run, dkey = dayKeyOf(new Date()), drec = daily[dkey], streak = dailyStreak();
+    const big = (tab, img, name, line, stat) => '<button class="gm-big" data-gmtab="' + tab + '"><i class="gm-art" style="background-image:' + img + '"></i><span class="gm-txt"><b>' + name + '</b><span>' + line + '</span></span><em>' + stat + '</em></button>';
+    const tile = (tab, name, stat) => '<button class="gm-tile" data-gmtab="' + tab + '"><i class="gm-ic">' + GM_ICON[tab] + '</i><b>' + name + '</b><span>' + stat + '</span></button>';
+    let html = '<div class="gm-home"><h3 class="gm-cat">Runs</h3>';
+    html += big('run', 'url(pieces/fairy/w_wyrm.svg)', 'Ouroboros King', 'Grow an army, stage by stage', ouroRun() ? 'Act ' + Math.min(4, ouroRun().act + 1) : MS.runs.best ? 'Best ' + MS.runs.best : '');
+    html += big('sk', 'url(pieces/fairy/b_shotgunking.svg)', 'Shotgun King', 'One king, one shotgun', skr && skr.phase !== 'lost' && skr.phase !== 'won' ? 'Floor ' + Math.min(skr.floor, 12) : 'Rank ' + Math.min(skUi.rank, sk.maxRank));
+    const pbr = pbRun();
+    if (PBM) html += big('pb', 'url(' + PB_ART + 'h_pawnbarian.svg)', 'Pawnbarian', 'Chess cards against monsters', pbr && !pbr.over ? (pbr.gauntlet ? 'Gauntlet ' + pbr.gauntlet : 'Floor ' + pbr.floor) : pbData().won ? pbData().won + ' won' : '');
+    html += '<h3 class="gm-cat">Other games</h3>';
+    html += big('shogi', 'url(' + fairyPic('w', 'shogi_king') + ')', 'Shogi', 'Japanese chess, with drops', '');
+    html += '<h3 class="gm-cat">Chess twists</h3><div class="gm-tiles">';
+    html += tile('daily', 'Daily', drec ? (drec.r === 'w' ? 'Won today' : 'Played today') : streak ? 'Streak ' + streak : 'New today');
+    html += tile('dice', 'Dice Arena', num(MS.dice.credits) + ' credits');
+    html += tile('drawback', 'Drawback', 'A secret weakness');
+    html += tile('hex', 'Hexagon', '91 hexagons');
+    return html + '</div></div>';
+  }
   function renderModes() {
     const box = $('#modesBox');
     if (!box) return;
@@ -6003,66 +6433,182 @@
     const d = MS.dice, run = MS.run, p = MS.pending;
     let html = '';
     if (p) {
-      html += '<div class="gm-pend"><b>Unfinished game</b><span>' + (p.kind === 'dice' ? 'Dice Arena, ' + Modes.tier(p.tier).name + ' table' : p.kind === 'drawback' ? 'Drawback Chess' : 'Ouroboros Run, stage ' + p.stage) +
+      html += '<div class="gm-pend"><b>Unfinished game</b><span>' + (p.kind === 'dice' ? 'Dice Arena, ' + Modes.tier(p.tier).name + ' table' : p.kind === 'drawback' ? 'Drawback Chess' : 'Ouroboros King, stage ' + p.stage) +
         ', ' + (p.actions || []).filter((a) => a[0] === 'm' || a[0] === 'M').length + ' moves so far.</span><div class="gm-row"><button class="btn green" data-gm="resume">Resume</button><button class="btn" data-gm="giveup">Give up</button></div></div>';
     }
-    html += '<div class="seg gm-switch"><button data-gmtab="daily" class="' + (gmTab === 'daily' ? 'on' : '') + '">Daily</button><button data-gmtab="dice" class="' + (gmTab === 'dice' ? 'on' : '') + '">Dice Chess Arena</button><button data-gmtab="run" class="' + (gmTab === 'run' ? 'on' : '') + '">Ouroboros Run</button><button data-gmtab="drawback" class="' + (gmTab === 'drawback' ? 'on' : '') + '">Drawback Chess</button><button data-gmtab="hex" class="' + (gmTab === 'hex' ? 'on' : '') + '">Hexagonal Chess</button><button data-gmtab="sk" class="' + (gmTab === 'sk' ? 'on' : '') + '">Shotgun King</button></div>';
+    document.body.dataset.gm = gmTab; // the phone shows the list of modes without a board
+    html += gmTab === 'home' ? gmHome() : '<button class="gm-back" data-gmtab="home">All modes</button>';
     // Dice Chess Arena
     if (gmTab === 'dice') html += '<section class="gm-card"><div class="gm-head"><h2>Dice Chess Arena</h2><div class="gm-credits"><b>' + num(d.credits) + '</b><span>credits</span></div></div>' +
       '<p class="gm-fixed">Three dice a turn, all of them used. Take the king to win. Pay the entry, win double.</p>' + twoPRows('dc') + (diceSet.twoP ? '<button class="btn green gm-wide" data-gm="dc2start">Play two players</button>' : '') + (p && !diceSet.twoP ? '<p class="gm-block">Finish or give up the unfinished game first.</p>' : '') + '<div class="gm-tiers">';
     if (gmTab === 'dice' && !diceSet.twoP) Modes.DICE_TIERS.forEach((t, i) => {
       const bot = botById(t.bot), ok = Modes.canBet(MS, t.id), rec = d.tiers[t.id], lv = i + 1;
       const why = p ? 'An unfinished game is waiting' : d.credits < t.cost ? 'You need ' + num(t.cost) + ' credits' : '';
-      html += '<button class="gm-tier' + (ok ? '' : ' locked') + '" data-tier="' + t.id + '"' + (ok ? '' : ' disabled') + (why ? ' title="' + why + '"' : '') + '><b>' + t.name + '</b><span class="gm-bet">' +
-        (t.cost ? num(t.cost) + ' in, ' + num(t.win) + ' out' : 'Free, win ' + t.win) + '</span><span class="gm-opp">' + (bot.max ? 'Max' : bot.name) + ', level ' + lv + '</span>' +
-        (rec ? '<span class="gm-rec">' + rec.w + ' won, ' + rec.d + ' drawn, ' + rec.l + ' lost</span>' : '') + '</button>';
+      const tip = (why ? why + '. ' : '') + (bot.max ? 'Max' : bot.name) + ', level ' + lv + (rec ? '. ' + rec.w + ' won, ' + rec.d + ' drawn, ' + rec.l + ' lost' : '');
+      html += '<button class="gm-tier' + (ok ? '' : ' locked') + '" data-tier="' + t.id + '"' + (ok ? '' : ' disabled') + ' title="' + tip + '"><b>' + t.name + '</b><span class="gm-bet">' +
+        (t.cost ? num(t.cost) + ' \u2192 ' + num(t.win) : 'win ' + t.win) + '</span></button>';
     });
     if (gmTab === 'dice') html += '</div><div class="gm-stats">' + d.played + (d.played === 1 ? ' game' : ' games') + ': ' + d.won + ' won, ' + d.drawn + ' drawn, ' + d.lost + ' lost. Highest balance ' + num(d.best) + '.</div></section>';
-    if (gmTab === 'run') html += runCard(run, p);
+    if (gmTab === 'run') html += ouroCard(ouroRun(), p);
     if (gmTab === 'drawback') html += drawbackCard(p);
     if (gmTab === 'hex') html += hexModeCard();
     if (gmTab === 'daily') html += dailyModeCard();
     if (gmTab === 'sk') html += skCard();
-    const swLeft = box.querySelector('.gm-switch') ? box.querySelector('.gm-switch').scrollLeft : null; // the phone's chip row keeps its place
+    if (gmTab === 'pb') html += pbCard();
+    if (gmTab === 'shogi') html += shogiModeCard();
     box.innerHTML = html;
-    if (box.querySelector('.gm-switch')) { const sw = box.querySelector('.gm-switch'), on = sw.querySelector('.on'); if (swLeft != null) sw.scrollLeft = swLeft; else if (on && sw.scrollWidth > sw.clientWidth) sw.scrollLeft = on.getBoundingClientRect().left - sw.getBoundingClientRect().left - (sw.clientWidth - on.offsetWidth) / 2; }
     // the card of the piece last clicked on the board, as in a game
     const slot = $('#gmCard'), pv = gmTab !== 'run' ? null : msPeek || (ui.info != null ? modesView().s.board[ui.info] : null);
     if (slot && pv) slot.appendChild(pieceCard(pv, { pw: { w: null, b: null } }, msPeek ? null : modesView().s)); // on the board: what a mimic copies from the line-up
     wireModes(box);
   }
-  function runCard(run, p) {
-    let html = '<section class="gm-card"><div class="gm-head"><h2>Ouroboros Run</h2><div class="gm-credits"><b>' + MS.runs.best + '</b><span>longest run</span></div></div>';
+  /* ---------- The Ouroboros King: the run (js/ouro.js) ----------
+     The page: the act and its map (places to travel to, bottom to top, the boss at the top), gold, Rewinds, relics and
+     items, and whatever the run waits for: a reward to pick, a recruit to place, a battle to fight. The board shows the
+     formation (files a to d of the first two ranks), to arrange before travelling, and the battle once it is dealt. */
+  let ouSel = null, ouStart = [], obGet = null; // the place picked on the map, the units picked for a start, the obelisk's offer picked
+  const ouroRun = () => (MS.run && MS.run.v === 2 ? MS.run : null);
+  const OU_ICON = {
+    recruit: '<path d="M7 21V4M7 5h10l-2.5 3.5L17 12H7"/>',
+    upgrade: '<path d="M13 5l6 6-2.5 2.5-6-6zM10.5 7.5 4 14l3 3 6.5-6.5M3 21h8"/>',
+    ruins: '<path d="M6 21h12M8 21V10M16 21v-8l-2-2M8 10l2-3h3M11 21v-6"/>',
+    shop: '<path d="M9 4h6l-1.5 3h-3zM12 7c-3.5 0-6 2.5-6 6.5S8.5 20 12 20s6-2.5 6-6.5S15.5 7 12 7zM12 10.5v6M10.3 12.2c.4-.9 3-.9 3.4 0 .4 1-3.4 1.2-3 2.3.4 1 3 .9 3.4 0"/>',
+    obelisk: '<path d="M10 20l1-13 1-3 1 3 1 13zM7 20h10"/>',
+    boss: '<path d="M4 20V9h3v3h2.5V9h5v3H17V9h3v11zM10 20v-4h4v4M12 4v3"/>',
+    manor: '<path d="M4 11l8-7 8 7v9H4zM10 20v-6h4v6"/>'
+  };
+  const OU_COLOR = { recruit: '#5c8f3a', upgrade: '#9a6a2c', ruins: '#6a5f8f', shop: '#b08a2a', obelisk: '#4f7688', boss: '#9c3030', manor: '#555' };
+  const ouIcon = (type, size) => '<svg class="ou-ic" viewBox="0 0 24 24" width="' + (size || 18) + '" height="' + (size || 18) + '" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + OU_ICON[type] + '</svg>';
+  const relicChip = (id) => { const r = Ouro.RELICS[id]; return '<span class="ou-chip relic' + (r.premium ? ' prem' : '') + '" title="' + r.text + '">' + r.name + '</span>'; };
+  const itemChip = (id, n) => { const it = Ouro.ITEMS[id]; return '<span class="ou-chip item" title="' + it.text + '">' + it.name + (n > 1 ? ' x' + n : '') + '</span>'; };
+  // the act's map, as an SVG: Ouroboros Manor at the bottom, the rows above it, the boss on top
+  function ouroMap(run) {
+    const m = run.map, rows = m.rows, W = 300, gap = 54, H = gap * (rows.length + 1) + 44, opts = Ouro.options(run);
+    const yOf = (row) => H - 22 - gap * (row + 1), xOf = (p) => 30 + p.x * (W - 60);
+    const pos = {}; rows.forEach((row) => row.forEach((p) => { pos[p.id] = [xOf(p), yOf(p.row)]; }));
+    pos.boss = [W / 2, rows.length ? yOf(rows.length) : H / 2]; const manor = [W / 2, H - 22];
+    const done = run.done, here = run.at;
+    let g = '<svg class="ou-map" viewBox="0 0 ' + W + ' ' + H + '">';
+    const line = (a, b, on) => { g += '<line x1="' + a[0] + '" y1="' + a[1] + '" x2="' + b[0] + '" y2="' + b[1] + '" class="' + (on ? 'walked' : '') + '"/>'; };
+    if (rows.length) {
+      rows[0].forEach((p) => line(manor, pos[p.id], done.indexOf(p.id) >= 0));
+      rows.forEach((row) => row.forEach((p) => p.next.forEach((id) => line(pos[p.id], pos[id], done.indexOf(p.id) >= 0 && done.indexOf(id) >= 0))));
+    } else line(manor, pos.boss, false);
+    const node = (id, type, xy, r) => {
+      const can = opts.indexOf(id) >= 0, was = done.indexOf(id) >= 0, at = here === id, sel = ouSel === id;
+      g += '<g class="ou-node' + (can ? ' can' : '') + (was ? ' done' : '') + (at ? ' here' : '') + (sel ? ' sel' : '') + '"' + (can ? ' data-onode="' + id + '"' : '') + ' transform="translate(' + xy[0] + ',' + xy[1] + ')">' +
+        '<title>' + (type === 'manor' ? 'Ouroboros Manor' : type === 'boss' ? Ouro.ACTS[run.act].boss + ': ' + Ouro.ACTS[run.act].witchName : Ouro.PLACES[type].name) + '</title>' +
+        '<circle r="' + r + '" fill="' + OU_COLOR[type] + '"/><g transform="translate(' + (-r * 0.62) + ',' + (-r * 0.62) + ') scale(' + (r * 1.24 / 24) + ')" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' + OU_ICON[type] + '</g></g>';
+    };
+    node('manor', 'manor', manor, 13);
+    rows.forEach((row) => row.forEach((p) => node(p.id, p.type, pos[p.id], 16)));
+    node('boss', 'boss', pos.boss, 20);
+    return g + '</svg>';
+  }
+  function ouroCard(run, p) {
+    let html = '<section class="gm-card ouro"><div class="gm-head"><h2>Ouroboros King</h2><div class="gm-credits"><b>' + MS.runs.best + '</b><span>most battles won</span></div></div>';
     if (!run) {
-      html += '<p class="gm-fixed">Grow an army stage by stage. Every win brings a reward, a loss ends the run.</p>' +
-        '<button class="btn green gm-wide" data-gm="newrun">Start a run</button>';
-    } else {
-      html += '<div class="gm-army"><span class="gm-lab">Your army, ' + run.cleared + (run.cleared === 1 ? ' stage' : ' stages') + ' cleared</span><div class="gm-units">' +
-        run.army.map((x) => '<button class="gm-unit" data-peek="' + x[1] + '" title="' + Modes.title(x[1]) + ': ' + unitHow(x[1]) + '">' + unitImg(x[1]) + '</button>').join('') + '</div></div>';
-      if (run.reward) {
-        // three offers: new units, and now and then the evolution of one of your pieces in place of one
-        const offers = Modes.offersOf(run.reward);
-        html += '<div class="gm-reward"><h3>Stage ' + (run.stage - 1) + ' cleared. Pick one reward</h3><div class="gm-picks">' + offers.map((o, i) => o.kind === 'unit'
-          ? '<button class="gm-pick unit" data-offer="' + i + '">' + unitImg(o.l) + '<b>New unit: ' + Modes.title(o.l) + '</b><span>' + unitHow(o.l) + '</span></button>'
-          : '<button class="gm-pick evo" data-offer="' + i + '">' + unitImg(o.from) + '<em>to</em>' + unitImg(o.to) + '<b>Evolution: ' + Modes.title(o.from) + ' on ' + o.sq + ' becomes ' + Modes.title(o.to) + '</b><span>' + unitHow(o.to) + '</span></button>').join('') + '</div>';
-        if (offers.length) html += '<div class="gm-army"><span class="gm-lab">Read about the offered pieces</span><div class="gm-units">' + offers.map((o) => { const l = o.kind === 'unit' ? o.l : o.to; return '<button class="gm-unit" data-peek="' + l + '" title="' + Modes.title(l) + '">' + unitImg(l) + '</button>'; }).join('') + '</div></div>';
-        if (!offers.length) html += '<p class="gm-fixed">Nothing to add: your army is full and has nothing left to evolve.</p><button class="btn green gm-wide" data-gm="skip">Continue</button>';
-        html += '</div>';
-      } else if (run.edit && run.edit.kind === 'place') {
-        html += '<div class="gm-edit"><h3>Place your ' + Modes.title(run.edit.piece) + '</h3><p>' + unitImg(run.edit.piece) + 'Click a free square on your two home ranks.</p><button class="gm-link" data-gm="back">Choose another reward</button></div>';
-      } else if (Modes.canArrange(run)) {
-        // the layout is free to change until the next stage is revealed
-        html += '<div class="gm-edit"><h3>Set up your army for stage ' + run.stage + '</h3><p>Click one of your pieces, then a square on your two home ranks: it moves there, or the two swap. The stage stays hidden until you reveal it, and from then on the layout is fixed.</p>' +
-          '<button class="btn green gm-wide" data-gm="reveal">Reveal stage ' + run.stage + '</button></div>';
-      } else if (run.next) {
-        const n = run.next, lab = botLabel(botById(n.bot), true);
-        html += '<div class="gm-next"><h3>Stage ' + run.stage + ': ' + n.title + '</h3><p>' + n.black.length + ' enemy units, the bot plays at ' + lab.elo + ' (' + lab.name + ')' + (n.terrain ? ', with terrain' : '') + '. The board shows the line-up.</p>' +
-          (p ? '<p class="gm-block">Finish or give up the unfinished game first.</p>' : '<button class="btn green gm-wide" data-gm="fight">Fight stage ' + run.stage + '</button>') + '</div>';
+      if (!MS.runs.count) {
+        html += '<p class="gm-fixed">The Coven of three witches has taken the Kingdom of Thessalonia. Lead the Ouroboros King through three lands to their castle. Every place on the map is a battle; what kind of place it is decides your reward. Lose your King and the run is over.</p>' +
+          '<p class="gm-fixed">You start with a Knight, a Bishop and a Rook, 500 gold and 5 Rewinds.</p><button class="btn green gm-wide" data-gm="ourostart">Start a run</button>';
+      } else {
+        const offer = Ouro.startOffer(MS.runs.count * 7919 + 17), okNow = Ouro.startOk(ouStart);
+        html += '<p class="gm-fixed">Pick three units to start with, at most one of tier 2.</p><div class="ou-picks">' + offer.map((l) => {
+          const on = ouStart.indexOf(l) >= 0, t2 = Ouro.tierOf(l) === 2;
+          return '<button class="ou-pick' + (on ? ' on' : '') + '" data-ostart="' + l + '" title="' + Ouro.title(l) + ': ' + unitHow(l) + '">' + unitImg(l.toUpperCase()) + '<b>' + Ouro.title(l) + '</b>' + (t2 ? '<em>tier 2</em>' : '') + '</button>';
+        }).join('') + '</div><button class="btn green gm-wide" data-gm="ourostart"' + (okNow ? '' : ' disabled') + '>Start a run</button>';
       }
-      html += '<div id="gmCard"></div><button class="gm-link" data-gm="abandon">Abandon this run</button>';
+      if (MS.runs.history.length) html += '<div class="gm-stats">Runs: ' + MS.runs.count + (MS.runs.wins ? ', ' + MS.runs.wins + ' won' : '') + '. Battles won in the last ones: ' + MS.runs.history.slice(0, 8).map((x) => x.won ? x.cleared + ' (won)' : x.cleared).join(', ') + '.</div>';
+      return html + '</section>';
     }
-    if (MS.runs.history.length) html += '<div class="gm-stats">Runs: ' + MS.runs.count + '. Stages cleared in the last ones: ' + MS.runs.history.slice(0, 8).map((h) => h.cleared).join(', ') + '.</div>';
+    const A = Ouro.ACTS[run.act];
+    html += '<div class="ou-top"><b>' + (run.act < 3 ? 'Act ' + (run.act + 1) + ': ' : 'The end: ') + A.name + '</b><span class="ou-gold">' + num(run.gold) + ' gold</span><span class="ou-rw" title="Rewinds take back a move and the answer to it">' + run.rewinds + ' Rewinds</span></div>';
+    const items = Object.keys(run.items).filter((k) => run.items[k] > 0);
+    html += '<div class="ou-chips">' + run.relics.map(relicChip).join('') + items.map((k) => itemChip(k, run.items[k])).join('') + '</div>';
+    if (run.over && run.over.won) {
+      html += '<div class="sk-end won"><b>The Coven is beaten. Thessalonia is free.</b><span>' + run.won + ' battles won.</span></div><button class="btn green gm-wide" data-gm="ouroclose">New run</button>';
+      return html + '</section>';
+    }
+    const rw = run.reward;
+    if (rw) html += ouroReward(run, rw);
+    else if (run.edit && run.edit.kind === 'place') {
+      html += '<div class="gm-edit"><h3>Place your ' + Ouro.title(run.edit.piece) + '</h3><p>' + unitImg(run.edit.piece) + 'Click a free square of your formation (files a to d, ranks 1 and 2)' + (run.edit.price ? '. It costs ' + num(run.edit.price) + ' gold' : '') + '.</p><button class="gm-link" data-gm="ouback">Choose another</button></div>';
+    } else if (run.battle) {
+      const b = run.battle, lab = botLabel(botById(b.bot), true), pl = b.boss ? null : Ouro.PLACES[b.type];
+      html += '<div class="ou-battle"><div class="ou-place">' + ouIcon(b.boss ? 'boss' : b.type, 22) + '<b>' + (b.boss ? Ouro.ACTS[b.act].boss : pl.name) + '</b></div>' +
+        '<h3>' + b.title + '</h3><p>' + (b.black.length - 1) + ' enemy units and the General. The bot plays at ' + lab.elo + (b.terrain ? '. With boulders' + (b.terrain.portals.length ? ' and portals' : '') : '') + '.</p>' +
+        '<p>' + (pl ? pl.text + '. ' : '') + 'The battle pays ' + b.reward + ' gold, 4 less with every move.</p>' +
+        (p ? '<p class="gm-block">Finish or give up the unfinished game first.</p>' : '<button class="btn green gm-wide" data-gm="fight">Fight</button>') + '</div>';
+    } else {
+      const opts = Ouro.options(run), sel = ouSel && opts.indexOf(ouSel) >= 0 ? Ouro.place(run, ouSel) : null;
+      html += ouroMap(run);
+      if (sel) {
+        const name = sel.type === 'boss' ? A.boss : Ouro.PLACES[sel.type].name, text = sel.type === 'boss' ? 'The boss: ' + A.witchName + '. Pays gold only' : Ouro.PLACES[sel.type].text;
+        html += '<div class="ou-sel">' + ouIcon(sel.type, 20) + '<div><b>' + name + '</b><span>' + text + '.</span></div></div><button class="btn green gm-wide" data-gm="travel">Travel there</button>';
+      } else html += '<p class="gm-fixed ou-hint">Pick where to go next on the map. Before you travel, arrange your army on the board: click a piece, then a square of the formation.</p>';
+    }
+    html += '<div class="gm-army"><span class="gm-lab">Your army, ' + run.army.length + ' of 8</span><div class="gm-units">' + run.army.map((x) => '<button class="gm-unit" data-peek="' + x[1] + '" title="' + Ouro.title(x[1]) + ': ' + unitHow(x[1]) + '">' + unitImg(x[1]) + '</button>').join('') + '</div></div>';
+    html += '<div id="gmCard"></div><button class="gm-link" data-gm="abandon">Abandon this run</button>';
     return html + '</section>';
+  }
+  // what the run waits for after a battle: the place's reward (any can be left), or a boss's gold
+  function ouroReward(run, rw) {
+    let html = '<div class="gm-reward">';
+    const won = rw.gold != null && !rw.boss ? '<p class="gm-fixed">Battle won: +' + num(rw.gold) + ' gold.</p>' : '';
+    if (rw.kind === 'gold') {
+      html += rw.boss ? '<h3>' + (rw.last ? 'The Coven falls' : Ouro.ACTS[run.act].witchName + ' falls') + '</h3><p class="gm-fixed">+' + num(rw.gold) + ' gold.' + (rw.last ? '' : ' On to ' + Ouro.ACTS[run.act + 1].name + '.') + '</p>'
+        : won + '<p class="gm-fixed">' + (rw.instead ? 'Nothing to take here' + (run.army.length >= 8 ? ' (your army is full)' : '') + ': +' + rw.instead + ' gold instead.' : '') + '</p>';
+      return html + '<button class="btn green gm-wide" data-gm="oleave">Continue</button></div>';
+    }
+    const card = (i, img, title, text, price, off) => '<button class="gm-pick ou-card' + (off ? ' off' : '') + '" data-otake="' + i + '"' + (off ? ' disabled' : '') + '>' + img + '<b>' + title + (price != null ? ' <i class="ou-price">' + (price ? num(price) + ' gold' : 'free') + '</i>' : '') + '</b><span>' + text + '</span></button>';
+    if (rw.kind === 'recruit') {
+      html += won + '<h3>Training grounds: recruit a unit</h3><div class="gm-picks">' + rw.offers.map((o, i) => card(i, unitImg(o.l), Ouro.title(o.l), unitHow(o.l), o.price, run.gold < o.price)).join('') + '</div>';
+    } else if (rw.kind === 'upgrade') {
+      html += won + '<h3>Armory: upgrade a unit</h3><div class="gm-picks">' + rw.offers.map((o, i) => card(i, unitImg(o.from) + '<em>to</em>' + unitImg(o.to), Ouro.title(o.from) + ' to ' + Ouro.title(o.to), unitHow(o.to), null, false)).join('') + '</div>';
+    } else if (rw.kind === 'ruins') {
+      html += won + '<h3>Ruins: take a relic</h3><div class="gm-picks">' + rw.offers.map((o, i) => card(i, '', Ouro.RELICS[o.id].name + (Ouro.RELICS[o.id].premium ? ' (premium)' : ''), Ouro.RELICS[o.id].text, o.price, run.gold < o.price)).join('') + '</div>';
+    } else if (rw.kind === 'shop') {
+      html += won + '<h3>Shop: buy items</h3><div class="gm-picks">' + rw.offers.map((o, i) => card(i, '', Ouro.ITEMS[o.id].name + (o.qty > 1 ? ' x' + o.qty : '') + (o.sold ? ' (bought)' : ''), Ouro.ITEMS[o.id].text, o.price, o.sold || run.gold < o.price)).join('') + '</div>';
+    } else if (rw.kind === 'obelisk') {
+      // give up a unit for a tier 3 unit, or a relic (or all gold and Rewinds) for a premium relic
+      html += won + '<h3>Sacrificial obelisks</h3><p class="gm-fixed">Give something up for something better.</p>';
+      html += '<div class="gm-lab">A unit of yours for one of these</div><div class="gm-picks">' + rw.units.map((l) => '<button class="gm-pick' + (obGet === l ? ' on' : '') + '" data-obget="' + l + '">' + unitImg(l) + '<b>' + Ouro.title(l) + '</b><span>' + unitHow(l) + '</span></button>').join('') + '</div>';
+      if (obGet && rw.units.indexOf(obGet) >= 0) {
+        const can = run.army.filter((x) => !R.isRoyal(x[1]) && Ouro.fits(obGet, x[0]));
+        html += '<div class="gm-lab">Which unit goes?</div><div class="gm-units">' + (can.length ? can.map((x) => '<button class="gm-unit" data-obunit="' + x[0] + '" title="' + Ouro.title(x[1]) + '">' + unitImg(x[1]) + '</button>').join('') : '<span class="gm-fixed">None of your units can make room for it.</span>') + '</div>';
+      }
+      if (rw.relics.length) {
+        const own = run.relics.filter((id) => !Ouro.RELICS[id].premium);
+        html += '<div class="gm-lab">A relic, or all your gold and Rewinds, for one of these</div><div class="gm-picks">' + rw.relics.map((id) => '<button class="gm-pick' + (obGet === id ? ' on' : '') + '" data-obget="' + id + '"><b>' + Ouro.RELICS[id].name + '</b><span>' + Ouro.RELICS[id].text + '</span></button>').join('') + '</div>';
+        if (obGet && rw.relics.indexOf(obGet) >= 0) html += '<div class="gm-units">' + own.map((id) => '<button class="ou-chip relic" data-obrelic="' + id + '" title="' + Ouro.RELICS[id].text + '">' + Ouro.RELICS[id].name + '</button>').join('') + '<button class="ou-chip all" data-obrelic="*">All gold and Rewinds</button></div>';
+      }
+    }
+    return html + '<button class="btn gm-wide" data-gm="oleave">' + (rw.kind === 'shop' ? 'Leave the shop' : 'Leave') + '</button></div>';
+  }
+  function wireOuro(box) {
+    const done = () => { saveModes(); renderModes(); renderAll(); };
+    box.querySelectorAll('[data-onode]').forEach((n) => { n.onclick = () => { ouSel = n.dataset.onode; renderModes(); }; });
+    box.querySelectorAll('[data-ostart]').forEach((b) => { b.onclick = () => { const l = b.dataset.ostart, i = ouStart.indexOf(l); if (i >= 0) ouStart.splice(i, 1); else if (ouStart.length < 3) ouStart.push(l); renderModes(); renderAll(); }; });
+    box.querySelectorAll('[data-otake]').forEach((b) => { b.onclick = () => { syncModes(); const run = ouroRun(), k = run && run.reward && run.reward.kind; if (run && Ouro.take(run, +b.dataset.otake)) { snd(k === 'upgrade' || k === 'shop' || k === 'ruins' ? 'gold' : 'move'); done(); } }; });
+    box.querySelectorAll('[data-obget]').forEach((b) => { b.onclick = () => { obGet = obGet === b.dataset.obget ? null : b.dataset.obget; renderModes(); }; });
+    box.querySelectorAll('[data-obunit]').forEach((b) => { b.onclick = () => { syncModes(); const run = ouroRun(); if (run && Ouro.take(run, 0, { give: 'unit', at: b.dataset.obunit, get: obGet })) { obGet = null; snd('gold'); done(); } }; });
+    box.querySelectorAll('[data-obrelic]').forEach((b) => {
+      b.onclick = () => {
+        syncModes(); const run = ouroRun(), all = b.dataset.obrelic === '*';
+        if (all && !confirm('Give up all your gold (' + num(run.gold) + ') and all your Rewinds (' + run.rewinds + ')?')) return;
+        if (run && Ouro.take(run, 0, all ? { give: 'all', get: obGet } : { give: 'relic', id: b.dataset.obrelic, get: obGet })) { obGet = null; snd('gold'); done(); }
+      };
+    });
+  }
+  // the Ouroboros pieces of a board: the formation (no battle) or the battle's start
+  function ouroView(run) {
+    if (run && run.battle) {
+      const cfg = Ouro.battleCfg(run);
+      return { s: R.fromFen(Ouro.battleFen(run), cfg), W: 8, H: 8, glyphs: {}, cfg: { side: 'w', terrain: cfg.terrain } };
+    }
+    const b = new Array(64).fill('');
+    (run ? run.army : Ouro.startArmy(ouStart.length === 3 && Ouro.startOk(ouStart) ? ouStart : null)).forEach((x) => { b[Ouro.sq(x[0])] = x[1]; });
+    return { s: blank(b, 'w'), W: 8, H: 8, glyphs: {}, cfg: null };
   }
   /* Drawback Chess on the Game Modes page: the settings, your record, and the index of every drawback. A drawback
      you have won a game with gets a green border; each shows your games with it. */
@@ -6639,7 +7185,9 @@
     let html = '<section class="gm-card sk">';
     if (!run || (run.settled && run.closed)) {
       html += '<div class="gm-head"><h2>Shotgun King</h2></div><p class="gm-fixed">You are the Black King with a shotgun. Kill the leader on each of 12 floors.</p>';
-      html += '<h3 class="sk-h">Shotgun</h3><div class="sk-guns">' + SKM.SHOTGUNS.map((g) => '<button class="sk-gun' + (skUi.gun === g.id ? ' on' : '') + '" data-skgun="' + g.id + '" title="' + g.text + '"><i class="sk-gunpic" style="background-image:' + skGunKing('b', g.id) + '"></i><b>' + g.name + '</b>' + skGunStats(g) + '</button>').join('') + '</div>';
+      html += '<h3 class="sk-h">Shotgun</h3><div class="sk-guns">' + SKM.SHOTGUNS.map((g) => '<button class="sk-gun' + (skUi.gun === g.id ? ' on' : '') + '" data-skgun="' + g.id + '" title="' + g.text + '"><i class="sk-gunpic" style="background-image:' + skGunKing('b', g.id) + '"></i><b>' + g.name + '</b></button>').join('') + '</div>';
+      const sel = SKM.GUN[skUi.gun] || SKM.SHOTGUNS[0];
+      html += '<div class="sk-gunsel">' + skGunStats(sel, 'two') + '</div>'; // the stats of the gun picked, once
       html += '<h3 class="sk-h">Rank</h3><div class="sk-ranks">';
       for (let r = 1; r <= 20; r++) {
         const open = r <= d.maxRank, best = d.best[r];
@@ -6772,34 +7320,529 @@
     box.querySelectorAll('[data-skbrowse]').forEach((b) => { b.onclick = () => { const run = skRun(); if (run && SKM.browse(run, b.dataset.skbrowse)) { saveModes(); renderModes(); } }; });
     box.querySelectorAll('[data-skpair]').forEach((b) => { b.onclick = () => { const run = skRun(); if (run && SKM.choosePair(run, +b.dataset.skpair)) { MS.rev = (MS.rev || 0) + 1; saveModes(); snd('start'); renderModes(); renderAll(); } }; });
   }
+  /* ---------- Pawnbarian (the Game Mode; the rules are in pawnbarian.js) ----------
+     The run lives in MS.pb.run and is saved after every action. The board is 5 x 5: the hero, the monsters with
+     their traits shown, the squares they attack this turn (one red tick per point of damage), Blight, the Mystic's
+     Wards; in the shop the items and the stairs. The panel holds the loot track, the hearts and the hand: a card
+     picked shows its squares on the board, a click there plays it. */
+  const PBM = typeof Pawnbarian !== 'undefined' ? Pawnbarian : null;
+  const pbUi = { card: -1, hover: -1, hero: 'pawnbarian', dungeon: 'goblin', chain: 0, busy: false, flash: 0 };
+  try { const o = JSON.parse(localStorage.getItem('powerchess_pbset') || 'null'); if (o && PBM) { if (PBM.HERO[o.hero]) pbUi.hero = o.hero; if (PBM.DUNGEON[o.dungeon]) pbUi.dungeon = o.dungeon; pbUi.chain = +o.chain || 0; } } catch (e) { /* first visit */ }
+  const pbSaveSet = () => { try { localStorage.setItem('powerchess_pbset', JSON.stringify({ hero: pbUi.hero, dungeon: pbUi.dungeon, chain: pbUi.chain })); } catch (e) { /* private mode */ } };
+  const pbData = () => MS.pb || (MS.pb = Modes.fresh().pb);
+  const pbRun = () => { const r = pbData().run; return r && !r.closed ? r : null; };
+  const pbLive = () => { const r = pbRun(); return !!(r && r.F && !r.F.over && !r.over); };
+  const PB_ART = 'pieces/pawnbarian/';
+  const PB_SHOGI = { sK: 'shogi_king', sG: 'shogi_gold', sS: 'shogi_silver', sN: 'shogi_knight', sL: 'shogi_lance', sP: 'shogi_pawn', sR: 'shogi_rook', sB: 'shogi_bishop', sD: 'shogi_dragon', sH: 'shogi_horse' };
+  const PB_SHOGI_UP = { sS: 'shogi_psilver', sN: 'shogi_pknight', sL: 'shogi_plance', sP: 'shogi_tokin', sR: 'shogi_dragon', sB: 'shogi_horse' };
+  const PB_NEW = { H: 'hawk', E: 'bear', G: 'ghost' };
+  // the picture of a card: its chess piece, the Shogun's shogi piece (promoted: the promoted side), a new piece
+  function pbPic(c) {
+    const p = typeof c === 'string' ? c : c.p, promo = typeof c === 'string' ? null : c.promo;
+    if (PB_SHOGI[p]) return fairyPic('w', promo && PB_SHOGI_UP[p] ? PB_SHOGI_UP[p] : PB_SHOGI[p]);
+    if (PB_NEW[p]) return PB_ART + 'w_' + PB_NEW[p] + '.svg';
+    return pieceUrl(promo || p);
+  }
+  const pbPieceName = (c) => PBM.PIECES[PBM.pieceOf(c)].name;
+  const PB_UPS = ['cantrip', 'shield', 'dsplash', 'csplash', 'purify'];
+  const pbUps = (up, cls) => PB_UPS.filter((u) => up[u]).map((u) => '<i class="pb-up ' + (cls || '') + '" title="' + PBM.UPGRADES[u].name + ': ' + PBM.UPGRADES[u].text + '" style="background-image:url(' + PB_ART + 'i_' + u + '.svg)"></i>').join('');
+  const pbIcon = (n, cls, title) => '<i class="pb-ic ' + (cls || '') + '"' + (title ? ' title="' + title + '"' : '') + ' style="background-image:url(' + PB_ART + 'i_' + n + '.svg)"></i>';
+  const ROMAN = ['0', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
+  function pbView() {
+    const run = pbRun(), b = new Array(25).fill('');
+    if (run && run.shop) {
+      run.shop.offers.forEach((o) => { if (!o.sold) b[o.sq] = 'p'; });
+      b[PBM.STAIRS] = 'p';
+      b[run.shop.hero] = 'K';
+    } else if (run && run.F) {
+      run.F.enemies.forEach((e) => { b[e.sq] = 'p'; });
+      if (run.F.over !== 'dead') b[run.F.hero] = 'K';
+    } else { b[PBM.START] = 'K'; [[6, 'p'], [8, 'p'], [12, 'p']].forEach((x) => { b[x[0]] = x[1]; }); } // a first floor, for the look of it
+    return { s: blank(b, 'w'), W: 5, H: 5, glyphs: {}, cfg: null, pb: true };
+  }
+  function pbDecorate(els) {
+    const run = pbRun();
+    const art = (el, src) => { if (el) el.style.backgroundImage = 'url(' + src + ')'; };
+    if (!run || (!run.F && !run.shop)) {
+      art(els[PBM.START], PB_ART + 'h_' + pbUi.hero + '.svg');
+      ['capybear', 'gskirmisher', 'spidertoad'].forEach((k, i) => art(els[[6, 8, 12][i]], PB_ART + 'm_' + k + '.svg'));
+      Object.keys(els).forEach((q) => els[q].classList.add('pbp'));
+      return;
+    }
+    if (run.shop) {
+      const S = run.shop;
+      art(els[S.hero], PB_ART + 'h_' + run.hero + '.svg');
+      if (els[S.hero]) els[S.hero].classList.add('pbp', 'pbhero');
+      if (els[PBM.STAIRS] && S.hero !== PBM.STAIRS) { art(els[PBM.STAIRS], PB_ART + 'i_stairs.svg'); els[PBM.STAIRS].classList.add('pbp', 'pbitem'); }
+      S.offers.forEach((o) => {
+        const el = els[o.sq];
+        if (!el || o.sold || S.hero === o.sq) return;
+        el.classList.add('pbp', 'pbitem');
+        if (o.heart) { art(el, PB_ART + 'i_heart.svg'); el.classList.add('pbheart'); }
+        else {
+          const c = run.deck.find((x) => x.id === o.card);
+          art(el, pbPic(c));
+          el.appendChild(h('i', 'pb-badge', pbUps(c.up, 'old') + '<i class="pb-up new" style="background-image:url(' + PB_ART + 'i_' + o.up + '.svg)"></i>'));
+        }
+        el.appendChild(h('i', 'pb-price' + (o.price > run.gold ? ' poor' : ''), o.price));
+      });
+      return;
+    }
+    const F = run.F;
+    F.enemies.forEach((e) => {
+      const el = els[e.sq];
+      if (!el) return;
+      art(el, PB_ART + 'm_' + e.kind + '.svg');
+      el.classList.add('pbp', 'pbmon');
+      if (PBM.hasT(e, 'champion')) el.classList.add('pbchamp');
+      if (PBM.hasT(e, 'nimble') && e.dodged !== F.turn) el.classList.add('pbnimble');
+      if (PBM.MONSTERS[e.kind].boss) el.classList.add('pbboss');
+      if (F.over !== 'dead' && PBM.immune(run, F, e, F.hero)) el.classList.add('pbimmune');
+      if (pbUi.pop && pbUi.pop[e.id]) el.classList.add('pbpop');
+    });
+    if (F.over !== 'dead' && els[F.hero]) {
+      art(els[F.hero], PB_ART + 'h_' + run.hero + '.svg'); els[F.hero].classList.add('pbp', 'pbhero');
+      if (F.shield > 0) els[F.hero].classList.add('pbshielded');
+      if (!F.over && pbPending(run, F) > 0) els[F.hero].classList.add('pbcheck'); // in danger: the hero is "in check"
+    }
+  }
+  // the board's marks: Blight (a pip per stack), the Wards, the attacked squares (a tick per point, a skull from 4)
+  function pbMarks(mark) {
+    const run = pbRun();
+    if (!run) return;
+    if (run.shop) { PBM.shopMoves(run).forEach((q) => mark(q, 'pbreach')); return; }
+    const F = run.F;
+    if (!F) return;
+    F.blight.forEach((n, q) => { if (n > 0) { const m = mark(q, 'pbblight'); m.innerHTML = '<i>' + '<u></u>'.repeat(Math.min(n, 8)) + '</i>' + (n > 8 ? '<b>' + n + '</b>' : ''); } });
+    F.wards.forEach((q) => mark(q, 'pbward'));
+    if (F.over) return;
+    if (pbPending(run, F) > 0) mark(F.hero, 'check');
+    const hov = pbUi.hover;
+    for (let q = 0; q < 25; q++) {
+      const n = PBM.threat(run, F, q);
+      if (!n) continue;
+      const m = mark(q, 'pbthreat' + (q === F.hero ? ' on' : ''));
+      m.innerHTML = n >= 4 ? '<i class="skull"></i>' : '<i>' + '<u></u>'.repeat(n) + '</i>';
+    }
+    // the monster under the mouse: the squares it attacks
+    const e = hov >= 0 ? PBM.enemyAt(F, hov) : null;
+    if (e) PBM.targets(e).forEach((q) => mark(q, 'pbtgt'));
+  }
+  /* What a card would do on each square it reaches, worked out by playing it on a copy of the run: which monsters
+     it hits and how (killed, dodging to which square, immune), where the splash lands, where the hero ends up and
+     what the end of the turn would cost him there. Kept until the run or the card picked changes. */
+  let pbPrevKey = '', pbPrev = null;
+  function pbPreview(run, F, i) {
+    const key = MS.rev + ':' + i + ':' + F.turn + ':' + F.actions + ':' + F.hand.map((c) => c.id).join(',');
+    if (key === pbPrevKey) return pbPrev;
+    const out = {};
+    PBM.cardTargets(run, F, F.hand[i]).forEach((x) => {
+      const r = JSON.parse(JSON.stringify(run)), ev = PBM.play(r, i, x.to) || [], G = r.F;
+      const hits = ev.filter((e) => (e.e === 'hit' || e.e === 'splash')).map((e) => {
+        const o = { sq: e.sq, res: e.res, splash: e.e === 'splash' };
+        if (e.res === 'dodged' && G) { const m = G.enemies.find((m0) => m0.id === e.id); if (m) o.to = m.sq; }
+        return o;
+      });
+      out[x.to] = { hits: hits, kills: hits.filter((o) => o.res === 'dead').length, hero: G ? G.hero : x.to, clear: !!(G && G.over === 'cleared'),
+        pend: G && !G.over && !r.over ? pbPending(r, G) : 0, grasp: ev.some((e) => e.e === 'grasp' && e.sq != null) };
+    });
+    pbPrevKey = key; pbPrev = out;
+    return out;
+  }
+  function pbHints(hint) {
+    const run = pbRun();
+    if (!pbLive() || pbUi.busy) return;
+    const F = run.F, c = F.hand[pbUi.card];
+    if (!c || F.actions <= 0) return;
+    const pv = pbPreview(run, F, pbUi.card), hov = pv[pbUi.hover];
+    PBM.cardTargets(run, F, c).forEach((x) => {
+      const p = pv[x.to];
+      hint(x.to, x.hit ? 'ring pbring' : 'dot pbdot');
+      // at a glance: how many monsters this square kills, or that the attack only makes one dodge or hits nothing
+      if (p && p.kills) hint(x.to, 'pbkills').innerHTML = '<b>' + (p.clear ? '✓' : p.kills) + '</b>';
+      else if (p && p.hits.some((o) => o.res === 'dodged')) hint(x.to, 'pbkills dodge').innerHTML = '<b>↻</b>';
+      if (p && p.pend > 0 && p.hero === x.to && x.to !== pbUi.hover) hint(x.to, 'pbrisk').innerHTML = '<b>-' + p.pend + '</b>';
+    });
+    if (!hov) return;
+    // the square under the mouse: everything the move does
+    hov.hits.forEach((o) => {
+      if (o.res === 'miss') { hint(o.sq, 'pbatk empty'); return; }
+      hint(o.sq, 'pbatk ' + o.res);
+      if (o.res === 'dodged' && o.to != null) {
+        hint(o.to, 'pbdodge');
+        const a = sqXY(o.sq), b = sqXY(o.to), ang = Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI;
+        hint(o.sq, 'pbarrow').style.setProperty('--a', ang + 'deg');
+      }
+    });
+    if (hov.hero !== F.hero) hint(hov.hero, 'pbghost').style.backgroundImage = 'url(' + PB_ART + 'h_' + run.hero + '.svg)';
+    hint(hov.hero, 'pbrisk big' + (hov.pend ? '' : ' safe')).innerHTML = hov.clear ? '<b>Floor cleared</b>' : hov.pend ? '<b>-' + hov.pend + ' ♥</b>' : '<b>safe</b>';
+  }
+  // the monster under the mouse (or the square): what it is, its traits, the damage there
+  function pbHoverInfo() {
+    const el = $('#pbHover'), run = pbRun();
+    if (!el) return;
+    const q = pbUi.hover;
+    if (!run || q < 0) { el.innerHTML = ''; return; }
+    if (run.shop) {
+      const o = run.shop.offers.find((x) => x.sq === q && !x.sold);
+      if (q === PBM.STAIRS) el.innerHTML = '<b>Stairs</b><span>On to floor ' + run.shop.floor + '.</span>';
+      else if (o && o.heart) el.innerHTML = '<b>Heart</b><span>' + o.price + ' gold</span><span>One more Heart, full and for good.</span>';
+      else if (o) { const c = run.deck.find((x) => x.id === o.card); el.innerHTML = '<b>' + PBM.UPGRADES[o.up].name + '</b><span>' + PBM.PIECES[c.p].name + '</span><span>' + o.price + ' gold</span><span>' + PBM.UPGRADES[o.up].text + '</span>'; }
+      else el.innerHTML = '';
+      return;
+    }
+    const F = run.F;
+    if (!F) { el.innerHTML = ''; return; }
+    const e = PBM.enemyAt(F, q), dmg = PBM.threat(run, F, q), bl = F.blight[q];
+    let html = '';
+    // a card picked and a square it reaches: what the move does there, in words
+    const card = pbLive() && F.hand[pbUi.card], pv = card ? pbPreview(run, F, pbUi.card)[q] : null;
+    if (pv) {
+      const n = (r) => pv.hits.filter((o) => o.res === r).length, k = n('dead'), d = n('dodged'), im = n('immune');
+      const parts = [];
+      if (k) parts.push(k === 1 ? 'Kills 1 monster.' : 'Kills ' + k + ' monsters.');
+      if (d) parts.push(d === 1 ? '1 monster dodges.' : d + ' monsters dodge.');
+      if (im) parts.push(im === 1 ? '1 monster is immune.' : im + ' monsters are immune.');
+      html += '<b>' + pbPieceName(card) + '</b>' + (parts.length ? parts : ['This move hits nothing.']).map((t) => '<span class="pb-prev">' + t + '</span>').join('');
+      if (pv.clear) html += '<span class="pb-prev ok">The floor is cleared.</span>';
+      else html += '<span class="' + (pv.pend ? 'pb-dmg' : 'pb-prev ok') + '">' + (pv.pend ? 'Ending the turn there: ' + pv.pend + ' damage.' : 'Ending the turn there: no damage.') + '</span>';
+      if (pv.grasp) html += '<span class="pb-prev">Void Grasp pulls you on.</span>';
+    }
+    if (e) {
+      const M = PBM.MONSTERS[e.kind];
+      html += '<b>' + M.name + '</b><em>' + M.text + '</em><span class="pb-atk">Attacks: ' + PBM.ATTACKS[e.atk] + '.</span>' +
+        e.traits.map((t) => '<span><b>' + PBM.TRAITS[t][0] + '</b> ' + PBM.TRAITS[t][1] + '</span>').join('');
+      if (PBM.immune(run, F, e, F.hero)) html += '<span class="pb-imm">Immune right now.</span>';
+    } else if (q === F.hero) html += '<b>' + PBM.HERO[run.hero].name + '</b>';
+    if (dmg) html += '<span class="pb-dmg">' + dmg + ' damage here at the end of the turn.</span>';
+    if (bl) html += '<span class="pb-dmg">' + bl + ' Blight: ' + bl + ' damage to end the turn here.</span>';
+    if (F.wards.indexOf(q) >= 0) html += '<span>A Ward: monsters cannot enter it. Step on it for 3 Shields.</span>';
+    el.innerHTML = html;
+  }
+  /* what happened, shown on the board: hits and kills, a dodge, the splash, the damage taken */
+  /* ---------- the effects: what happened, shown on the board ----------
+     A card: the hero slides there, a monster that dodges slides away, a killed one breaks apart, the splash squares
+     flash. The end of the turn: every monster that has the hero in its attack lunges at him one after the other, each
+     hit lands with the damage sound, a red number and a jolt; a Shield takes it with a clank instead. Then the monsters
+     walk, new ones pop up, and the new hand is dealt. */
+  const PB_DUR = { lunge: 230, gap: 120 };
+  const pbMonPic = (kind) => PB_ART + 'm_' + kind + '.svg';
+  // the damage the hero takes if the turn ends now (attacks and Blight, less the Shields)
+  function pbPending(run, F) { return Math.max(0, PBM.threat(run, F, F.hero) + F.blight[F.hero] - F.shield); }
+  function pbFx(ev, run) {
+    let killed = 0, delay = 0;
+    (ev || []).forEach((x) => {
+      if (x.e === 'hit' || x.e === 'splash') {
+        if (x.res === 'dead') { killed++; const d0 = x.e === 'hit' ? 120 : 160 + delay; delay += 40; setTimeout(() => { skShatter(x.sq, pbMonPic(x.kind), false); pbShardSize(); }, d0); }
+        else if (x.res === 'dodged') fxRing(x.sq, 'blue');
+        else if (x.res === 'immune') { fxRing(x.sq, 'orange'); snd('clank'); }
+        else if (x.e === 'splash') pbSlash(x.sq);
+      }
+      if (x.e === 'ward') { fxRing(x.sq, 'blue'); snd('portal'); }
+      if (x.e === 'cantrip') snd('zap', 0.12);
+      if (x.e === 'dragon') snd('promo');
+      if (x.e === 'grasp') { if (x.hurt) pbHit(x.hurt, 0.15); else snd('portal', 0.12); }
+      if (x.e === 'cleared') snd('win', 0.35);
+    });
+    if (killed) { snd('slash'); snd('capture', 0.06); } else if ((ev || []).some((x) => x.e === 'hit' || x.e === 'splash')) snd('move');
+  }
+  // the shards of skShatter are sized for 8 x 8: on the 5 x 5 board they take a square of its own size
+  function pbShardSize() { L.fx.querySelectorAll('.skshard:not(.pbw),.skdust:not(.pbw)').forEach((d) => d.classList.add('pbw')); }
+  function pbSlash(sq) {
+    const d = place(h('div', 'pbslash'), sq);
+    L.fx.appendChild(d);
+    setTimeout(() => d.remove(), 450);
+  }
+  function pbNumber(sq, txt, cls) {
+    const d = place(h('div', 'skdmg pbw ' + (cls || ''), txt), sq);
+    L.fx.appendChild(d);
+    setTimeout(() => d.remove(), 950);
+  }
+  // n points of damage land on the hero now (delay in seconds for the sound)
+  function pbHit(n, delay) {
+    const run = pbRun(), F = run && run.F, sq = F ? F.hero : -1;
+    snd('hurt', delay || 0);
+    if (sq >= 0) {
+      pbNumber(sq, '-' + n);
+      const el = L.pieces.querySelector('[data-sq="' + sq + '"]');
+      if (el) { el.classList.remove('pbouch'); void el.offsetWidth; el.classList.add('pbouch'); }
+    }
+    const b = $('#board');
+    if (b && settings.anim) b.animate([{ transform: 'translate(0,0)' }, { transform: 'translate(-5px,2px)' }, { transform: 'translate(4px,-2px)' }, { transform: 'translate(-2px,1px)' }, { transform: 'translate(0,0)' }], { duration: 260 });
+    pbUi.flash = Date.now();
+    const hb = document.querySelector('.pb-hearts');
+    if (hb) { hb.classList.remove('hurt'); void hb.offsetWidth; hb.classList.add('hurt'); }
+  }
+  function pbBlocked(sq) { fxRing(sq, 'blue'); snd('clank'); pbNumber(sq, '0', 'pbblock'); }
+  // a monster lunges at the hero and back
+  function pbLunge(from, to, delay) {
+    const el = L.pieces.querySelector('[data-sq="' + from + '"]');
+    if (!el || !settings.anim) return;
+    const a = sqXY(from), b = sqXY(to), k = Math.max(Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1])) > 1 ? 0.22 : 0.42;
+    const mid = 'translate(' + (a[0] + (b[0] - a[0]) * k) * 100 + '%,' + (a[1] + (b[1] - a[1]) * k) * 100 + '%) scale(1.12)';
+    el.style.zIndex = 6;
+    el.animate([{ transform: trans(from) }, { transform: mid, offset: 0.45 }, { transform: trans(from) }], { duration: PB_DUR.lunge, delay: delay, easing: 'ease-in-out' });
+  }
+  // the monsters' moves as slides: where each one stood before and stands now
+  function pbAnims(before, F) {
+    if (!F) return null;
+    const out = [];
+    F.enemies.forEach((e) => { const b = before[e.id]; if (b != null && b !== e.sq) out.push({ from: b, to: e.sq }); });
+    if (before.hero != null && before.hero !== F.hero) out.push({ from: before.hero, to: F.hero });
+    return out;
+  }
+  const pbSnap = (F) => { const o = {}; if (F) { F.enemies.forEach((e) => { o[e.id] = e.sq; }); o.hero = F.hero; } return o; };
+  // monsters that were not there before pop up (Blightsacks, tentacles, golems, a new floor's ones do not)
+  function pbPops(before, F) {
+    pbUi.pop = {};
+    if (F && before.hero != null) F.enemies.forEach((e) => { if (before[e.id] == null) pbUi.pop[e.id] = true; });
+    setTimeout(() => { pbUi.pop = {}; }, 500);
+  }
+  function pbAfter(anims) {
+    const run = pbRun();
+    if (run && run.over && !run.settled) {
+      run.settled = true; // counted by pawnbarian.js when it began (runs) and when the dungeon fell (won)
+      if (run.over.won) snd('win'); else snd('lose', 0.3);
+    }
+    MS.rev = (MS.rev || 0) + 1;
+    saveModes(); renderModes(); renderAll(anims);
+  }
+  function pbPlay(i, to) {
+    const run = pbRun();
+    if (!pbLive() || pbUi.busy) return;
+    const F = run.F, before = pbSnap(F), ev = PBM.play(run, i, to);
+    if (!ev) return;
+    pbUi.card = -1;
+    pbPops(before, run.F);
+    pbAfter(pbAnims(before, run.F === F ? F : null));
+    pbFx(ev, run);
+  }
+  function pbEnd() {
+    const run = pbRun();
+    if (!pbLive() || pbUi.busy) return;
+    const F = run.F, hero = F.hero;
+    pbUi.card = -1;
+    // the attacks, one monster after the other, on the board as it stands
+    const attackers = F.enemies.filter((e) => PBM.targets(e).indexOf(hero) >= 0).sort((a, b) => a.sq - b.sq);
+    const blight = F.blight[hero], tutorial = PBM.DUNGEON[run.dungeon].tutorial;
+    let shield = F.shield, t = 0;
+    pbUi.busy = true;
+    renderModes(); renderAll();
+    const land = (n, at) => setTimeout(() => {
+      const blocked = Math.min(shield, n); shield -= blocked;
+      if (n - blocked > 0 && !tutorial) pbHit(n - blocked); else pbBlocked(hero);
+    }, at);
+    attackers.forEach((e) => { pbLunge(e.sq, hero, t); land(PBM.isFinalBoss(run, e) ? 2 : 1, t + PB_DUR.lunge * 0.45); t += PB_DUR.gap + 40; });
+    if (blight) { setTimeout(() => { pbNumber(hero, '', 'pbbubble'); }, t); land(blight, t + 80); t += 260; }
+    setTimeout(() => {
+      const before = pbSnap(run.F);
+      PBM.endTurn(run);
+      pbUi.busy = false;
+      if (run.over) {
+        pbAfter(null);
+        if (settings.anim) { skShatter(hero, PB_ART + 'h_' + run.hero + '.svg', false); pbShardSize(); }
+        return;
+      }
+      pbUi.deal = true;
+      pbPops(before, run.F);
+      pbAfter(pbAnims(before, run.F));
+      snd('move');
+      if (run.F && pbPending(run, run.F) > 0) snd('check', 0.25); // in danger at the start of the turn, as a check
+      setTimeout(() => { pbUi.deal = false; }, 600);
+    }, attackers.length || blight ? t + 260 : 0);
+  }
+  function pbDrop() {
+    const run = pbRun();
+    if (!pbLive() || pbUi.busy) return;
+    const before = pbSnap(run.F), ev = PBM.dragonDrop(run);
+    if (!ev) { toast('No action left for the Dragon Drop'); return; }
+    if (settings.anim && run.F) fxRing(run.F.hero, 'orange');
+    pbPops(before, run.F);
+    pbAfter(null);
+    pbFx(ev, run);
+  }
+  function pbDown(sq) {
+    const run = pbRun();
+    if (!run || sq < 0 || pbUi.busy) return;
+    if (run.shop) {
+      const r = PBM.shopMove(run, sq);
+      if (!r) { if (sq !== run.shop.hero) toast('Your pieces here cannot reach that square. Land on an item to buy it, or on the stairs to go on'); return; }
+      if (r.e === 'poor') { toast('That costs ' + r.price + ' gold'); return; }
+      if (r.e === 'heart' || r.e === 'upgrade') snd('gold'); else if (r.e === 'stairs') snd('start'); else snd('move');
+      pbUi.card = -1;
+      pbAfter(null);
+      return;
+    }
+    if (!pbLive()) return;
+    const F = run.F, c = F.hand[pbUi.card];
+    if (c && PBM.cardTargets(run, F, c).some((x) => x.to === sq)) { pbPlay(pbUi.card, sq); return; }
+    // a click on a square some card in hand reaches: that card, if only one does
+    const cards = F.hand.map((x, i) => i).filter((i) => PBM.cardTargets(run, F, F.hand[i]).some((x) => x.to === sq));
+    if (!c && cards.length === 1 && F.actions > 0) { pbUi.card = cards[0]; renderModes(); renderAll(); return; }
+    pbUi.card = -1;
+    renderModes(); renderAll();
+  }
+  function pbStart(again) {
+    const d = pbData(), last = d.run;
+    const hero = again && last ? last.hero : pbUi.hero, dun = again && last ? last.dungeon : pbUi.dungeon, chain = again && last ? last.chain : Math.min(pbUi.chain, d.chain);
+    PBM.newRun(d, Modes.newSeed(), hero, dun, chain);
+    pbUi.card = -1; pbUi.busy = false;
+    snd('start');
+    pbAfter(null);
+  }
+  /* ---------- the panel ---------- */
+  function pbDeckStrip(cards, cls) {
+    return '<div class="pb-strip ' + (cls || '') + '">' + cards.map((c) => '<span title="' + PBM.PIECES[c.p].name + PB_UPS.filter((u) => c.up[u]).map((u) => ', ' + PBM.UPGRADES[u].name).join('') + '"><i style="background-image:url(' + pbPic(c.p) + ')"></i>' + pbUps(c.up, 'tiny') + '</span>').join('') + '</div>';
+  }
+  function pbSelector() {
+    const d = pbData();
+    let html = '<div class="gm-head"><h2>Pawnbarian</h2><div class="gm-credits"><b class="notranslate">' + ROMAN[d.chain] + '</b><span>chain</span></div></div>' +
+      '<p class="gm-fixed">A hero alone on a 5 x 5 board. Your cards are chess moves: land on a monster to kill it. Three cards a turn, two actions. Clear seven floors.</p>';
+    html += '<h3 class="sk-h">Hero</h3><div class="pb-heroes">' + PBM.HEROES.map((id) => {
+      const won = d.conquered[id] ? Object.keys(d.conquered[id]).length : 0, open = PBM.unlocked(d, id);
+      return '<button class="pb-hb' + (pbUi.hero === id ? ' on' : '') + (open ? '' : ' locked') + '" data-pbhero="' + id + '"' + (open ? '' : ' title="Win a dungeon with the Pawnbarian first"') + '><i style="background-image:url(' + PB_ART + 'h_' + id + '.svg)"></i><b>' + PBM.HERO[id].name + '</b>' + (won ? '<em>' + '♛'.repeat(won) + '</em>' : '') + '</button>';
+    }).join('') + '</div>';
+    const H = PBM.HERO[pbUi.hero], heroOpen = PBM.unlocked(d, pbUi.hero) || PBM.DUNGEON[pbUi.dungeon].tutorial;
+    html += '<div class="pb-heroinfo"><i class="pb-port" style="background-image:url(' + PB_ART + 'h_' + pbUi.hero + '.svg)"></i><div><b>' + H.name + '</b><em>' + H.text + '</em><span>' + H.ability + '</span></div></div>' + pbDeckStrip(PBM.makeDeck(pbUi.hero));
+    html += '<h3 class="sk-h">Dungeon</h3><div class="pb-duns">' + PBM.DUNGEONS.map((id) => {
+      const D = PBM.DUNGEON[id], best = Math.max(-1, ...PBM.HEROES.map((h0) => (d.conquered[h0] && d.conquered[h0][id] != null ? d.conquered[h0][id] : -1)));
+      return '<button class="sk-gun' + (pbUi.dungeon === id ? ' on' : '') + '" data-pbdun="' + id + '"><b>' + D.name + '</b><span>' + (D.tutorial ? '2 floors' : best >= 0 ? 'Conquered on chain ' + ROMAN[best] : '7 floors') + '</span></button>';
+    }).join('') + '</div><p class="pb-flavour">' + PBM.DUNGEON[pbUi.dungeon].text + '</p>';
+    if (PBM.DUNGEON[pbUi.dungeon].tutorial) html += '<p class="gm-fixed">Tutorial Island: always the Pawnbarian on chain 0, and nobody dies here.</p>';
+    else {
+      const ch = Math.min(pbUi.chain, d.chain);
+      html += '<h3 class="sk-h">Chain</h3><div class="sk-ranks pb-chains">' + ROMAN.map((r, i) => '<button class="sk-rank' + (ch === i ? ' on' : '') + (i <= d.chain ? '' : ' locked') + '" data-pbchain="' + i + '"' + (i <= d.chain ? '' : ' disabled title="Conquer all three dungeons on chain ' + ROMAN[i - 1] + ' first"') + '><b class="notranslate">' + r + '</b></button>').join('') + '</div>' +
+        '<ul class="pb-chainlist">' + PBM.CHAINS.slice(0, ch + 1).map((t, i) => '<li><b class="notranslate">' + ROMAN[i] + '</b> ' + t + '</li>').join('') + '</ul>';
+    }
+    html += heroOpen ? '<button class="btn green gm-wide" data-gm="pbstart">Embark</button>' : '<p class="gm-block">Locked: win a dungeon with the Pawnbarian to open the other heroes.</p><button class="btn gm-wide" disabled>Embark</button>';
+    html += '<div class="gm-stats">' + d.runs + (d.runs === 1 ? ' run' : ' runs') + ', ' + d.won + ' won. Chain ' + ROMAN[d.chain] + ' is open: it opens the next once all three dungeons are conquered on it, by any heroes.</div>';
+    return html;
+  }
+  function pbLoot(run, F) {
+    const track = F.loot.map((x) => (x === 'gold' ? pbIcon('gold', 'loot', 'Gold') : x === 'heal' ? pbIcon('heal', 'loot', 'Heals a Heart') : pbIcon('blood', 'loot', 'Blood Crystal: heals a Heart'))).join('');
+    return '<div class="pb-loot" title="Paid out when the floor is cleared. The rightmost reward is lost after every turn the floor is not cleared."><span class="pb-gold">' + pbIcon('gold') + '<b>' + run.gold + '</b></span><span class="pb-track">' + (track || '<em>nothing left</em>') + '</span></div>';
+  }
+  function pbHearts(run, F) {
+    let s = '';
+    for (let i = 0; i < run.maxHearts; i++) s += pbIcon(i < run.hearts ? 'heart' : 'heartoff', 'heart');
+    if (F && F.shield) s += '<span class="pb-shield">' + pbIcon('shield') + '<b>' + F.shield + '</b></span>';
+    return '<div class="pb-hearts' + (Date.now() - pbUi.flash < 900 ? ' hurt' : '') + '">' + s + '</div>';
+  }
+  function pbFloorName(run) {
+    const D = PBM.DUNGEON[run.dungeon];
+    const ch = D.tutorial ? '' : ', chain ' + ROMAN[run.chain];
+    if (run.shop) return 'The shop before floor ' + run.shop.floor + ' of ' + PBM.floorsOf(run) + ch;
+    return run.gauntlet ? 'Gauntlet floor ' + run.gauntlet + ch : 'Floor ' + run.floor + ' of ' + PBM.floorsOf(run) + ch;
+  }
+  function pbCard() {
+    if (!PBM) return '<section class="gm-card"><p>Pawnbarian did not load.</p></section>';
+    const run = pbRun();
+    let html = '<section class="gm-card sk pb">';
+    if (!run) return html + pbSelector() + '</section>';
+    const D = PBM.DUNGEON[run.dungeon], H = PBM.HERO[run.hero];
+    html += '<div class="gm-head"><h2>' + D.name + '</h2><div class="gm-credits"><b>' + run.gold + '</b><span>gold</span></div></div>';
+    html += '<div class="sk-row small">' + H.name + ', ' + pbFloorName(run) + '</div>';
+    if (run.over) {
+      const won = run.over.won;
+      html += '<div class="sk-end ' + (won ? 'won' : 'lost') + '"><b>' + (won ? (run.gauntlet ? 'You rest after ' + (run.gauntlet - 1) + ' Gauntlet floors.' : 'The dungeon is conquered. You rest on your laurels.') : run.over.gaveUp ? 'You leave the dungeon on floor ' + run.floor + '.' : H.name + ' falls on ' + (run.gauntlet ? 'Gauntlet floor ' + run.gauntlet : 'floor ' + run.floor) + '.') + '</b></div>' +
+        '<div class="gm-row"><button class="btn green" data-gm="pbagain">Restart dungeon</button><button class="btn" data-gm="pbclose">Back</button></div>';
+      return html + pbDeckStrip(run.deck) + '</section>';
+    }
+    if (run.victory) {
+      html += '<div class="sk-end won"><b>The dungeon is conquered!</b><span>Rest on your laurels and end the run, or go on into the Gauntlet: endless floors, a boss every third, a full heal after each, no shops.</span></div>' +
+        '<div class="gm-row"><button class="btn green" data-gm="pbrest">Rest on your laurels</button><button class="btn" data-gm="pbgauntlet">Enter the Gauntlet</button></div>';
+      return html + pbDeckStrip(run.deck) + '</section>';
+    }
+    if (run.shop) {
+      const S = run.shop;
+      html += pbHearts(run, null) + '<p class="gm-fixed">The shop. Next floor is ' + S.floor + ' of ' + PBM.floorsOf(run) + '. Move as often as you like: land on an item to buy it, take the stairs on c5 to go on.</p>' +
+        '<div class="sk-row small pb-moves"><span>Moves here:</span>' + H.shop.map((p) => '<span class="pb-tag"><i class="pb-ic" style="background-image:url(' + pbPic(p) + ')"></i>' + PBM.PIECES[p].name + '</span>').join('') + '</div>';
+      html += '<div class="pb-offers">' + S.offers.map((o) => {
+        if (o.heart) return '<div class="pb-offer' + (o.sold ? ' sold' : '') + '">' + pbIcon('heart') + '<span><b>Heart</b><small>' + PBM.name(o.sq) + '</small></span><em>' + (o.sold ? 'bought' : o.price + ' gold') + '</em></div>';
+        const c = run.deck.find((x) => x.id === o.card);
+        return '<div class="pb-offer' + (o.sold ? ' sold' : '') + '"><i class="pb-ic" style="background-image:url(' + pbPic(c.p) + ')"></i>' + pbIcon(o.up) + '<span><b>' + PBM.UPGRADES[o.up].name + '</b><small>' + PBM.PIECES[c.p].name + '</small><small>' + PBM.name(o.sq) + '</small></span><em>' + (o.sold ? 'bought' : o.price + ' gold') + '</em></div>';
+      }).join('') + '</div>';
+      return html + '<div class="sk-row small pb-hov" id="pbHover"></div><h3 class="sk-h">Deck</h3>' + pbDeckStrip(run.deck) + '<div class="gm-row sk-acts"><button class="btn" data-gm="pbquit">Give up</button></div></section>';
+    }
+    const F = run.F;
+    html += pbLoot(run, F) + pbHearts(run, F);
+    if (F.over === 'cleared') {
+      html += '<div class="sk-end won"><b>Floor cleared!</b><span>' + (F.cleared.gold ? '+' + F.cleared.gold + ' gold.' : 'No gold left on the track.') + '</span>' + (F.cleared.heal ? '<span>Healed.</span>' : '') + '</div>' +
+        '<button class="btn green gm-wide" data-gm="pbnext">' + (run.gauntlet ? 'On to the next floor' : run.floor >= PBM.floorsOf(run) ? 'Onward' : 'To the shop') + '</button>';
+      return html + '</section>';
+    }
+    const st = [];
+    st.push('<span class="pb-acts" title="Actions left this turn">' + '<u></u>'.repeat(Math.max(0, F.actions)) + (F.actions ? '' : '<em>no actions left</em>') + '</span>');
+    if (F.rage) st.push('<span class="pb-tag red" title="Every card played gains a Cantrip and uses up one Rage">Rage ' + F.rage + '</span>');
+    if (H.dragon) st.push('<span class="pb-tag" title="Dragon Drop charges: one per monster a card kills">Charges ' + F.charges + '</span>');
+    if (F.webbed) st.push('<span class="pb-tag" title="A Webweaver died: 2 cards next turn">Webbed!</span>');
+    html += '<div class="sk-row pb-status">' + st.join('') + '</div>';
+    const pend = pbPending(run, F);
+    if (pend > 0) html += '<div class="sk-warn pb-check">' + (pend >= run.hearts && !PBM.DUNGEON[run.dungeon].tutorial ? 'Deadly: ' + pend + ' damage if you end the turn here.' : 'In danger: ' + pend + ' damage if you end the turn here.') + '</div>';
+    html += '<div class="pb-hand">' + F.hand.map((c, i) => {
+      const can = F.actions > 0 && PBM.cardTargets(run, F, c).length > 0;
+      return '<button class="pb-card' + (pbUi.deal ? ' deal' : '') + (pbUi.card === i ? ' on' : '') + (c.promo ? ' promo' : '') + (can ? '' : ' dead') + '" data-pbcard="' + i + '" style="--i:' + i + '" title="' + PBM.PIECES[PBM.pieceOf(c)].text + '"><span class="pb-ups">' + pbUps(c.up) + '</span><i style="background-image:url(' + pbPic(c) + ')"></i><b>' + pbPieceName(c) + '</b><kbd>' + (i + 1) + '</kbd></button>';
+    }).join('') + '</div>';
+    html += '<div class="gm-row sk-acts"><button class="btn green" data-gm="pbend">End turn (Space)</button>' +
+      (H.dragon ? '<button class="btn" data-gm="pbdrop"' + (F.actions > 0 ? '' : ' disabled') + ' title="Costs an action. A Shield and a promotion; from 1 charge a Diagonal Splash, from 2 a Cardinal Splash, from 3 a Cantrip, from 4 a Shield more per charge">Dragon Drop (' + F.charges + ')</button>' : '') +
+      '<button class="btn" data-gm="pbquit">Give up</button></div>';
+    html += '<div class="sk-row small pb-hov" id="pbHover"></div>';
+    html += '<h3 class="sk-h">Draw pile (' + F.draw.length + ')</h3>' + pbDeckStrip(F.draw.slice().sort((a, b) => a.id - b.id), 'small') + '<h3 class="sk-h">Discard (' + F.discard.length + ')</h3>' + pbDeckStrip(F.discard, 'small');
+    return html + '</section>';
+  }
+  function wirePb(box) {
+    box.querySelectorAll('[data-pbhero]').forEach((b) => { b.onclick = () => { pbUi.hero = b.dataset.pbhero; pbSaveSet(); renderModes(); renderAll(); }; });
+    box.querySelectorAll('[data-pbdun]').forEach((b) => { b.onclick = () => { pbUi.dungeon = b.dataset.pbdun; pbSaveSet(); renderModes(); }; });
+    box.querySelectorAll('[data-pbchain]').forEach((b) => { b.onclick = () => { pbUi.chain = +b.dataset.pbchain; pbSaveSet(); renderModes(); }; });
+    box.querySelectorAll('[data-pbcard]').forEach((b) => { b.onclick = () => { const i = +b.dataset.pbcard; pbUi.card = pbUi.card === i ? -1 : i; renderModes(); renderAll(); }; });
+  }
+  function pbKey(e) {
+    if (ui.tab !== 'modes' || gmTab !== 'pb' || !pbLive()) return false;
+    const F = pbRun().F;
+    if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); pbEnd(); return true; }
+    if (/^[1-4]$/.test(e.key) && F.hand[+e.key - 1]) { pbUi.card = pbUi.card === +e.key - 1 ? -1 : +e.key - 1; renderModes(); renderAll(); return true; }
+    if ((e.key === 'd' || e.key === 'D') && PBM.HERO[pbRun().hero].dragon) { pbDrop(); return true; }
+    if (e.key === 'Escape' && pbUi.card >= 0) { pbUi.card = -1; renderModes(); renderAll(); return true; }
+    return false;
+  }
+  function pbAct(k) {
+    const d = pbData(), run = pbRun();
+    if (k === 'pbstart') pbStart(false);
+    else if (k === 'pbagain') pbStart(true);
+    else if (k === 'pbclose') { if (d.run) d.run.closed = true; d.run = null; pbAfter(null); }
+    else if (k === 'pbend') pbEnd();
+    else if (k === 'pbdrop') pbDrop();
+    else if (k === 'pbnext') { if (PBM.next(d)) { if (run && run.victory) snd('win'); else snd('start'); pbAfter(null); } }
+    else if (k === 'pbrest') { PBM.rest(d); pbAfter(null); }
+    else if (k === 'pbgauntlet') { PBM.gauntlet(d); snd('start'); pbAfter(null); }
+    else if (k === 'pbquit') { if (run && confirm('Give up this run? It ends on floor ' + run.floor + '.')) { PBM.giveUp(d); pbAfter(null); } }
+    else return false;
+    return true;
+  }
   function wireModes(box) {
     box.querySelectorAll('[data-tp]').forEach((b) => { b.onclick = () => { const set = SETS[b.dataset.tp](); set.twoP = !set.twoP; if (set.twoP) set.match = null; saveSets(); renderModes(); renderAll(); }; });
     box.querySelectorAll('[data-tpflip]').forEach((b) => { b.onclick = () => { const set = SETS[b.dataset.tpflip](); set.flip = !set.flip; saveSets(); renderModes(); }; });
     wireDrawback(box);
     wireHex(box);
+    wireOuro(box);
+    wireShogi(box);
     wireSk(box);
+    wirePb(box);
     box.querySelectorAll('[data-gmtab]').forEach((b) => {
       b.onclick = () => { gmTab = b.dataset.gmtab; try { localStorage.setItem('powerchess_gmtab', gmTab); } catch (e) { /* private mode */ } msSel = null; renderModes(); renderAll(); };
     });
     box.querySelectorAll('[data-tier]').forEach((b) => { b.onclick = () => startMode('dice', b.dataset.tier); });
     box.querySelectorAll('[data-peek]').forEach((b) => { b.onclick = () => { msPeek = msPeek === b.dataset.peek ? null : b.dataset.peek; ui.info = null; renderModes(); }; });
-    box.querySelectorAll('[data-offer]').forEach((b) => {
-      b.onclick = () => {
-        syncModes();
-        const o = Modes.offersOf(MS.run && MS.run.reward)[+b.dataset.offer];
-        if (!o || !Modes.chooseOffer(MS.run, +b.dataset.offer)) return;
-        if (o.kind === 'up') snd('gold');
-        saveModes(); renderModes(); renderAll();
-      };
-    });
     box.querySelectorAll('[data-gm]').forEach((b) => {
       b.onclick = () => {
         const k = b.dataset.gm;
         syncModes();
+        if (k.indexOf('pb') === 0 && pbAct(k)) return;
         if (k === 'resume') { b.disabled = true; b.textContent = 'Loading'; resumePending(); }
         else if (k === 'dbstart') startMode('drawback', JSON.parse(JSON.stringify(dbSet)));
         else if (k === 'dc2start') startMode('dice', JSON.parse(JSON.stringify(diceSet)));
         else if (k === 'hxstart') startMode('hex', JSON.parse(JSON.stringify(hexSet)));
+        else if (k === 'sgstart') startShogi();
         else if (k === 'skstart') skStart(false);
         else if (k === 'dailystart') startDaily();
         else if (k === 'skagain') skStart(true);
@@ -6823,16 +7866,19 @@
         else if (k === 'skdanger') { skUi.danger = !skUi.danger; skSaveSet(); renderModes(); renderAll(); }
         else if (k === 'sksearch') { const r = skRun(); if (r && SKM.search(r)) { saveModes(); renderModes(); } }
         else if (k === 'skquit') { const r = skRun(); if (r && confirm('Give up this run? It ends on floor ' + r.floor + '.')) { r.phase = 'lost'; if (r.F) r.F.over = 'dead'; skSettle(); saveModes(); renderModes(); renderAll(); } }
-        else if (k === 'back') { if (Modes.cancelPlace(MS.run)) { saveModes(); renderModes(); renderAll(); } }
+        else if (k === 'ouback') { if (Ouro.cancelPlace(MS.run)) { saveModes(); renderModes(); renderAll(); } }
+        else if (k === 'ourostart') { const first = !MS.runs.count; Ouro.newRun(MS, Modes.newSeed(), first ? null : ouStart.slice()); ouStart = []; ouSel = null; saveModes(); snd('start'); renderModes(); renderAll(); }
+        else if (k === 'ouroclose') { MS.run = null; saveModes(); renderModes(); renderAll(); }
+        else if (k === 'travel') { const run = ouroRun(); msSel = null; if (run && ouSel && Ouro.travel(run, ouSel)) { ouSel = null; saveModes(); snd('start'); renderModes(); renderAll(); } }
+        else if (k === 'oleave') { const run = ouroRun(); if (run && Ouro.leave(run)) { obGet = null; saveModes(); renderModes(); renderAll(); } }
         else if (k === 'giveup') giveUpPending();
-        else if (k === 'newrun') { Modes.newRun(MS, Modes.newSeed()); saveModes(); renderModes(); renderAll(); }
-        else if (k === 'reveal') { msSel = null; if (Modes.reveal(MS.run)) { saveModes(); snd('start'); renderModes(); renderAll(); } }
-        else if (k === 'skip') { if (Modes.skipReward(MS.run)) { saveModes(); renderModes(); renderAll(); } }
         else if (k === 'fight') startMode('run');
         else if (k === 'abandon') {
           if (MS.pending && MS.pending.kind === 'run') { toast('Finish or give up the stage that is still running first'); return; }
-          if (!confirm('Abandon this run? It ends here and counts as ' + MS.run.cleared + ' stages cleared.')) return;
-          Modes.settleRun(MS, 'l'); saveModes(); renderModes(); renderAll();
+          const run = ouroRun();
+          if (!run || !confirm('Abandon this run? It ends here, after ' + run.won + (run.won === 1 ? ' battle' : ' battles') + ' won.')) return;
+          if (!run.battle) run.battle = { id: run.at || 'none', type: 'recruit', boss: false, reward: 0 };
+          Ouro.settle(MS, 'l', {}); saveModes(); renderModes(); renderAll();
         }
       };
     });
@@ -6920,6 +7966,14 @@
     if (w !== 8 || h !== 8) ed.castling = '';
     edSync();
   }
+  /* One king a side: the king, the Shogi King and the Shotgun King are each their side's king, so a new one put on the
+     board takes the side's other king off. */
+  const isKingType = (p) => !!p && 'kѣґ'.indexOf(p.toLowerCase()) >= 0;
+  function oneKing(board, sq) {
+    const p = board[sq];
+    if (!isKingType(p)) return;
+    for (let q = 0; q < board.length; q++) if (q !== sq && isKingType(board[q]) && R.colorOf(board[q]) === R.colorOf(p)) board[q] = '';
+  }
   function editorDown(sq, e) {
     if (ed.brush === null) {
       if (!ed.board[sq]) return;
@@ -6970,6 +8024,7 @@
     ui.paint = { v: ed.brush };
     drop(T.ducks, sq); drop(T.bducks, sq); // a piece pushes a duck off its square
     ed.board[sq] = ed.brush;
+    oneKing(ed.board, sq);
     drop(ed.ghosts, sq); drop(ed.snipers, sq); drop(ed.helmets, sq); drop(ed.vests, sq); // a new piece, without the upgrades of the one before
     edSync();
   }
@@ -7050,7 +8105,7 @@
     }
     edDiagram.used = used; // which markers this piece needs, for the legend next to it
     edDiagram.letter = letter;
-    g += '<image href="' + (R.isFairy(letter) && R.fairyOf(letter).pic ? 'pieces/fairy/' + c + '_' + R.fairyOf(letter).pic + '.svg' : pieceUrl(R.isFairy(letter) ? (c === 'w' ? R.fairyOf(letter).base : R.fairyOf(letter).base.toLowerCase()) : letter)) + '" x="' + (4 * cell + 1) + '" y="' + (4 * cell + 1) + '" width="' + (cell - 2) + '" height="' + (cell - 2) + '"/>';
+    g += '<image href="' + (R.isFairy(letter) && R.fairyOf(letter).pic ? fairyPic(c, R.fairyOf(letter).pic) : pieceUrl(R.isFairy(letter) ? (c === 'w' ? R.fairyOf(letter).base : R.fairyOf(letter).base.toLowerCase()) : letter)) + '" x="' + (4 * cell + 1) + '" y="' + (4 * cell + 1) + '" width="' + (cell - 2) + '" height="' + (cell - 2) + '"/>';
     return g + '</svg>';
   }
   /* The card pinned to the top of the editor panel: what is in hand, with its movement diagram. */
@@ -7089,15 +8144,15 @@
     const fp = $('#fairyPalette');
     fp.innerHTML = '';
     // three groups, each white then black: the classic fairy pieces, The Ouroboros King's units (from the crusader on), checkers
-    const cut = ED_ORDER.indexOf('o'), CHECKERS = ['є', 'ї'], ULTIMATE = ['ѓ', 'ќ', 'ў', 'џ'], SHOTGUN = ['ґ'], apart = CHECKERS.concat(ULTIMATE, SHOTGUN);
-    [['Classic fairy pieces', ED_ORDER.slice(0, cut)], ['The Ouroboros King', ouroOrder(ED_ORDER.slice(cut).filter((l) => apart.indexOf(l) < 0))], ['Checkers', CHECKERS], ['Chess Ultimate', ULTIMATE], ['Shotgun King (one per side, it is the king)', SHOTGUN]].forEach((grp) => {
+    const cut = ED_ORDER.indexOf('o'), CHECKERS = ['є', 'ї'], ULTIMATE = ['ѓ', 'ќ', 'ў', 'џ'], SHOTGUN = ['ґ'], SHOGI = ED_ORDER.filter((l) => R.FAIRY[l].shogi), apart = CHECKERS.concat(ULTIMATE, SHOTGUN, SHOGI);
+    [['Classic fairy pieces', ED_ORDER.slice(0, cut)], ['The Ouroboros King', ouroOrder(ED_ORDER.slice(cut).filter((l) => apart.indexOf(l) < 0))], ['Checkers', CHECKERS], ['Chess Ultimate', ULTIMATE], ['Shotgun King (one per side, it is the king)', SHOTGUN], ['Shogi (they promote on the far rank)', ['ѣ', 'ѥ', 'ѩ', 'ѭ', 'ѯ', 'ѳ', 'ѹ', 'ѽ', 'ѧ', 'ѫ', 'ѱ', 'ѵ', 'ѻ', 'ѿ']]].forEach((grp) => {
       fp.appendChild(h('div', 'palhead', grp[0]));
       ['w', 'b'].forEach((c) => {
         grp[1].forEach((l) => {
           const def = R.FAIRY[l], letter = c === 'w' ? l.toUpperCase() : l;
           const b = h('button', ed.brush === letter ? 'on' : '', def.pic ? '' : '<i class="dk-' + c + '">' + def.san + '</i>');
           b.title = (c === 'w' ? 'White ' : 'Black ') + def.name + ': ' + def.how;
-          if (def.pic) b.style.backgroundImage = def.pic === 'shotgunking' ? skGunKing(c) : 'url(pieces/fairy/' + c + '_' + def.pic + '.svg)';
+          if (def.pic) b.style.backgroundImage = def.pic === 'shotgunking' ? skGunKing(c) : 'url(' + fairyPic(c, def.pic) + ')';
           b.onclick = () => { ed.brush = letter; renderEditor(); };
           fp.appendChild(b);
         });
@@ -7170,7 +8225,7 @@
 
   /* ---------- preset browser ---------- */
   const presetUi = { tab: 'ouroboros', terrain: true, size: 'all' };
-  const PRESET_TABS = [['ouroboros', 'The Ouroboros King'], ['chess', 'Chess'], ['fairy', 'Fairy pieces'], ['checkers', 'Checkers'], ['handicap', 'Handicaps and endgames'], ['terrainOnly', 'Terrain only']];
+  const PRESET_TABS = [['ouroboros', 'The Ouroboros King'], ['chess', 'Chess'], ['fairy', 'Fairy pieces'], ['checkers', 'Checkers'], ['shogi', 'Shogi'], ['handicap', 'Handicaps and endgames'], ['terrainOnly', 'Terrain only']];
   // terrain by square names, for a board of the given size (square names depend on it)
   const toTerrain = (t, w, h) => {
     R.use({ W: w || 8, H: h || 8 });
@@ -7186,18 +8241,18 @@
   }
   // A picture of any piece, the fairy ones included.
   function pieceSrc(p) {
-    if (R.isFairy(p)) { const d = R.fairyOf(p); if (d.pic) return 'pieces/fairy/' + R.colorOf(p) + '_' + d.pic + '.svg'; return pieceUrl(R.colorOf(p) === 'w' ? d.base : d.base.toLowerCase()); }
+    if (R.isFairy(p)) { const d = R.fairyOf(p); if (d.pic) return fairyPic(R.colorOf(p), d.pic); return pieceUrl(R.colorOf(p) === 'w' ? d.base : d.base.toLowerCase()); }
     return pieceUrl(p);
   }
   // A small board drawn as SVG: squares in the current colours, terrain, pieces.
   function boardThumb(board, terrain, w, h) {
     w = w || 8; h = h || 8;
-    const th = THEMES.find((t) => t[0] === settings.theme) || THEMES[0], c = 40;
+    const th = [settings.theme].concat(boardColors(settings.theme)), c = 40;
     let g = '<svg viewBox="0 0 ' + w * c + ' ' + h * c + '" class="pm-board">';
     for (let i = 0; i < w * h; i++) {
       const r = Math.floor(i / w), f = i % w, x = f * c, y = r * c;
       if (terrain.holes && terrain.holes.indexOf(i) >= 0) continue; // a square taken off the board: the card shows through
-      g += '<rect x="' + x + '" y="' + y + '" width="' + c + '" height="' + c + '" fill="' + ((r + f) % 2 ? th[2] : th[1]) + '"/>';
+      g += '<rect x="' + x + '" y="' + y + '" width="' + c + '" height="' + c + '" fill="' + ((r + f) % 2 ? th[2] : th[1]) + '"' + (th[3] ? ' stroke="' + th[3] + '" stroke-width="1"' : '') + '/>';
       if (terrain.water.indexOf(i) >= 0) g += '<rect x="' + x + '" y="' + y + '" width="' + c + '" height="' + c + '" fill="#3b86dc" opacity=".85"/>';
       if (terrain.walls.indexOf(i) >= 0) g += '<path d="M' + (x + 7) + ' ' + (y + 29) + 'q-4-9 4-16t18-4q9 4 7 14t-12 10q-13 2-17-4z" fill="#8a8278" stroke="#463f38" stroke-width="2"/>';
       const pi = terrain.portals.indexOf(i);
@@ -7209,7 +8264,22 @@
   const SIZE_ORDER = ['8x8', '10x10', '12x12', '16x16', '20x20', '26x26', '4x20', '7x13'];
   const sizeOf = (p) => { const d = fenDims(p.f || R.START_FEN); return d.W + 'x' + d.H; };
   const sizeRank = (k) => { const i = SIZE_ORDER.indexOf(k); return i < 0 ? 99 : i; };
+  /* Shogi set-ups in the app's own letters (the rules of a normal game: the pieces move as in Shogi and promote on the
+     far rank; no drops unless Reinforcements is on). In a handicap game the stronger player (Black here) gives up
+     pieces and moves first. */
+  const SHOGI_HC = (top, second) => top + '/' + second + '/ѽѽѽѽѽѽѽѽѽ/9/9/9/ѼѼѼѼѼѼѼѼѼ/1Ѩ5Ѥ1/ѸѲѮѬѢѬѮѲѸ b - - 0 1';
+  const SHOGI_PRESETS = [
+    { g: 'shogi', s: 'start', n: 'Shogi', d: 'The start of a game of Shogi on 9 by 9.', f: 'ѹѳѯѭѣѭѯѳѹ/1ѥ5ѩ1/ѽѽѽѽѽѽѽѽѽ/9/9/9/ѼѼѼѼѼѼѼѼѼ/1Ѩ5Ѥ1/ѸѲѮѬѢѬѮѲѸ w - - 0 1', t: null },
+    { g: 'shogi', s: 'hc', n: 'Lance handicap', d: 'Black gives up a lance and moves first.', f: SHOGI_HC('ѹѳѯѭѣѭѯѳ1', '1ѥ5ѩ1'), t: null },
+    { g: 'shogi', s: 'hc', n: 'Bishop handicap', d: 'Black plays without the bishop and moves first.', f: SHOGI_HC('ѹѳѯѭѣѭѯѳѹ', '1ѥ7'), t: null },
+    { g: 'shogi', s: 'hc', n: 'Rook handicap', d: 'Black plays without the rook and moves first.', f: SHOGI_HC('ѹѳѯѭѣѭѯѳѹ', '7ѩ1'), t: null },
+    { g: 'shogi', s: 'hc', n: 'Two-piece handicap', d: 'Black gives up rook and bishop.', f: SHOGI_HC('ѹѳѯѭѣѭѯѳѹ', '9'), t: null },
+    { g: 'shogi', s: 'hc', n: 'Four-piece handicap', d: 'Rook, bishop and both lances.', f: SHOGI_HC('1ѳѯѭѣѭѯѳ1', '9'), t: null },
+    { g: 'shogi', s: 'hc', n: 'Six-piece handicap', d: 'Rook, bishop, both lances and both knights.', f: SHOGI_HC('2ѯѭѣѭѯ2', '9'), t: null },
+    { g: 'shogi', s: 'mini', n: 'Mini Shogi', d: 'Shogi on 5 by 5: one of each piece but knight and lance.', f: 'ѥѩѯѭѣ/4ѽ/5/Ѽ4/ѢѬѮѨѤ w - - 0 1', t: null }
+  ];
   function presetItems(tab) {
+    if (tab === 'shogi') return SHOGI_PRESETS;
     if (tab === 'handicap') return PRESETS.slice(1).map((p) => ({ n: p[0], d: 'Uneven on purpose: one side is ahead.', f: p[1], t: null }));
     if (tab === 'terrainOnly') return [{ n: 'No terrain', d: 'Takes every boulder, lake and gate off the board.', t: null, only: true }]
       .concat(BOARD_PRESETS.filter((p) => p.g === 'chess' && sizeOf(p) === '8x8').map((p) => ({ n: p.n, d: p.d, t: p.t, only: true })));
@@ -7222,8 +8292,8 @@
   const presetTerrain = (p) => (p.only || presetUi.terrain ? p.t : null);
   // fp: the army for the open board, where a preset needs one (its terrain blocks a line the plain board leaves open)
   const presetFen = (p) => (!presetTerrain(p) && p.fp ? p.fp : p.f);
-  const PRESET_SECTIONS = { ck: '', start: 'Start', terrain: 'Armies on terrain', small: 'Small armies', army: 'Armies', huge: 'Big armies', corner: 'Corner starts', boss: 'Boss fights' };
-  const SECTION_ORDER = { ck: 0, start: 0, terrain: 1, small: 2, army: 3, huge: 4, corner: 5, boss: 6 };
+  const PRESET_SECTIONS = { ck: '', hc: 'Handicaps', mini: 'Smaller boards', start: 'Start', terrain: 'Armies on terrain', small: 'Small armies', army: 'Armies', huge: 'Big armies', corner: 'Corner starts', boss: 'Boss fights' };
+  const SECTION_ORDER = { ck: 0, hc: 1, mini: 2, start: 0, terrain: 1, small: 2, army: 3, huge: 4, corner: 5, boss: 6 };
   const sizeName = (k) => k.replace('x', ' by ');
   function renderPresets() {
     const tabs = $('#pmTabs'), grid = $('#pmGrid');
@@ -7236,8 +8306,9 @@
     const sw = $('#pmTerrain');
     sw.className = 'sw' + (presetUi.terrain ? ' on' : '');
     sw.onclick = () => { presetUi.terrain = !presetUi.terrain; renderPresets(); };
-    $('#pmTerrainBox').style.display = presetUi.tab === 'terrainOnly' || presetUi.tab === 'handicap' || presetUi.tab === 'checkers' ? 'none' : '';
+    $('#pmTerrainBox').style.display = presetUi.tab === 'terrainOnly' || presetUi.tab === 'handicap' || presetUi.tab === 'checkers' || presetUi.tab === 'shogi' ? 'none' : '';
     $('#pmNote').textContent = presetUi.tab === 'checkers' ? 'Checkers set-ups on every board size: the classic start, inverted colours, whole rows, a crowned back row and kings only. Picking one switches the game to Checkers.'
+      : presetUi.tab === 'shogi' ? 'Shogi set-ups for a normal game: the shogi pieces move as in Shogi and promote on the far rank. With Reinforcements on, what you take can be dropped back. The full game, with its hand and promotion zone, is under Game Modes.'
       : presetUi.tab === 'ouroboros' ? 'Armies and witches of The Ouroboros King on every board size, each balanced to an even start: the search rates it within half a pawn, with and without its terrain, and big armies of more than 40 pieces within four. Picking one switches on king capture, the rules of the game.'
       : presetUi.tab === 'fairy' ? 'Chancellors, archbishops, amazons, camels, nightriders and the other classic fairy pieces, on every board size. Each starts even: within half a pawn, big armies of more than 40 pieces within four.'
       : presetUi.tab === 'terrainOnly' ? 'Puts the terrain under the pieces already on the board. A boulder is left out where a piece stands.'
@@ -8122,6 +9193,8 @@
   $('#rvSummary').onclick = () => { rv.status = 'summary'; rv.trial = null; rv.retry = null; renderAll(); };
   $('#endNew').onclick = () => { G.endOpen = false; setTab(G.modeEnd ? 'modes' : 'new'); };
   $('#edStart').onclick = () => { if (ed.W === 8 && ed.H === 8) edApplyFen(R.START_FEN); else edResize(ed.W, ed.H, true); };
+  // on a phone the editor's sections fold (CSS), a tap on a heading opens or closes one
+  document.querySelectorAll('#view-editor .edsec > h3').forEach((h3) => { h3.onclick = () => h3.parentElement.classList.toggle('open'); });
   $('#edClear').onclick = () => {
     // just the two kings, in the middle of their home ranks, on a board of the same size
     const w = ed.W, h = ed.H, k = Math.floor(w / 2);
@@ -8209,9 +9282,9 @@
 
   // Debug handle for the console.
   window.PC = {
-    get game() { return G; }, get custom() { return custom; }, ui: ui, setup: setup, settings: settings, engine: engine, rules: R,
+    get game() { return G; }, get modes() { return MS; }, saveModes: () => saveModes(), get custom() { return custom; }, ui: ui, setup: setup, settings: settings, engine: engine, rules: R,
     puzzle: (id) => pzPowerReady().then(() => { const it = (pz.power || []).concat(pz.list || []).find((x) => x.id === id); if (it) { setTab('puzzles'); pzStart(it, 'custom'); } return !!it; }), get pz() { return pz.cur; },
-    makeBrain: makeBrain, brains: { bot: botBrain, eval: evalBrain }, importPgn: importPgnText, pgn: (g) => pgn(g || G), exportArchive: exportArchive, get mine() { return mine; }, get puzzles() { return pz; }, get puzzleProfile() { return prof; }, puzzleStart: (item, kind) => pzStart(item, kind || 'custom'), get review() { return rv; }, get skins() { return SKIN; }, get analysis() { return A; }, get archive() { return archive; }, openArchived: openArchived, analyseGame: analyseGame, analyseFresh: analyseFresh, analyseText: analyseText, aMove: (uci) => { const m = A.B.find(A.legal, uci); if (m) analysisMove(m); return !!m; }, aGoto: aGoto, startReview: startReview, start: startGame, canAct: canAct, canPremove: canPremove, refresh: changed, sk: () => skData(), renderModes: () => renderModes(), sanMap: (st) => sanMap(st),
+    makeBrain: makeBrain, brains: { bot: botBrain, eval: evalBrain }, importPgn: importPgnText, pgn: (g) => pgn(g || G), exportArchive: exportArchive, get mine() { return mine; }, get puzzles() { return pz; }, get puzzleProfile() { return prof; }, puzzleStart: (item, kind) => pzStart(item, kind || 'custom'), get review() { return rv; }, get skins() { return SKIN; }, get analysis() { return A; }, get archive() { return archive; }, openArchived: openArchived, analyseGame: analyseGame, analyseFresh: analyseFresh, analyseText: analyseText, aMove: (uci) => { const m = A.B.find(A.legal, uci); if (m) analysisMove(m); return !!m; }, aGoto: aGoto, startReview: startReview, start: startGame, canAct: canAct, canPremove: canPremove, refresh: changed, sk: () => skData(), pb: { data: () => pbData(), ui: pbUi, down: (sq) => pbDown(sq), end: () => pbEnd(), act: (k) => pbAct(k) }, renderModes: () => renderModes(), sanMap: (st) => sanMap(st),
     play: (m) => { if (canAct()) applyMove(m); }, gild: (sq) => { if (canAct()) doGild(sq); }, freeze: (sq) => { if (canAct()) doFreeze(sq); }, shield: (sq) => { if (canAct()) doShield(sq); }, convert: (sq) => { if (canAct()) doConvert(sq); },
     move: (uci) => {
       if (!G || !canAct()) return false;

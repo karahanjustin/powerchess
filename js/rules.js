@@ -98,7 +98,7 @@
   for (var tr = 1; tr <= 3; tr++) for (var tf = 1; tf <= 3; tf++) { TROLL_R.push([-tr, tf], [tr, -tf]); }
   for (tr = 1; tr <= 3; tr++) for (tf = 1; tf <= 3; tf++) { TROLL_L.push([-tr, -tf], [tr, tf]); }
   /* rot: the offsets are given for White and turned by 180 degrees for Black (fwd only mirrors the rank). */
-  function ride(d, max, o) { o = o || {}; return { k: 'ride', d: d, max: max || 0, min: o.min || 1, jump: !!o.jump, hop: !!o.hop, mode: o.mode || 'mc', fwd: !!o.fwd }; }
+  function ride(d, max, o) { o = o || {}; return { k: 'ride', d: d, max: max || 0, min: o.min || 1, jump: !!o.jump, hop: !!o.hop, mode: o.mode || 'mc', fwd: !!o.fwd, thru: !!o.thru, bounce: !!o.bounce }; }
   function leap(d, o) { o = o || {}; return { k: 'leap', d: d, mode: o.mode || 'mc', fwd: !!o.fwd, rot: !!o.rot }; }
   function walk(n) { return { k: 'walk', n: n }; }
   // checkers: take by jumping over the piece next to it onto the empty square beyond (that piece is removed)
@@ -213,7 +213,25 @@
     // Shotgun King: a king with the royal shotgun (from Shotgun King: The Final Checkmate), one per side
     'ґ': { name: 'Shotgun King', san: 'SK', pic: 'shotgunking', base: 'K', badge: '', value: 0, how: 'The king with the royal shotgun. It is its side\'s king (it can be checked and mated) and steps one square any way. Instead of a move it can shoot: 4 pellets fan out over 55 degrees and fly 3 to 5 squares, each one doing 1 damage to the first enemy piece it meets. In a game with a Shotgun King every piece has hit points (pawn and knight 3, bishop 4, rook and queen 5, king 8). It holds 2 shells and 6 in reserve: a step or a reload turn puts one shell back into the gun, a step also brings 1 shell back to the reserve. In check it may shoot the piece giving check if the pellets can kill it, and if that piece survives, the king falls', atoms: [ride(KG, 1)], royal: true, shotgun: true },
     'џ': { name: 'Blob', san: 'Bb', pic: 'blob', base: 'P', badge: '', value: 45, how: 'Left behind by a slime. It never moves and only stands in the way, until it is taken like any other piece', atoms: [] },
-    'ъ': { name: 'Golem', san: 'Gl', pic: 'golem', base: 'R', badge: 'K', value: 520, how: 'Moves like a rook, a king or a knight, but only to take: it never moves to an empty square', atoms: [ride(ORTH, 0, { mode: 'c' }), ride(KG, 1, { mode: 'c' }), leap(KN, { mode: 'c' })] }
+    'ъ': { name: 'Golem', san: 'Gl', pic: 'golem', base: 'R', badge: 'K', value: 520, how: 'Moves like a rook, a king or a knight, but only to take: it never moves to an empty square', atoms: [ride(ORTH, 0, { mode: 'c' }), ride(KG, 1, { mode: 'c' }), leap(KN, { mode: 'c' })] },
+    /* Shogi: the pieces of Japanese chess, with their own moves. On the board they point at the other side, so both
+       sides' pieces look the same but turned round (Settings can colour them). In a chess game a piece that can
+       promote does so on the enemy back rank (shogiUp: what it turns into); in the Shogi mode the game's own rules
+       apply (Fairy-Stockfish): the last three ranks, drops, and the rest. */
+    'ѣ': { name: 'Shogi King', san: 'Ou', pic: 'shogi_king', base: 'K', badge: '', value: 0, how: 'Steps one square in any direction. It is royal: it must be kept safe just like the king, and losing it loses the game', atoms: [ride(KG, 1)], royal: true, shogi: true },
+    'ѥ': { name: 'Rook (Hisha)', san: 'Hi', pic: 'shogi_rook', base: 'R', badge: '', value: 500, how: 'Slides any distance straight, like a rook. Promotes to a Dragon King', atoms: [ride(ORTH)], shogi: true, shogiUp: 'ѧ' },
+    'ѧ': { name: 'Dragon King (Ryuo)', san: 'Ry', pic: 'shogi_dragon', base: 'R', badge: 'K', value: 700, how: 'The promoted rook: slides any distance straight, or steps one square diagonally', atoms: [ride(ORTH), ride(DIAG, 1)], shogi: true },
+    'ѩ': { name: 'Bishop (Kakugyo)', san: 'Ka', pic: 'shogi_bishop', base: 'B', badge: '', value: 330, how: 'Slides any distance diagonally, like a bishop. Promotes to a Dragon Horse', atoms: [ride(DIAG)], shogi: true, shogiUp: 'ѫ' },
+    'ѫ': { name: 'Dragon Horse (Ryuma)', san: 'Um', pic: 'shogi_horse', base: 'B', badge: 'K', value: 560, how: 'The promoted bishop: slides any distance diagonally, or steps one square straight', atoms: [ride(DIAG), ride(ORTH, 1)], shogi: true },
+    'ѭ': { name: 'Gold General (Kinsho)', san: 'Ki', pic: 'shogi_gold', base: 'K', badge: 'R', value: 300, how: 'Steps one square straight or diagonally forward: six squares, not diagonally back. It does not promote', atoms: [ride(ORTH, 1), ride(FWD_DIAG, 1, { fwd: true })], shogi: true },
+    'ѯ': { name: 'Silver General (Ginsho)', san: 'Gi', pic: 'shogi_silver', base: 'K', badge: 'B', value: 270, how: 'Steps one square diagonally or straight forward: five squares, not sideways or straight back. Promotes to a gold-moving silver', atoms: [ride(DIAG, 1), ride(FWD, 1, { fwd: true })], shogi: true, shogiUp: 'ѱ' },
+    'ѱ': { name: 'Promoted Silver (Narigin)', san: 'NG', pic: 'shogi_psilver', base: 'K', badge: 'R', value: 300, how: 'The promoted silver: moves like a gold general, one square straight or diagonally forward', atoms: [ride(ORTH, 1), ride(FWD_DIAG, 1, { fwd: true })], shogi: true },
+    'ѳ': { name: 'Knight (Keima)', san: 'Ke', pic: 'shogi_knight', base: 'N', badge: '', value: 180, how: 'Jumps two squares forward and one to the side, over anything: only the two forward knight jumps. Promotes to a gold-moving knight', atoms: [leap([[-2, -1], [-2, 1]], { fwd: true })], shogi: true, shogiUp: 'ѵ' },
+    'ѵ': { name: 'Promoted Knight (Narikei)', san: 'NK', pic: 'shogi_pknight', base: 'K', badge: 'R', value: 300, how: 'The promoted knight: moves like a gold general, one square straight or diagonally forward', atoms: [ride(ORTH, 1), ride(FWD_DIAG, 1, { fwd: true })], shogi: true },
+    'ѹ': { name: 'Lance (Kyosha)', san: 'Ky', pic: 'shogi_lance', base: 'R', badge: 'P', value: 220, how: 'Slides any distance straight forward, never back or sideways. Promotes to a gold-moving lance', atoms: [ride(FWD, 0, { fwd: true })], shogi: true, shogiUp: 'ѻ' },
+    'ѻ': { name: 'Promoted Lance (Narikyo)', san: 'NY', pic: 'shogi_plance', base: 'K', badge: 'R', value: 300, how: 'The promoted lance: moves like a gold general, one square straight or diagonally forward', atoms: [ride(ORTH, 1), ride(FWD_DIAG, 1, { fwd: true })], shogi: true },
+    'ѽ': { name: 'Shogi Pawn (Fuhyo)', san: 'Fu', pic: 'shogi_pawn', base: 'P', badge: '', value: 80, how: 'Steps one square straight forward, and takes that way too. Promotes to a tokin', atoms: [ride(FWD, 1, { fwd: true })], shogi: true, shogiUp: 'ѿ', pawn: true },
+    'ѿ': { name: 'Tokin', san: 'To', pic: 'shogi_tokin', base: 'K', badge: 'R', value: 300, how: 'The promoted pawn: moves like a gold general, one square straight or diagonally forward', atoms: [ride(ORTH, 1), ride(FWD_DIAG, 1, { fwd: true })], shogi: true }
   };
   // the abilities that stay with the piece after it has moved, so that an Assassin and a Blade Dancer share theirs
   FAIRY['λ'].again = true;   // the blade dancer is the assassin's upgrade
@@ -225,7 +243,8 @@
   var LOW = {}, DEF = {};
   'pnbrqkPNBRQK'.split('').forEach(function (ch) { LOW[ch] = ch.toLowerCase(); });
   FAIRY_LETTERS.forEach(function (l) { LOW[l] = l; LOW[l.toUpperCase()] = l; DEF[l] = FAIRY[l]; DEF[l.toUpperCase()] = FAIRY[l]; });
-  var REACHED = new Int32Array(MAXN), STAMP = 0; // squares a fairy piece has already reached in this listing
+  var REACHED = new Int32Array(MAXN), FEATHER = new Int32Array(MAXN), STAMP = 0; // squares a fairy piece has already reached in this listing (FEATHER: swaps)
+  var NO_DEF = {}; // a chess piece moved by its atoms (see pseudoMoves)
   /* Upgrades placed by hand on single pieces (board editor): s.ghosts are pieces that move through their own
      pieces like Ghost power-ups, s.snipers ('camo') shoot what they could take, like Sniper power-ups. The
      lists hold squares and follow their pieces from move to move. A gold statue has no upgrade left. */
@@ -241,7 +260,7 @@
      2 every piece but the pawns, 3 every piece. Kings only where the upgrade lets them (snipers, ghosts). */
   function armyGets(p, level, kings) {
     if (!p || (isRoyal(p) && !kings)) return false;
-    var t = typeOf(p), pawnish = t === 'p' || (!!DEF[p] && !!DEF[p].promote);
+    var t = typeOf(p), pawnish = t === 'p' || (!!DEF[p] && (!!DEF[p].promote || !!DEF[p].pawn));
     if (level === 1) return 'pnbrqk'.indexOf(t) >= 0 && !DEF[p];
     if (level === 2) return !pawnish;
     return true;
@@ -353,11 +372,15 @@
      work like the Portals power-up for both sides. */
   function terrainOf(cfg) { return cfg && cfg.terrain ? cfg.terrain : null; }
   // Squares nothing can enter or pass: boulders (an infiltrator may break one) and holes, squares taken out of the board.
-  function isWall(cfg, sq, s) { var t = cfg.terrain; return (!!t && ((!!t.holes && t.holes.length > 0 && t.holes.indexOf(sq) >= 0) || isRock(cfg, sq, s))) || duckAt(s, sq); }
+  function isWall(cfg, sq, s) { var t = cfg.terrain; return (!!t && ((!!t.holes && t.holes.length > 0 && t.holes.indexOf(sq) >= 0) || isRock(cfg, sq, s))) || duckAt(s, sq) || bombAt(s, sq) || (!!s && !!s.boulders && s.boulders.length > 0 && s.boulders.indexOf(sq) >= 0); }
+  /* The Ouroboros King: a bomb stands on a square like a boulder, but it can be taken, and then it blows up with
+     everything on the eight squares around it, the piece that took it too (a martyr and a side with the Dwarven
+     helmet stay). s.boulders are boulders an item or a relic put there during the game. */
+  function bombAt(s, sq) { return !!s && !!s.bombs && s.bombs.length > 0 && s.bombs.indexOf(sq) >= 0; }
   /* Ducks (Duck Chess): a duck stands on a square like a boulder, nothing enters or passes it and nothing takes it, a
      knight jumps over. Yellow ones (s.ducks) have to be moved after every move, blue ones (s.bducks) may be. */
   function duckAt(s, sq) { return !!s && ((!!s.ducks && s.ducks.length > 0 && s.ducks.indexOf(sq) >= 0) || (!!s.bducks && s.bducks.length > 0 && s.bducks.indexOf(sq) >= 0)); }
-  function isRock(cfg, sq, s) { var t = cfg.terrain; return !!t && !!t.walls && t.walls.indexOf(sq) >= 0 && !(s && s.rocks && s.rocks.length && s.rocks.indexOf(sq) >= 0); }
+  function isRock(cfg, sq, s) { var t = cfg.terrain; return (!!t && !!t.walls && t.walls.indexOf(sq) >= 0 && !(s && s.rocks && s.rocks.length && s.rocks.indexOf(sq) >= 0)) || (!!s && !!s.boulders && s.boulders.length > 0 && s.boulders.indexOf(sq) >= 0); }
   function isHole(cfg, sq) { var t = cfg.terrain; return !!t && !!t.holes && t.holes.indexOf(sq) >= 0; }
   function isWater(cfg, sq) { var t = cfg.terrain; return !!t && !!t.water && t.water.indexOf(sq) >= 0; }
 
@@ -365,9 +388,34 @@
      move to and returns false to stop the line; onPiece(to, jump) about the first piece met. mode
      filters: 'moves' skips capture-only atoms when looking at empty squares and move-only atoms when
      looking at pieces; 'attacks' only follows atoms that can capture. */
-  function walkFairy(s, cfg, sq, c, forAttack, onEmpty, onPiece) {
+  /* The Ouroboros King's relics that give units more moves (powers .ou of their side): the Premium horseshoes and the
+     Royal sceptre a king's step, the Tabi boots two squares, the Extra wheel one more sideways, the White flag a step
+     straight back, the Immaterial vestments diagonals through anything, the Holy grail a bounce off the edge. */
+  var OU_ADD = null;
+  function ouAtoms(ou, t) {
+    if (!ou._atoms) Object.defineProperty(ou, '_atoms', { value: {}, enumerable: false });
+    if (ou._atoms[t]) return ou._atoms[t];
+    if (!OU_ADD) OU_ADD = { kstep: [ride(KG, 1)], two: [ride(KG, 2)], wheel: [ride(HORZ, 3)], back: [ride(BACK, 1, { mode: 'm', fwd: true })], thru: [ride(DIAG, 0, { thru: true })],
+      grailO: [ride(FWD_DIAG, 0, { fwd: true, bounce: true }), ride(BACK, 0, { fwd: true, bounce: true })], grailN: [ride(VERT, 0, { bounce: true }), ride(DIAG, 0, { bounce: true })] };
+    var out = [];
+    if ((ou.horseshoes && 'nκћђ'.indexOf(t) >= 0) || (ou.sceptre && 'φχψω'.indexOf(t) >= 0)) out = out.concat(OU_ADD.kstep);
+    if (ou.tabi && 'зщ'.indexOf(t) >= 0) out = out.concat(OU_ADD.two);
+    if (ou.wheel && t === 'x') out = out.concat(OU_ADD.wheel);
+    if (ou.vestments && 'bθћ'.indexOf(t) >= 0) out = out.concat(OU_ADD.thru);
+    if (ou.grail && t === 'o') out = out.concat(OU_ADD.grailO);
+    if (ou.grail && t === 'ν') out = out.concat(OU_ADD.grailN);
+    if (ou.whiteflag && t !== 'k' && t !== 'p' && !(FAIRY[t] && FAIRY[t].royal)) out = out.concat(OU_ADD.back);
+    ou._atoms[t] = out;
+    return out;
+  }
+  function walkFairy(s, cfg, sq, c, forAttack, onEmpty, onPiece, onWall) {
     use(s);
-    var b = s.board, atoms = atomsFor(s, sq), r = ROW[sq], f = COL[sq], i, j, k, d, rr, ff, to, p, atom;
+    var b = s.board, r = ROW[sq], f = COL[sq], i, j, k, d, rr, ff, to, p, atom, tt = typeOf(b[sq]), ouW = powersOf(cfg, c).ou;
+    // a bottle (an item): this turn every unit of the side moves like a bishop, knight or rook
+    var atoms = s.bottle && s.turn === c && !isRoyal(b[sq]) && STD_ATOMS[s.bottle] ? STD_ATOMS[s.bottle] : DEF[b[sq]] ? atomsFor(s, sq) : (STD_ATOMS[tt] || []);
+    if (ouW && !(s.bottle && s.turn === c)) { var extra = ouAtoms(ouW, tt); if (extra.length) atoms = atoms.concat(extra); }
+    var glide = !!s.glide && s.turn === c && !forAttack; // the Hang glider: over boulders and bombs, this move
+    var axe = !!ouW && !!ouW.axe && (tt === 's' || tt === 't'); // the Battle axe: vikings walk through anything
     var ghostP = isG(s, sq); // a ghost slides through its own pieces
     var mirror = c === 'b';
     // Black sees forward-bound atoms mirrored (rot: turned round). Worked out once per atom and kept on it.
@@ -378,42 +426,56 @@
       return list[key];
     }
     var shooter = !!(DEF[b[sq]] && DEF[b[sq]].shoot) || isS(s, sq) || !!powersOf(cfg, colorOf(b[sq])).sniperAll; // its captures are shots: they fly over water
-    function slideFrom(r0, f0, list, max, min, jump, mode, hop) {
-      var a, n, dd, sr, sf, sq2, q, mark = jump || hop, wet;
+    function slideFrom(r0, f0, list, max, min, jump, mode, hop, thru, bounce) {
+      var a, n, dd, dr, df, sr, sf, sq2, q, mark = jump || hop || thru, wet, bounced;
       for (a = 0; a < list.length; a++) {
-        dd = list[a]; sr = r0 + dd[0]; sf = f0 + dd[1]; wet = false;
-        for (n = 1; inside(sr, sf) && (!max || n <= max); n++) {
+        dd = list[a]; dr = dd[0]; df = dd[1]; sr = r0 + dr; sf = f0 + df; wet = false; bounced = !bounce;
+        for (n = 1; !max || n <= max; n++) {
+          if (!inside(sr, sf)) {
+            // the Holy grail: once off the edge of the board and back the other way
+            if (bounced) break;
+            bounced = true;
+            var pr = sr - dr, pf = sf - df;
+            if (sr < 0 || sr >= H) dr = -dr;
+            if (sf < 0 || sf >= W) df = -df;
+            sr = pr + dr; sf = pf + df;
+            if (!inside(sr, sf)) break;
+          }
           sq2 = sr * W + sf;
-          if (isWall(cfg, sq2, s)) break;
+          if (isWall(cfg, sq2, s)) {
+            if (glide || thru) { sr += dr; sf += df; continue; } // flies over it, or passes through it
+            if (onWall && n >= min && mode !== 'm' && !wet) onWall(sq2);
+            break;
+          }
           q = b[sq2];
           if (wet) {
             // past water only a shot goes on: the first piece is its target, empty squares are only threatened
             if (q) { if (n >= min && sq2 !== sq) onPiece(sq2, mark, true); break; }
             if (forAttack && n >= min) onEmpty(sq2, mark);
-            sr += dd[0]; sf += dd[1];
+            sr += dr; sf += df;
             continue;
           }
-          if (sq2 === sq) { if (!jump) break; sr += dd[0]; sf += dd[1]; continue; }
+          if (sq2 === sq) { if (!jump && !thru && !bounce) break; sr += dr; sf += df; continue; }
           if (q) {
             if (n >= min && mode !== 'm') onPiece(sq2, mark);
-            if (ghostP && !jump && colorOf(q) === c) { sr += dd[0]; sf += dd[1]; continue; }
-            if (!jump) break;
+            if (ghostP && !jump && colorOf(q) === c) { sr += dr; sf += df; continue; }
+            if (!jump && !thru) break;
           } else if (n >= min) {
             if (forAttack ? mode !== 'm' : mode !== 'c') { if (onEmpty(sq2, mark) === false) break; }
-            if (!jump && isWater(cfg, sq2)) { if (shooter && mode !== 'm') wet = true; else break; }
-          } else if (!jump && isWater(cfg, sq2)) { if (shooter && mode !== 'm') wet = true; else break; }
-          sr += dd[0]; sf += dd[1];
+            if (!jump && !thru && isWater(cfg, sq2)) { if (shooter && mode !== 'm') wet = true; else break; }
+          } else if (!jump && !thru && isWater(cfg, sq2)) { if (shooter && mode !== 'm') wet = true; else break; }
+          sr += dr; sf += df;
         }
       }
     }
     for (k = 0; k < atoms.length; k++) {
       atom = atoms[k];
       if (forAttack && atom.mode === 'm') continue;
-      if (atom.k === 'ride') slideFrom(r, f, dirs(atom.d, atom.fwd), atom.max, atom.min, atom.jump, atom.mode, atom.hop);
+      if (atom.k === 'ride') slideFrom(r, f, dirs(atom.d, atom.fwd), atom.max, atom.min, atom.jump, atom.mode, atom.hop, atom.thru, atom.bounce);
       else if (atom.k === 'edge') {
         // along the rim, round the corners, until something is in the way; water is entered and ends the run
         rimRun(sq, function (to) {
-          if (isWall(cfg, to, s)) return false;
+          if (isWall(cfg, to, s)) { if (onWall) onWall(to); return false; }
           if (b[to]) { onPiece(to, false); return false; }
           onEmpty(to, false);
           return !isWater(cfg, to);
@@ -433,7 +495,7 @@
           rr = r + ld[i][0]; ff = f + ld[i][1];
           if (!inside(rr, ff)) continue;
           to = rr * W + ff;
-          if (isWall(cfg, to, s)) continue;
+          if (isWall(cfg, to, s)) { if (onWall && atom.mode !== 'm' && !glide) onWall(to); continue; }
           if (b[to]) { if (atom.mode !== 'm') onPiece(to, true); }
           else if (forAttack ? atom.mode !== 'm' : atom.mode !== 'c') onEmpty(to, true);
         }
@@ -448,10 +510,11 @@
               rr = fr + ORTH[j][0]; ff = fc + ORTH[j][1];
               if (!inside(rr, ff)) continue;
               to = rr * W + ff;
-              if (seen[to] || isWall(cfg, to, s)) continue;
+              if (seen[to]) continue;
+              if (isWall(cfg, to, s)) { seen[to] = true; if (axe || glide) next.push(to); else if (onWall) onWall(to); continue; }
               seen[to] = true;
-              if (b[to]) onPiece(to, false);
-              else { onEmpty(to, false); if (!isWater(cfg, to)) next.push(to); }
+              if (b[to]) { onPiece(to, false); if (axe) next.push(to); }
+              else { onEmpty(to, false); if (!isWater(cfg, to) || axe) next.push(to); }
             }
           }
           front = next;
@@ -531,6 +594,12 @@
       sleep: [], fresh: [] // devils that spawned (square * 4 + rounds left), demons spawned this turn (they wait a turn)
     };
     if (cfg.duckChess && !s.ducks.length) s.duckHand = 1; // the duck comes onto the board after White's first move
+    // The Ouroboros King: bombs on the board, boulders put there later, the items of a turn, the turns counted for the
+    // Cursed staff; the Marching boots give the first turn of a battle two moves
+    s.bombs = cfg.terrain && cfg.terrain.bombs ? cfg.terrain.bombs.filter(function (q) { return !board[q]; }) : [];
+    s.boulders = []; s.ouTurns = 0; s.ouLock = -1; s.bottle = ''; s.knife = false; s.boomer = false; s.glide = false;
+    var ou0 = powersOf(cfg, turn).ou;
+    if (ou0) { s.ouTurns = 1; if (ou0.boots) s.movesLeft = Math.max(s.movesLeft, 2); }
     s.helmets = cfg.traits && cfg.traits.helmets ? cfg.traits.helmets.filter(function (q) { return !!board[q] && !isRoyal(board[q]); }) : [];
     s.vests = cfg.traits && cfg.traits.vests ? cfg.traits.vests.filter(function (q) { return !!board[q] && !isRoyal(board[q]); }) : [];
     ['w', 'b'].forEach(function (c) { // the army-wide ones: the power-up puts them on at the start
@@ -865,21 +934,26 @@
     // a sniper: camo placed by hand on that piece, or Snipers for all pieces (every kind, fairy ones too)
     if (s.duckPhase) return noisy ? [] : duckMoves(s, cfg); // after the move: the ducks
     var allS = !!pw.sniperAll;
+    // The Ouroboros King: relics of this side (pw.ou), and items of this turn (a bottle, the Hang glider, the knife)
+    var ouSide = !!pw.ou || !!s.bottle || !!s.glide || !!s.knife, feather = !!pw.ou && !!pw.ou.feather, wreck = !!pw.ou && !!pw.ou.wrecking;
     function camoAt(q) { return (allS && !(hasGold && gold.indexOf(q) >= 0)) || isS(s, q); } // a statue shoots nothing
 
     // May the piece on `from` capture what stands on `sq`?
     var kc = !!cfg.kingCapture;
     function canCap(sq, from, shot) { // shot: taking it from a distance (a sniper), which a decoy cannot punish
       var p = b[sq];
-      if (!p || colorOf(p) === c) return false;
+      if (!p) return false;
+      if (colorOf(p) === c) return !!s.knife && sq !== from && !isRoyal(p) && !(hasGold && gold.indexOf(sq) >= 0); // the Backstabbing knife: your own units, this turn
       if (isRoyal(p)) {
         // with king capture the king can simply be taken: not by an immortal, and not while a prince guards it
         if (!kc) return false;
         if (from >= 0 && FAIRY.hasOwnProperty(typeOf(b[from])) && FAIRY[typeOf(b[from])].immortal) return false;
+        if (from >= 0 && DEF[b[from]] && DEF[b[from]].witch && powersOf(cfg, colorOf(p)).firegem) return false; // the Fire gem (The Ouroboros King): no witch takes this king
         if (guarded(s, sq, colorOf(p))) return false;
         return !(hasGold && gold.indexOf(sq) >= 0);
       }
       var t = typeOf(p);
+      if (t === 'д' && fp.ou && fp.ou.heavyarmor) return false;       // the Heavy armor: a marching pawn cannot be taken until it changes
       if (fp.immortal && t === 'q') return false;                    // Immortal Queen
       if (fp.iron && t === 'p' && typeOf(b[from]) !== 'p') return false; // Iron Pawns fall to pawns only
       if (foeKing >= 0 && near(foeKing, sq)) return false;           // Bodyguard
@@ -905,7 +979,7 @@
         var rr = r + offs[i][0], ff = f + offs[i][1];
         if (!inside(rr, ff)) continue;
         var to = rr * W + ff;
-        if (terrain && isWall(cfg, to, s)) continue;
+        if (terrain && isWall(cfg, to, s)) { if (bombAt(s, to)) push(from, to, { bomb: true }); continue; }
         if (!b[to]) push(from, to, jump ? { jump: true } : null);
         else if (canCap(to, from)) { push(from, to, jump ? { jump: true } : null); if (snipe) push(from, to, { snipe: true }); } else if (snipe && canCap(to, from, true)) push(from, to, { snipe: true });
       }
@@ -925,7 +999,7 @@
         var rr = r + dirs[i][0], ff = f + dirs[i][1];
         while (inside(rr, ff)) {
           var to = rr * W + ff;
-          if (terrain && isWall(cfg, to, s)) break;
+          if (terrain && isWall(cfg, to, s)) { if (bombAt(s, to)) push(from, to, { bomb: true }); break; }
           if (!b[to]) { push(from, to); if (terrain && isWater(cfg, to)) { if (snipe) shootOver(from, rr, ff, dirs[i]); break; } }
           else {
             if (canCap(to, from)) { push(from, to); if (snipe) push(from, to, { snipe: true }); } else if (snipe && canCap(to, from, true)) push(from, to, { snipe: true });
@@ -956,6 +1030,7 @@
       var p = b[sq];
       if (!p || colorOf(p) !== c) continue;
       if (again >= 0 && sq !== again) continue; // only the piece that earned another move
+      if (s.ouLock >= 0 && sq === s.ouLock) continue; // a second move of the turn (Cursed staff, Marching boots): another unit
       if (hasGold && gold.indexOf(sq) >= 0) continue;
       if (hasIce && ice.indexOf(sq) >= 0) continue;
       if (stone && stiff(s, sq)) continue;      // turned to stone by a gorgon
@@ -984,7 +1059,7 @@
           var nf = f + df;
           if (nf < 0 || nf > W - 1) continue;
           var to = nr * W + nf;
-          if (terrain && isWall(cfg, to, s)) continue;
+          if (terrain && isWall(cfg, to, s)) { if (bombAt(s, to)) push(sq, to, { bomb: true }); continue; }
           if (canCap(to, sq)) {
             if (promoAt(nr)) pawnPromos(sq, to, b[to]);
             else push(sq, to);
@@ -996,8 +1071,9 @@
             }
           }
         }
-      } else if (FAIRY.hasOwnProperty(t)) {
-        var fdef = FAIRY[t], live = !(hasGold && gold.indexOf(sq) >= 0), backRank = function (to) { return ROW[to] === 0 || ROW[to] === H - 1; };
+      } else if (FAIRY.hasOwnProperty(t) || (ouSide && t !== 'p')) {
+        // a fairy piece, or a chess piece of a side whose relics or items change how it moves (it moves by its atoms here)
+        var fdef = FAIRY[t] || NO_DEF, live = !(hasGold && gold.indexOf(sq) >= 0), backRank = function (to) { return ROW[to] === 0 || ROW[to] === H - 1; };
         var stamp = ++STAMP; // several atoms can reach the same square (a king step and the rim run): one move each
         walkFairy(s, cfg, sq, c, false,
           function (to, jump) { if (REACHED[to] !== stamp && !(fdef.noBack && backRank(to))) { REACHED[to] = stamp; push(sq, to, jump ? { jump: true } : null); } },
@@ -1011,10 +1087,18 @@
               return;
             }
             if (wet) { if (REACHED[to] !== stamp && live && canCap(to, sq, true)) { REACHED[to] = stamp; push(sq, to, { snipe: true }); } return; }
+            // the Feather necklace: onto one of your own units, and the two change places
+            if (feather && colorOf(b[to]) === c && to !== sq && FEATHER[to] !== stamp && !(hasGold && gold.indexOf(to) >= 0) && !(hasIce && ice.indexOf(to) >= 0)) { FEATHER[to] = stamp; push(sq, to, { ally: true, cap: '', capSq: -1 }); }
             if (REACHED[to] === stamp || !canCap(to, sq) || (fdef.noBack && backRank(to))) return;
             REACHED[to] = stamp;
             if (fdef.shoot && live) push(sq, to, { snipe: true }); // a musketeer takes and returns: a shot
             else { push(sq, to, jump ? { jump: true } : null); if (camoAt(sq)) push(sq, to, { snipe: true }); }
+          },
+          // a wall met on the way: a bomb is taken (it blows up), a boulder broken with the Wrecking ball
+          function (to) {
+            if (REACHED[to] === stamp || b[to]) return;
+            if (bombAt(s, to)) { REACHED[to] = stamp; push(sq, to, { bomb: true }); }
+            else if (wreck && isRock(cfg, to, s)) { REACHED[to] = stamp; push(sq, to, { rock: true }); }
           });
         if (live && fdef.shotgun && !noisy && again < 0 && s.sg && s.sg[c]) {
           // the royal shotgun: shoot at an enemy piece in reach (not while in check), or reload
@@ -1150,7 +1234,7 @@
       return out;
     }
     // Tempo: twice a game, pass (the other side has to move again). Not in check: legalAll sees to that.
-    if (pw.tempo && (s.passed || '').split(c).length - 1 < 2) out.push({ from: -1, to: -1, piece: '', cap: '', capSq: -1, pass: true });
+    if (pw.tempo && (s.passed || '').split(c).length - 1 < (pw.tempoMax || 2)) out.push({ from: -1, to: -1, piece: '', cap: '', capSq: -1, pass: true });
     // Pawn Storm: every pawn that has room steps forward, all in one move.
     if (pw.storm && stormSteps(b, c, hasGold || hasIce ? gold.concat(ice) : null).length) {
       out.push({ from: -1, to: -1, piece: w ? 'P' : 'p', cap: '', capSq: -1, storm: true });
@@ -1306,6 +1390,7 @@
       ghosts: s.ghosts || [], snipers: s.snipers || [], reborn: s.reborn || [], helmets: s.helmets || [], vests: s.vests || [], stun: s.stun || [],
       ducks: s.ducks || [], bducks: s.bducks || [], duckHand: s.duckHand || 0, duckPhase: 0, dTodo: [], dBan: [], bMoved: s.bMoved || [], sleep: s.sleep || [], fresh: s.fresh || [],
       sg: s.sg, dmg: s.dmg, seed: s.seed,
+      bombs: s.bombs || [], boulders: s.boulders || [], ouTurns: s.ouTurns || 0, ouLock: -1, bottle: s.bottle || '', knife: !!s.knife, boomer: false, glide: false,
       fx: { removed: [], tp: -1, boom: false }
     };
     var touched = [], removed = n.fx.removed, i;
@@ -1323,7 +1408,7 @@
       pk.splice(pk.indexOf(m.drop), 1);
       n[pkey] = pk;
       n.half = 0;
-    } else if (m.swap) {
+    } else if (m.swap || m.ally) { // Royal Swap, or the Feather necklace
       b[m.from] = b[m.to];
       b[m.to] = m.piece;
       touched.push(m.from, m.to);
@@ -1395,7 +1480,7 @@
         b[m.from] = '';
         b[m.to] = piece;
         if (typeOf(m.piece) === 'p') { n.half = 0; if (m.dbl) n.ep = (m.from + m.to) / 2; }
-        else if (isFairy(m.piece) && fairyOf(m.piece).promote) n.half = 0; // a pawn of another kind: it never moves back and can promote
+        else if (isFairy(m.piece) && (fairyOf(m.piece).promote || fairyOf(m.piece).pawn)) n.half = 0; // a pawn of another kind: it never moves back and can promote
         if (m.castle === 'K') { b[m.to + 1] = ''; b[m.to - 1] = c === 'w' ? 'R' : 'r'; touched.push(m.to + 1); }
         if (m.castle === 'Q') { b[m.to - 2] = ''; b[m.to + 1] = c === 'w' ? 'R' : 'r'; touched.push(m.to - 2); }
       }
@@ -1418,7 +1503,7 @@
       }
       // Portals: landing on one end moves the piece to the other end.
       var land = m.snipe ? m.from : m.to;
-      if ((pw.portals || (cfg.terrain && cfg.terrain.portals && cfg.terrain.portals.length === 2)) && s.portals.length === 2 && !m.castle && !m.snipe && !m.stay) {
+      if ((pw.portals || (cfg.terrain && cfg.terrain.portals && cfg.terrain.portals.length === 2)) && s.portals.length === 2 && !m.castle && !m.snipe && !m.stay && !(fp.ou && fp.ou.fence)) { // the Spiked fence: not for the other side
         var exit = m.to === s.portals[0] ? s.portals[1] : (m.to === s.portals[1] ? s.portals[0] : -1);
         if (exit >= 0 && exit !== m.from && !b[exit]) {
           var er = ROW[exit];
@@ -1448,6 +1533,7 @@
           if (md.hopper && m.hop && !(md.promote && lr === (c === 'w' ? 0 : H - 1))) { n.again = land; n.againHop = true; }
           if (md.onCapture && m.cap) b[land] = c === 'w' ? (md.onCapture === 'q' ? 'Q' : m.cap.toUpperCase()) : (md.onCapture === 'q' ? 'q' : m.cap.toLowerCase());
           else if (md.promote && lr === (c === 'w' ? 0 : H - 1)) b[land] = c === 'w' ? (md.promoteTo || 'q').toUpperCase() : (md.promoteTo || 'q'); // a checker is crowned, a marching pawn becomes a queen
+          else if (md.shogiUp && lr === (c === 'w' ? 0 : H - 1)) b[land] = c === 'w' ? md.shogiUp.toUpperCase() : md.shogiUp; // a shogi piece promotes on the enemy back rank
           else if (md.spawn) { b[land] = c === 'w' ? 'P' : 'p'; if (ROW[m.from] !== 0 && ROW[m.from] !== H - 1) b[m.from] = b[land]; }
           else if (md.becomes) b[land] = c === 'w' ? md.becomes.toUpperCase() : md.becomes;
         }
@@ -1490,7 +1576,40 @@
       }
       n.dmg = dm2;
     }
-    if (n.again >= 0 && !n.againHop && !(b[n.again] && FAIRY.hasOwnProperty(typeOf(b[n.again])) && FAIRY[typeOf(b[n.again])].again)) n.again = -1;
+    // The Ouroboros King. A bomb taken blows up with everything around it, the taker too.
+    if (m.bomb) {
+      n.bombs = n.bombs.filter(function (q) { return q !== m.to; });
+      var br0 = ROW[m.to], bf0 = COL[m.to];
+      for (i = 0; i < N; i++) {
+        var bq = b[i];
+        if (!bq || Math.abs(ROW[i] - br0) > 1 || Math.abs(COL[i] - bf0) > 1 || s.gold.indexOf(i) >= 0 || isMartyr(bq)) continue;
+        var bo = powersOf(cfg, colorOf(bq)).ou;
+        if (bo && bo.helmet) continue; // the Dwarven helmet
+        if (isRoyal(bq)) { n.lost = (n.lost && n.lost !== colorOf(bq)) ? 'wb' : colorOf(bq); n.lostBy = n.lostBy || 'bomb'; }
+        removed.push({ sq: i, p: bq }); b[i] = ''; touched.push(i);
+      }
+      n.fx.boom = true; n.fx.booms = (n.fx.booms || []).concat([m.to]);
+    }
+    if (m.rock) { n.boulders = n.boulders.filter(function (q) { return q !== m.to; }); if (n.rocks.indexOf(m.to) < 0) n.rocks = (n.rocks || []).concat([m.to]); } // a boulder broken
+    // the relics of the side that moved: what a unit does after its move
+    var ouM = pw.ou, mvd = !m.pass && !m.drop && !m.storm && !m.shot && !m.reload && !m.blast && !m.ally && !m.bomb && !m.duck && !m.spawn && n.fx.bounce == null;
+    if (ouM && mvd) {
+      var mt = typeOf(m.piece), at0 = m.snipe ? m.from : land, here = b[at0], tint = function (l) { return c === 'w' ? l.toUpperCase() : l.toLowerCase(); };
+      if (here && colorOf(here) === c && s.gold.indexOf(m.from) < 0) {
+        if (m.cap && !m.snipe) {
+          if (ouM.carrots && (mt === 'n' || mt === 'κ') && s.again < 0) { n.again = at0; n.ouAgain = true; } // Spicy carrots: once more, once a turn
+          if (ouM.daggers && (mt === 'ρ' || mt === 'λ')) { n.again = at0; n.ouAgain = true; }             // Extra daggers: on and on
+          if (ouM.totem && !isRoyal(here) && !isRoyal(m.cap) && colorOf(m.cap) !== c) b[at0] = here = tint(typeOf(m.cap)); // the Totem mask: it becomes what it took
+          if (ouM.medal && ouM.medal[typeOf(here)]) b[at0] = here = tint(ouM.medal[typeOf(here)]);            // the Death medal: upgraded
+          if (ouM.stiletto && mt === 'ж' && !b[m.from]) { b[m.from] = here; b[at0] = ''; at0 = m.from; }    // the Stiletto: back where it started
+        }
+        if (ouM.carnival && ouM.carnival.length && !isRoyal(here)) b[at0] = here = tint(ouM.carnival[(m.from * 31 + m.to * 7 + s.full * 13) % ouM.carnival.length]); // the Carnival mask
+        if (ouM.terraform && mt === 'л' && !b[m.from] && at0 !== m.from) n.boulders = n.boulders.concat([m.from]); // the Terraformer staff
+      }
+    }
+    // the Boomerang (an item): the unit that moved comes back to where it started
+    if (s.boomer && mvd) { var bh = b[land]; if (bh && colorOf(bh) === c && !b[m.from]) { b[m.from] = bh; b[land] = ''; if (n.again === land) n.again = m.from; } }
+    if (n.again >= 0 && !n.againHop && !n.ouAgain && !(b[n.again] && FAIRY.hasOwnProperty(typeOf(b[n.again])) && FAIRY[typeOf(b[n.again])].again)) n.again = -1;
     if (s.fairy && removed.length) {
       // a fire chick or phoenix comes back in its corner when that square is free, once: then it is marked as reborn
       for (i = 0; i < removed.length; i++) {
@@ -1586,6 +1705,13 @@
     return passTurn(n, s.turn, cfg);
   }
   // The turn goes over: the mover's ice melts, the other side starts fresh and unrolled.
+  // The Ouroboros King at the start of a turn: the items of the last one are spent, the Cursed staff gives an extra
+  // move every third turn of its side
+  function ouTurnStart(n, cfg) {
+    n.ouLock = -1; n.bottle = ''; n.knife = false;
+    var nou = powersOf(cfg, n.turn).ou;
+    if (nou) { n.ouTurns = (n.ouTurns || 0) + 1; if (nou.cursed && n.ouTurns % 3 === 0) n.movesLeft = Math.max(n.movesLeft, 2); }
+  }
   function passTurn(n, mover, cfg) {
     n.turn = other(mover); n.ep = -1; n.again = -1; n.movesLeft = 0;
     n.full = n.full + (mover === 'b' ? 1 : 0);
@@ -1593,6 +1719,7 @@
     if (n.ice.length) n.ice = n.ice.filter(function (q) { return n.board[q] && colorOf(n.board[q]) !== mover; });
     if (n.guard && n.guard.length) n.guard = n.guard.filter(function (q) { return n.board[q] && colorOf(n.board[q]) === mover; }); // a shield lasts through the other side's turn
     if (has(cfg, n.turn)) { n.movesLeft = powersOf(cfg, n.turn).double || 1; n.midasUsed = 0; n.freezeUsed = false; n.shieldUsed = false; }
+    ouTurnStart(n, cfg);
     return n;
   }
   // The chance that at least one of `a` given kinds comes up, with the game's dice and pool.
@@ -1750,6 +1877,7 @@
         var t = {};
         for (var k in n) t[k] = n[k];
         t.turn = mover; t.ep = -1; t.full = s.full;
+        if (pw.ou) { var lk = n.fx && n.fx.tp >= 0 ? n.fx.tp : m.to; t.ouLock = lk >= 0 && n.board[lk] && colorOf(n.board[lk]) === mover ? lk : (m.from >= 0 && n.board[m.from] && colorOf(n.board[m.from]) === mover ? m.from : -1); } // the second move: another unit
         if (anyLegal(t, cfg)) n = t; else n.movesLeft = 0;
       } else n.movesLeft = 0;
     }
@@ -1772,6 +1900,7 @@
     if (n.stun && n.stun.length) { var stunned = n.stun.filter(function (q) { return n.board[q] && n.ice.indexOf(q) < 0 && n.gold.indexOf(q) < 0; }); if (stunned.length) n.ice = n.ice.concat(stunned); n.stun = []; }
     if (n.guard && n.guard.length) n.guard = n.guard.filter(function (q) { return n.board[q] && colorOf(n.board[q]) === mover; }); // a shield lasts through the other side's turn
     if (has(cfg, n.turn)) { n.movesLeft = powersOf(cfg, n.turn).double || 1; n.midasUsed = 0; n.freezeUsed = false; n.shieldUsed = false; }
+    ouTurnStart(n, cfg);
     if (cfg.dice) { rollDice(n, cfg); if (!cfg.legacyDice) { n.dice = null; n.rolled = null; } }
     return n;
   }
@@ -1836,6 +1965,7 @@
     if (n.ice.length) n.ice = n.ice.filter(function (q) { return n.board[q] && colorOf(n.board[q]) !== mover; });
     if (n.guard && n.guard.length) n.guard = n.guard.filter(function (q) { return n.board[q] && colorOf(n.board[q]) === mover; }); // a shield lasts through the other side's turn
     if (has(cfg, n.turn)) { n.movesLeft = powersOf(cfg, n.turn).double || 1; n.midasUsed = 0; n.freezeUsed = false; n.shieldUsed = false; }
+    ouTurnStart(n, cfg);
     if (cfg.dice) { rollDice(n, cfg); n.dice = null; n.rolled = null; }
     return n;
   }
@@ -1994,6 +2124,42 @@
     return { over: false };
   }
 
+  /* The Ouroboros King's items that act on the board (the app counts what is left): a bottle (this turn every unit
+     moves like a bishop, knight or rook), the Boomerang (the next unit to move comes back), the Hang glider (the next
+     move flies over boulders and bombs), the Backstabbing knife (this turn your units may take your own), the Pocket
+     boulder (a boulder on an empty square), the Hammer (a boulder broken), the Snow bottle (a bomb defused), the
+     Exploding rock (a bomb placed, the turn is over), the Teleporter (two of your units change places, the turn is
+     over). Returns the new position, or null when the item cannot be used there. */
+  function ouItem(s, cfg, id, a, b2) {
+    use(s);
+    var n = {}, k, c = s.turn, pass = false;
+    for (k in s) n[k] = s[k];
+    n.board = s.board.slice(); n.fx = null;
+    n.bombs = (s.bombs || []).slice(); n.boulders = (s.boulders || []).slice(); n.rocks = (s.rocks || []).slice();
+    if (id === 'bottle_b' || id === 'bottle_n' || id === 'bottle_r') n.bottle = id.slice(-1);
+    else if (id === 'boomerang') n.boomer = true;
+    else if (id === 'glider') n.glide = true;
+    else if (id === 'knife') n.knife = true;
+    else if (id === 'boulder' || id === 'rock') {
+      if (a < 0 || a >= N || n.board[a] || isWall(cfg, a, s) || (cfg.terrain && cfg.terrain.portals && cfg.terrain.portals.indexOf(a) >= 0)) return null;
+      if (id === 'boulder') n.boulders.push(a); else { n.bombs.push(a); pass = true; }
+    } else if (id === 'hammer') {
+      if (!isRock(cfg, a, s)) return null;
+      var bi = n.boulders.indexOf(a);
+      if (bi >= 0) n.boulders.splice(bi, 1); else n.rocks.push(a);
+    } else if (id === 'snow') {
+      var si = n.bombs.indexOf(a);
+      if (si < 0) return null;
+      n.bombs.splice(si, 1);
+    } else if (id === 'teleporter') {
+      var pa = n.board[a], pb = n.board[b2];
+      if (a === b2 || !pa || !pb || colorOf(pa) !== c || colorOf(pb) !== c || s.gold.indexOf(a) >= 0 || s.gold.indexOf(b2) >= 0) return null;
+      n.board[a] = pb; n.board[b2] = pa; pass = true;
+    } else return null;
+    if (pass) n = play(n, { from: -1, to: -1, piece: '', cap: '', capSq: -1, pass: true }, cfg);
+    n.fx = null;
+    return n;
+  }
   function posKey(s) {
     use(s);
     return boardFen(s.board) + s.turn + s.castling + s.ep + '|' + s.gold.join(',') + '|' +
@@ -2005,7 +2171,9 @@
       ((s.helmets && s.helmets.length) || (s.vests && s.vests.length) || (s.stun && s.stun.length) ? '|h' + (s.helmets || []).join(',') + '|v' + (s.vests || []).join(',') + '|u' + (s.stun || []).join(',') : '') +
       ((s.ducks && s.ducks.length) || (s.bducks && s.bducks.length) || s.duckHand ? '|d' + s.ducks.join(',') + '/' + s.bducks.join(',') + '/' + (s.duckHand || 0) + '/' + (s.duckPhase ? s.dTodo.join(',') : '-') + '/' + (s.bMoved || []).join(',') : '') +
       (s.sleep && s.sleep.length ? '|z' + s.sleep.join(',') : '') + (s.fresh && s.fresh.length ? '|f' + s.fresh.join(',') : '') +
-      (s.sg ? '|g' + JSON.stringify(s.sg) + JSON.stringify(s.dmg) : '');
+      (s.sg ? '|g' + JSON.stringify(s.sg) + JSON.stringify(s.dmg) : '') +
+      ((s.bombs && s.bombs.length) || (s.boulders && s.boulders.length) ? '|B' + (s.bombs || []).join(',') + '/' + (s.boulders || []).join(',') : '') +
+      (s.bottle || s.knife || s.boomer || s.glide || s.ouLock >= 0 ? '|I' + s.bottle + (s.knife ? 1 : 0) + (s.boomer ? 1 : 0) + (s.glide ? 1 : 0) + s.ouLock : '') + (s.ouTurns ? '|t' + (s.ouTurns % 3) : '');
   }
 
   function uci(m) { return sqName(m.from) + sqName(m.to) + (m.promo || ''); }
@@ -2077,8 +2245,8 @@
       var p = s.board[i];
       if (!p) continue;
       count++;
-      if (p === 'K') wk++;
-      if (p === 'k') bk++;
+      if (p === 'K' || p === 'Ѣ') wk++; // the Shogi King is its side's king like any other
+      if (p === 'k' || p === 'ѣ') bk++;
       if ((p === 'P' || p === 'p') && (ROW[i] === 0 || ROW[i] === H - 1)) {
         if (errs.indexOf('Pawns cannot stand on the first or last rank.') < 0) errs.push('Pawns cannot stand on the first or last rank.');
       }
@@ -2090,8 +2258,8 @@
     for (var si2 = 0; si2 < N; si2++) if (s.board[si2] && DEF[s.board[si2]] && DEF[s.board[si2]].shotgun) sgk[colorOf(s.board[si2])]++;
     if (sgk.w > 1 || sgk.b > 1) errs.push('Each side can have only one Shotgun King.');
     if ((sgk.w && wk) || (sgk.b && bk)) errs.push('A Shotgun King is its side\'s king: take the normal king off the board.');
-    if (wk > 1 || (!wk && !royalAlive(s, 'w'))) errs.push('White needs exactly one king (or a mounted king or general instead).');
-    if (bk > 1 || (!bk && !royalAlive(s, 'b'))) errs.push('Black needs exactly one king (or a mounted king or general instead).');
+    if (wk > 1 || (!wk && !royalAlive(s, 'w'))) errs.push('White needs exactly one king (a Shogi King counts as one; or a mounted king or general instead).');
+    if (bk > 1 || (!bk && !royalAlive(s, 'b'))) errs.push('Black needs exactly one king (a Shogi King counts as one; or a mounted king or general instead).');
     // Stockfish 19 refuses these positions. Fairy-Stockfish does not care (cfg.freeArmy).
     if (!cfg.freeArmy) {
       if (count > 32) errs.push('Stockfish 19 accepts at most 32 pieces. Pick Fairy-Stockfish as the opponent to play this position.');
@@ -2122,7 +2290,7 @@
     START_FEN: START_FEN, MAXW: MAXW, use: use, size: function () { return { W: W, H: H }; }, sqName: sqName, sqIndex: sqIndex, colorOf: colorOf, typeOf: typeOf, other: other,
     fromFen: fromFen, toFen: toFen, boardFen: boardFen, cleanCastling: cleanCastling,
     attacked: attacked, inCheck: inCheck, kingSq: kingSq, royalAlive: royalAlive, wiped: wiped, pellets: pellets, mulberry: mulberry, hpOf: hpOf, SG: SG, shotResult: shotResult, hasRoyal: hasRoyal, duckAt: duckAt, duckDue: duckDue, duckSquares: duckSquares, demonNext: demonNext, demonHits: demonHits, asleep: asleep, isGhostAt: isG, isSniperAt: isS, royalSquares: royalSquares, checkedSquares: checkedSquares, isRoyal: isRoyal, ability: ability, stiff: stiff, guarded: guarded, atomsFor: atomsFor,
-    legalMoves: legalMoves, anyLegal: anyLegal, noisyMoves: noisyMoves, FAIRY: FAIRY, FAIRY_LETTERS: FAIRY_LETTERS, isFairy: isFairy, fairyOf: fairyOf, hasFairy: hasFairy, fairyAttacks: fairyAttacks, isWall: isWall, isWater: isWater, play: play, gildTargets: gildTargets, gild: gild, midasTurn: midasTurn, freezeTargets: freezeTargets, freeze: freeze, shieldTargets: shieldTargets, shield: shield, stopReady: stopReady, timeStop: timeStop, has: has, pocketKey: pocketKey, powersOf: powersOf, anyPower: anyPower, KEYS: KEYS,
+    ouItem: ouItem, bombAt: bombAt, isRock: isRock,     legalMoves: legalMoves, anyLegal: anyLegal, noisyMoves: noisyMoves, FAIRY: FAIRY, FAIRY_LETTERS: FAIRY_LETTERS, isFairy: isFairy, fairyOf: fairyOf, hasFairy: hasFairy, fairyAttacks: fairyAttacks, isWall: isWall, isWater: isWater, play: play, gildTargets: gildTargets, gild: gild, midasTurn: midasTurn, freezeTargets: freezeTargets, freeze: freeze, shieldTargets: shieldTargets, shield: shield, stopReady: stopReady, timeStop: timeStop, has: has, pocketKey: pocketKey, powersOf: powersOf, anyPower: anyPower, KEYS: KEYS,
     isRock: isRock, isHole: isHole, convertTargets: convertTargets, convert: convert, legalAll: legalAll, dieOf: dieOf, diceMost: diceMost, dicePool: dicePool, rollFaces: rollFaces, roll: roll, diceChance: diceChance, diceCount: diceCount, pseudoMoves: pseudoMoves,
     status: status, hasPowers: hasPowers, posKey: posKey, uci: uci, findUci: findUci, san: san,
     validate: validate, perft: perft, armyRoom: armyRoom, canDrop: canDrop
