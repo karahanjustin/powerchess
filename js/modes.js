@@ -180,13 +180,14 @@
   }
   var ENEMY = [[], [], []];
   POOL.forEach(function (list) { list.forEach(function (l) { ENEMY[enemyTier(l)].push(l); }); });
-  // How likely each tier is at a stage: weak units early, strong ones later.
+  // How likely each tier is at a stage: weak units early, strong ones later. The strong ones come in slowly
+  // (tier 3 from stage 6, and only now and then until stage 10), so there is no wall at one stage.
   function poolWeights(stage) {
     if (stage <= 2) return [1, 0, 0];
-    if (stage <= 4) return [0.75, 0.25, 0];
-    if (stage <= 7) return [0.5, 0.4, 0.1];
-    if (stage <= 11) return [0.3, 0.45, 0.25];
-    return [0.2, 0.4, 0.4];
+    if (stage <= 5) return [0.75, 0.25, 0];
+    if (stage <= 10) return [0.55, 0.37, 0.08];
+    if (stage <= 15) return [0.35, 0.45, 0.2];
+    return [0.25, 0.42, 0.33];
   }
   function drawUnit(r, stage, maxValue) {
     var w = poolWeights(stage), cheap = stage <= 2 ? 480 : Infinity;
@@ -207,18 +208,20 @@
     return up.map(function (u) { return white ? u.toUpperCase() : u; });
   }
 
-  /* The bot of a stage: its level climbs about one every two stages, give or take one. Level 0 is the Beginner
-     (100), level 1 the Rookie (400), up to level 9, the Machine. The first stage sends 100 to 400. */
+  /* The bot of a stage: its level climbs about one every three stages, give or take half a level (a stage sends one
+     of two neighbouring levels). Level 0 is the Beginner (100), level 1 the Rookie (400), up to level 9, the Machine. */
   function botFor(stage, r) {
-    var lv = Math.round(0.45 * (stage - 1) + (r.next() * 2 - 1));
+    var lv = Math.round(0.33 * (stage - 1) + (r.next() - 0.5));
     return 'b' + Math.max(0, Math.min(9, lv));
   }
-  /* The army a stage sends: below the player's strength at first, closing in slowly (the bot's level rises too),
-     never more than the player's own army, plus a floor that rises gently, minus a pawn and a half. */
+  /* The army a stage sends: below the player's strength, closing in slowly and never past 85 per cent of it (the bot's
+     level rises too), with a floor that rises gently and a ceiling that grows by stage, so that recruiting well puts
+     the player ahead instead of only making the next army stronger. Minus a pawn and a half. */
   function budgetFor(stage, army) {
-    var floor = 600 + 120 * (stage - 1);
+    var floor = 600 + 120 * (stage - 1), ceil = 900 + 330 * (stage - 1);
+    var share = Math.round(armyValue(army) * Math.min(0.85, 0.7 + 0.012 * (stage - 1)));
     // and every stage a pawn and a half lighter than that (user's call), never below three pawns
-    return Math.max(300, Math.max(floor, Math.round(armyValue(army) * Math.min(1, 0.7 + 0.025 * (stage - 1)))) - 150);
+    return Math.max(300, Math.min(ceil, Math.max(floor, share)) - 150);
   }
   function cfgFor(terrain) { return { side: 'w', pw: { w: null, b: null }, freeArmy: true, kingCapture: true, terrain: terrain }; }
   function boardOf(army, black) {
@@ -269,7 +272,7 @@
   function genStage(run) {
     var r = rng(run.rng), stage = run.stage, boss = stage % 5 === 0 ? BOSSES[Math.min(BOSSES.length - 1, Math.floor(stage / 5) - 1)] : null;
     var budget = budgetFor(stage, run.army), terrain = terrainFor(stage, r), tIdx = terrainIdx(terrain);
-    var king = stage >= 8 && r.next() < 0.3 ? r.pick(['э', 'ю']) : 'k';
+    var king = stage >= 11 && r.next() < 0.3 ? r.pick(['э', 'ю']) : 'k'; // the other kings come once the curve is up
     var units = [];
     if (boss) { units.push(boss[0]); budget -= value(boss[0]); }
     var cap = Math.min(15, 2 + Math.ceil(stage * 0.9));
@@ -358,7 +361,7 @@
      upgrades come from the army's own pieces. Dealt once and saved, so a reload shows the same offer. */
   // A recruit: a base unit, from tier 1 early on and from the higher tiers as the run goes deeper.
   function drawRecruit(r, stage) {
-    var w = stage <= 3 ? [0.75, 0.25, 0] : stage <= 7 ? [0.45, 0.4, 0.15] : [0.25, 0.4, 0.35];
+    var w = stage <= 5 ? [0.75, 0.25, 0] : stage <= 10 ? [0.45, 0.4, 0.15] : [0.25, 0.4, 0.35];
     var x = r.next(), k = x < w[0] ? 0 : x < w[0] + w[1] ? 1 : 2;
     return r.pick(TIERS[k]);
   }
@@ -369,7 +372,7 @@
     var ups = [];
     run.army.forEach(function (x) { upgradesOf(x[1]).forEach(function (u) { ups.push({ kind: 'up', sq: x[0], from: x[1], to: u }); }); });
     for (var i = 0; i < 40 && offers.length < 3; i++) {
-      var wantUp = ups.length && (full || r.next() < 0.3);
+      var wantUp = ups.length && (full || r.next() < 0.5); // evolutions half the time: the army grows in strength, not only in size
       if (wantUp) {
         var u = ups[r.int(ups.length)], key = u.sq + u.to;
         if (!seenUp[key]) { seenUp[key] = true; offers.push(u); }

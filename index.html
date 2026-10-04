@@ -166,6 +166,29 @@ body.nocoords .sq span{display:none}
 .piece.skleader:not(.skboss){filter:drop-shadow(0 0 4px rgba(255,215,90,.6))}
 .hint.skdanger{background:rgba(222,48,36,.3);box-shadow:inset 0 0 0 1px rgba(255,90,70,.25)}
 .hint.sksoul::after{background:rgba(120,90,230,.7)!important}
+/* Shotgun King: the newer black cards. Allies glow green with a green hourglass, the hologram is a pale king, a
+   stealthy king fades, a spy wears a mask, the orbed piece glows violet and the square it goes to is ringed */
+.piece.skally{filter:drop-shadow(0 0 4px rgba(110,215,130,.9))}
+.piece .sktime.ally u.on{background:rgba(40,150,70,.85)}
+.piece .sktime.ally.now u.on{background:#3ec26a}
+.piece.skholo{opacity:.42;filter:drop-shadow(0 0 6px rgba(90,200,255,.95))}
+.piece.skking.skstealth{opacity:.5}
+.piece.skspy::after{content:"";position:absolute;left:30%;right:30%;top:22%;height:11%;border-radius:45%;background:#241a33;box-shadow:0 0 0 1px #c9b6ff;pointer-events:none}
+.piece.skorbed{filter:drop-shadow(0 0 6px rgba(170,120,255,.95))}
+.piece.sktarget::before{content:"";position:absolute;inset:9%;border:2px dashed rgba(255,96,48,.9);border-radius:50%;pointer-events:none}
+.hint.skorbto{border-radius:50%;box-shadow:inset 0 0 0 calc(var(--cell) / 14) rgba(170,120,255,.85)}
+.hint.ring.skpick{box-shadow:inset 0 0 0 calc(var(--cell) / 12) rgba(120,90,230,.65)}
+.hint.skjump::after{background:rgba(70,160,255,.65)!important}
+.mark.skhole{background:radial-gradient(circle,#0b0907 0 34%,rgba(52,38,24,.9) 46%,rgba(52,38,24,0) 64%)}
+.mark.skstone{background:radial-gradient(circle,rgba(205,200,186,.85) 0 42%,rgba(150,145,130,.7) 50%,rgba(150,145,130,0) 60%)}
+.mark.skpenta{background:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='44' fill='none' stroke='%23c4161c' stroke-width='5'/><path d='M50 8 74.7 84 10.1 37h79.8L25.3 84z' fill='none' stroke='%23c4161c' stroke-width='5' stroke-linejoin='round'/></svg>") center/76% no-repeat}
+.mark.skpenta.off{opacity:.35;filter:grayscale(1)}
+.mark.skball{background:radial-gradient(circle at 40% 36%,#9a9a9a 0,#3c3c3c 22%,#111 40%,rgba(0,0,0,0) 44%)}
+.mark.skway{background:radial-gradient(circle,rgba(255,214,90,.9) 0 16%,rgba(255,214,90,0) 18%,rgba(255,214,90,0) 30%,rgba(255,214,90,.75) 32% 38%,rgba(255,214,90,0) 40%)}
+.sk-warn.ok{background:rgba(120,90,230,.18);color:#d9ccff}
+.sk-browse{display:flex;flex-wrap:wrap;gap:4px;max-height:190px;overflow:auto;margin:2px 0 6px}
+.gm-card.sk .sk-browse .btn{font-size:11.5px;line-height:1.1;padding:4px 7px;min-height:0;height:auto}
+.sk-browse .btn.on{box-shadow:inset 0 0 0 2px var(--green)}
 .skflash{position:absolute;width:12.5%;height:12.5%;background:radial-gradient(circle,rgba(255,240,180,.95),rgba(255,140,40,.5) 40%,transparent 70%);pointer-events:none;animation:skflash .28s ease-out forwards}
 @keyframes skflash{from{transform:scale(.5);opacity:1}to{transform:scale(1.6);opacity:0}}
 .skdmg{position:absolute;width:12.5%;height:12.5%;display:flex;align-items:flex-start;justify-content:center;font:800 calc(var(--S) / 30) / 1 system-ui,sans-serif;color:#ff5a3a;text-shadow:0 0 3px #000,0 0 6px #000;pointer-events:none;animation:skdmg .9s ease-out forwards}
@@ -417,7 +440,7 @@ h3{margin:16px 0 8px;font-size:13px;font-weight:700;color:var(--muted);text-tran
 .seg{display:flex;gap:6px;flex-wrap:wrap}
 .seg button{flex:1;min-width:0;height:38px;border-radius:5px;background:var(--raise);font-weight:700;font-size:13px;color:var(--muted);white-space:nowrap;padding:0 8px}
 .seg button:hover{background:var(--raise-h)}
-#pzSeg{gap:4px}#pzSeg button{padding:0 4px;font-size:12px} /* six tabs in one row */
+#pzSeg{gap:4px}#pzSeg button{flex:1 1 auto;padding:0 4px;font-size:12px} /* seven tabs in one row, the longer names get more room */
 .seg button.on{background:#5a5856;color:#fff;box-shadow:inset 0 0 0 2px var(--green)}
 
 /* bots */
@@ -447,6 +470,31 @@ h3{margin:16px 0 8px;font-size:13px;font-weight:700;color:var(--muted);text-tran
 #aiBox{margin-bottom:12px}
 .setrow.dim{opacity:.5}
 .chip.ai{background:#35506b}
+/* Spiked Helmet and Explosive Vest: what a piece wears, on the board, on the power-up card, in the editor and the piece card */
+.wear{position:absolute;pointer-events:none;background:center/contain no-repeat}
+.wear.helmet{left:28%;top:-5%;width:44%;height:38%;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 20'%3E%3Cdefs%3E%3ClinearGradient id='m' x1='0' x2='1'%3E%3Cstop offset='0' stop-color='%23868d95'/%3E%3Cstop offset='.45' stop-color='%23eef1f4'/%3E%3Cstop offset='1' stop-color='%23646a72'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M12 .5 13.5 7H10.5Z' fill='url%28%23m%29' stroke='%2333373d' stroke-width='.8' stroke-linejoin='round'/%3E%3Cpath d='M4 16.5C4 10.8 7.4 6.8 12 6.8s8 4 8 9.7Z' fill='url%28%23m%29' stroke='%2333373d' stroke-width='.9'/%3E%3Crect x='2.6' y='15.2' width='18.8' height='3.4' rx='1' fill='url%28%23m%29' stroke='%2333373d' stroke-width='.8'/%3E%3C/svg%3E")}
+.wear.vest{left:19%;bottom:7%;width:62%;height:30%;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 13'%3E%3Cg fill='%23d33b2a' stroke='%236a1409' stroke-width='.7'%3E%3Crect x='2.2' y='1.4' width='4.6' height='10.4' rx='1.4'/%3E%3Crect x='7.6' y='1.4' width='4.6' height='10.4' rx='1.4'/%3E%3Crect x='15.8' y='1.4' width='4.6' height='10.4' rx='1.4'/%3E%3Crect x='21.2' y='1.4' width='4.6' height='10.4' rx='1.4'/%3E%3C/g%3E%3Crect x='.8' y='5' width='26.4' height='3.2' rx='1' fill='%233b3f2a' stroke='%2315170e' stroke-width='.7'/%3E%3Crect x='11.2' y='3.4' width='5.6' height='6.4' rx='.8' fill='%23222' stroke='%23000' stroke-width='.7'/%3E%3Ccircle cx='14' cy='6.6' r='1.2' fill='%23ff3b30'/%3E%3C/svg%3E")}
+.pc-wear{grid-column:1 / -1;display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px;color:var(--muted);line-height:1.35}
+.pc-wear .wear{position:relative;flex:none;left:auto;top:auto;bottom:auto;width:24px;height:20px}
+.pick.nopawn::after{content:"";position:absolute;left:10%;right:10%;top:47%;height:3px;border-radius:2px;background:#e04040;transform:rotate(-40deg)}
+.piece.shielded{filter:drop-shadow(0 0 calc(var(--cell) / 10) rgba(110,170,255,.95)) drop-shadow(0 0 2px rgba(150,200,255,.9))}
+/* the first start: the welcome, and the tips of the guided first game */
+#intro{position:fixed;inset:0;z-index:400;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px}
+.intro-box{background:var(--panel);border-radius:14px;max-width:380px;width:100%;padding:26px 24px 22px;text-align:center;box-shadow:0 18px 50px rgba(0,0,0,.5)}
+.intro-box img{width:64px;height:64px;background:var(--green);border-radius:12px;padding:6px}
+.intro-box h2{margin:14px 0 8px;font-size:21px}
+.intro-box p{margin:0 0 18px;color:var(--muted);line-height:1.5}
+.intro-btns{display:flex;flex-direction:column;gap:8px}
+.intro-btns .btn{height:44px;font-size:15px}
+#guide{display:none;padding:8px 10px 0}
+.guide-tip{position:relative;background:#2b2927;border-left:3px solid var(--green);border-radius:8px;padding:8px 34px 8px 12px}
+.guide-x{position:absolute;top:4px;right:4px;width:28px;height:28px;border:0;border-radius:6px;background:none;color:var(--muted,#9a9794);font-size:18px;line-height:1;cursor:pointer}.guide-x:hover{background:#3a3734;color:#fff}
+.guide-tip b{font-size:11.5px;letter-spacing:.4px;text-transform:uppercase;color:var(--green-h)}
+.guide-tip p{margin:3px 0 0;font-size:13px;line-height:1.45}
+.hint.shieldh{border-radius:50%;box-shadow:inset 0 0 0 calc(var(--S) / 100) #7fb6ff,0 0 10px 2px rgba(110,170,255,.55)}
+.hint.blast{background:rgba(224,52,36,.24);box-shadow:inset 0 0 0 2px rgba(224,52,36,.7)}
+.btn.red{background:#c8392b;color:#fff}
+.btn.red:hover:not(:disabled){background:#dc4535}
 .pw .ic{width:46px;height:46px;border-radius:7px;background:#454340 center/82% no-repeat;flex:none;position:relative}
 .pw .ic b{position:absolute;right:-4px;bottom:-4px;min-width:20px;height:20px;border-radius:10px;background:var(--gold);color:#262421;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;padding:0 5px}
 .pw .tx{flex:1;min-width:0}
@@ -611,6 +659,10 @@ h3{margin:16px 0 8px;font-size:13px;font-weight:700;color:var(--muted);text-tran
 .pz-msg b.down{color:#f06a6a}
 .pz-meta{color:var(--muted);font-size:12.5px;line-height:1.5;margin-top:4px}
 .pz-meta b{color:#fff}
+.pz-idea{margin-top:10px;padding:10px 12px;border-radius:8px;background:#2b2927;border-left:3px solid var(--green)}
+.pz-idea h4{margin:0 0 4px;font-size:12px;letter-spacing:.4px;text-transform:uppercase;color:var(--green-h)}
+.pz-idea p{margin:4px 0;font-size:13px;line-height:1.5;color:var(--text)}
+.pz-idea p.dim{color:var(--dim)}
 .pz-line{margin-top:8px;padding:8px 10px;border-radius:6px;background:#2b2927;color:var(--muted);font-size:13px;line-height:1.6;font-variant-numeric:tabular-nums}
 .pz-line b{color:#fff}
 .pz-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
@@ -858,7 +910,7 @@ kbd{background:#454340;border-radius:3px;padding:1px 6px;font-size:12px;font-fam
   .gm-switch button{font-size:12px;padding:0 4px}
   /* narrow screens: a long label wraps onto a second line instead of running under the next button */
   .seg button{white-space:normal;height:auto;min-height:38px;line-height:1.15;padding:4px 5px;font-size:12px}
-  #pzSeg button{flex:1 1 30%}
+  #pzSeg button{flex:1 1 22%} /* four to a row */
   .gm-switch button{flex:1 1 40%} /* four modes: two to a row */
   .dice{--die:64px;gap:7px} /* three big dice still fit next to the label */
 }
@@ -898,6 +950,7 @@ kbd{background:#454340;border-radius:3px;padding:1px 6px;font-size:12px;font-fam
 .gm-pend{background:rgba(230,145,44,.14);border:1px solid rgba(230,145,44,.4);border-radius:9px;padding:10px 12px;margin-bottom:12px;display:flex;flex-direction:column;gap:6px;font-size:12.5px}
 .gm-pend b{font-size:13.5px}
 .gm-row{display:flex;gap:6px}.gm-row .btn{flex:1;height:34px;font-size:13px}
+.sk-disrupt{display:grid;grid-template-columns:1fr 1fr}.sk-disrupt .btn{height:auto;min-height:34px;padding:6px 8px}
 .gm-wide{width:100%;height:38px;margin-top:6px}
 .btn.green.gm-wide{font-size:14.5px;height:40px}
 .gm-army{margin:8px 0}
@@ -942,6 +995,8 @@ body.touch .keyskeys,body.touch .keyshead{display:none}
 @keyframes tipin{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 #installBar{position:fixed;left:10px;right:10px;bottom:calc(66px + env(safe-area-inset-bottom));z-index:250;display:flex;align-items:center;gap:8px;background:#1d1c1a;border-radius:12px;padding:10px 12px;box-shadow:0 10px 30px rgba(0,0,0,.55);font-size:13px}
 #installBar span{flex:1;min-width:0;color:var(--muted)}
+/* the phone's More: Review, Analysis, Archive and Settings in a sheet over the tab bar */
+.nav.morebtn,#moreSheet{display:none}
 @media (max-width:700px){
   :root{
     --navH:58px;
@@ -985,6 +1040,30 @@ body.touch .keyskeys,body.touch .keyshead{display:none}
   #toast{bottom:calc(var(--navH) + 16px + env(safe-area-inset-bottom));max-width:calc(100vw - 32px)}
   .pm-box{width:100vw;height:100dvh;max-height:none;border-radius:0}
   body[data-tab=settings] #boardcol,body[data-tab=archive] #boardcol{display:none}
+  /* five tabs: the rest is under More */
+  .nav.morebtn{display:flex}
+  #side > .nav[data-tab=review],#side > .nav[data-tab=analysis],#side > .nav[data-tab=archive],#side > .nav[data-tab=settings]{display:none}
+  #moreSheet.on{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;position:fixed;left:8px;right:8px;bottom:calc(var(--navH) + 8px + env(safe-area-inset-bottom));z-index:260;background:var(--panel);border-radius:14px;padding:10px;box-shadow:0 12px 36px rgba(0,0,0,.55)}
+  #moreSheet .nav{flex-direction:column;justify-content:center;gap:5px;padding:12px 0;font-size:11.5px;border-radius:10px;background:var(--panel2)}
+  #moreSheet .nav span{display:none !important}
+  #moreSheet .nav span.short{display:block !important}
+  #moreSheet .nav .dot{display:none}
+  /* the power-ups: one line each; the text shows once it is on (or held) */
+  .pw{align-items:center;padding:8px 10px;margin-bottom:6px;gap:10px}
+  .pw .ic{width:36px;height:36px}
+  .pw:not(.on) .ds{display:none}
+  #pwIntro,#aiBox .setrow small{display:none}
+  /* a game: no chip line (the buttons say it), the power-ups as one row of buttons, their state in the hold text */
+  #view-play #gamehead{display:none !important}
+  #powerbar{flex-direction:row;flex-wrap:wrap;gap:6px;padding:8px 10px}
+  #powerbar .prow{min-height:0}
+  #powerbar .prow > span{display:none}
+  #powerbar .prow .btn{height:34px;padding:0 12px}
+  /* the buttons that are rarely needed on a phone, and the ones that cannot be used yet */
+  .navrow #copyPgn,.navrow #copyFen{display:none}
+  #setrows .setrow small{display:none}
+  #setrows .setrow{min-height:44px}
+  .controls #cReview:disabled,.controls #cAnalyse:disabled{display:none}
   body[data-tab=settings] #panel,body[data-tab=archive] #panel{margin-top:0;border-radius:0}
   body[data-tab=settings] .ptitle,body[data-tab=archive] .ptitle{display:flex}
   /* the moves as one row to swipe, the newest at the right end (as the chess apps do); the buttons stay at the bottom */
@@ -1046,6 +1125,7 @@ body.touch .keyskeys,body.touch .keyshead{display:none}
 </style>
 </head>
 <body>
+<div id="moreSheet"></div>
 <div id="app">
   <nav id="side">
     <div class="brand"><img src="pieces/wN.svg" alt=""><span>Power Chess</span></div>
@@ -1058,6 +1138,7 @@ body.touch .keyskeys,body.touch .keyshead{display:none}
     <button class="nav" data-tab="analysis"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.200" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5M4 19h16M8 15l3.500-4 3 2.500L19 8"/></svg><span>Analysis</span><span class="short">Analysis</span></button>
     <button class="nav" data-tab="archive"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 4h18v4H3zm1.500 5.500h15V20h-15zM9 12v2h6v-2z"/></svg><span>Archive</span><span class="short">Archive</span></button>
     <button class="nav" data-tab="settings"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.4 13a7.5 7.5 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.6 7.6 0 0 0-1.7-1L15 3.5h-4l-.3 2.5a7.6 7.6 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7.500 7.500 0 0 0 0 2l-2 1.600 2 3.400 2.400-1a7.600 7.600 0 0 0 1.700 1l.3 2.500h4l.3-2.500a7.600 7.600 0 0 0 1.700-1l2.400 1 2-3.400zM13 15a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"/></svg><span>Settings</span><span class="short">Settings</span></button>
+    <button class="nav morebtn" data-tab="more"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2.2"/><circle cx="12" cy="12" r="2.2"/><circle cx="19" cy="12" r="2.2"/></svg><span>More</span><span class="short">More</span></button>
     <div id="engineBox"><i class="led"></i><span id="engineText">Loading engine</span></div>
   </nav>
 
@@ -1096,6 +1177,7 @@ body.touch .keyskeys,body.touch .keyshead{display:none}
 
       <section class="view" id="view-play">
         <div id="gamehead"></div>
+        <div id="guide"></div>
         <div id="powerbar"></div>
         <div id="cardFloat"></div>
         <div id="moves"></div>

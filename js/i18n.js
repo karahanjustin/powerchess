@@ -18,14 +18,14 @@
     [/\b([Rr])ight[- ]click(ed)?\b/g, (m, r) => (r === 'R' ? 'Long press' : 'long press')],
     [/\b([Dd])ouble[- ]click(ed)?\b/g, '$1ouble tap'],
     [/\bClick(s?)\b/g, 'Tap$1'], [/\bclicked\b/g, 'tapped'], [/\bclick(s?)\b/g, 'tap$1'],
-    [/\bpress Space\b/g, 'tap Load'], [/ \((Space|Ctrl or Cmd[^)]*)\)/g, '']
+    [/\bpress Space\b/g, 'tap Load'], [/\bPoint at a button\b/g, 'Hold a button'], [/ \((Space|Ctrl or Cmd[^)]*)\)/g, '']
   ];
   const TOUCH_DE = [
     [/\bEin Rechtsklick\b/g, 'Langes Drücken'], [/\bein Rechtsklick\b/g, 'langes Drücken'], [/\bRechtsklick\b/g, 'Langes Drücken'],
-    [/Doppelklick/g, 'Doppeltipp'], [/\bKlick\b/g, 'Tipp'], [/\bklicken\b/g, 'tippen'], [/\bklickst\b/g, 'tippst'],
-    [/drück die Leertaste/g, 'tipp auf Laden'], [/ \((Leertaste|Strg oder Cmd[^)]*)\)/g, '']
+    [/Doppelklicke die Figur/g, 'Tippe die Figur doppelt an'], [/doppelklicke sie/g, 'tippe sie doppelt an'], [/Doppelklick/g, 'Doppeltipp'], [/\bKlick\b/g, 'Tipp'], [/\bklicken\b/g, 'tippen'], [/\bklickst\b/g, 'tippst'],
+    [/drück die Leertaste/g, 'tipp auf Laden'], [/Zeig auf einen Knopf/g, 'Halte einen Knopf gedrückt'], [/ \((Leertaste|Strg oder Cmd[^)]*)\)/g, '']
   ];
-  const touchWords = (t, rules) => (/lick|Space|Ctrl|Leertaste|Strg/.test(t) ? rules.reduce((x, r) => x.replace(r[0], r[1]), t) : t);
+  const touchWords = (t, rules) => (/lick|Space|Ctrl|Leertaste|Strg|Point at|Zeig auf/.test(t) ? rules.reduce((x, r) => x.replace(r[0], r[1]), t) : t);
   try { lang = localStorage.getItem(KEY) === 'de' ? 'de' : 'en'; } catch (e) { /* no storage */ }
 
   /* templates: the keys with {n}, most specific first (the most fixed text). Each gets a regex and its longest fixed
@@ -111,6 +111,18 @@
     if ((m = /^(.*?[^.:!?,;])([.:!?,;]+)$/.exec(t)) && (x = look(m[1], depth + 1)) != null) return x + m[2];
     if ((m = /^\((.*)\)$/.exec(t)) && (x = look(m[1], depth + 1)) != null) return '(' + x + ')';
     if ((m = /^(.+?) \(([^()]*)\)([.:]?)$/.exec(t)) && (x = look(m[1], depth + 1)) != null) return x + ' (' + ((y = look(m[2], depth + 1)) != null ? y : m[2]) + ')' + m[3];
+    // a card's hover text: its "part; part" text with capitals and full stops ("Part. Part")
+    if (!depth && /\. \S/.test(t)) {
+      const semi = t.split('. ').map((p) => p.charAt(0).toLowerCase() + p.slice(1)).join('; ');
+      const semi2 = t.charAt(0).toLowerCase() + t.slice(1).split('. ').join('; '); // a name inside keeps its capital
+      x = DE[semi] != null ? DE[semi] : look(semi, depth);
+      if (x == null) x = look(semi2, depth);
+      if (x == null) { // part by part, as the card lines show them
+        const ps = semi.split('; ').map((p) => { const y = look(p, 1); return y != null ? y : look(p.charAt(0).toUpperCase() + p.slice(1), 1); });
+        if (ps.every((p) => p != null)) x = ps.join('; ');
+      }
+      if (x != null) return x.split('; ').map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join('. ');
+    }
     // sentences in a row: every break between two sentences is tried, the first part known, the rest worked out again
     const re = /[.:!?] (?=\S)/g;
     let k = 0;

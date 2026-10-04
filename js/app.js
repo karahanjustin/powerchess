@@ -82,10 +82,22 @@
   // what stands in a bot's square: the level number, MAX, or a personality's picture
   const botFace = (b) => (b.style ? PERSONA_ICON[b.style] || b.lv : b.lv);
   const statKey = (kind, bot) => (kind === 'fairy' ? 'f:' : '') + bot.id;
-  /* Your own rating, one per time control, from games against the bots without power-ups. A bot is
-     rated at the Elo it plays at, and your rating moves the usual way: big steps while it is new,
-     smaller ones once it has settled. */
+  /* Your own rating, one per time control, from games against the bots without power-ups, and one for
+     power-up games (any clock) where both sides have the same power-ups: with a set of your own only,
+     the bot would be beaten by the power-ups, not by you. A bot is rated at the Elo it plays at, and your
+     rating moves the usual way: big steps while it is new, smaller ones once it has settled. */
   const TIME_CLASSES = { untimed: 'Untimed', blitz: 'Blitz', rapid: 'Rapid' };
+  const RATING_NAMES = Object.assign({ power: 'Power-ups' }, TIME_CLASSES);
+  const powerSig = (pw) => (pw ? Object.keys(pw).filter((k) => pw[k] && k !== 'side' && k !== 'pw').sort().map((k) => k + '=' + pw[k]).join(',') : '');
+  const samePowers = (g) => !!g.pw && powerSig(g.pw.w) === powerSig(g.pw.b);
+  // the rating a game counts for, or null
+  function ratingClass(game) {
+    if (game.auto || game.local || !game.bot || game.hex) return null;
+    if (game.B.powers) return samePowers(game) ? 'power' : null;
+    return timeClass(game.spec.clock);
+  }
+  // the rating the game being set up would count for (the curve shown on the New Game tab)
+  const setupRatingClass = () => (setup.powers && R.anyPower(setup.powers) ? 'power' : timeClass(setup.clock));
   const timeClass = (clock) => (!clock ? 'untimed' : clock < 600 ? 'blitz' : 'rapid');
   function botElo(game) {
     const b = game.bot;
@@ -95,30 +107,30 @@
     return parseInt(lab.elo, 10) || 1200;
   }
   function rateGame(game, res) {
-    if (game.auto || game.B.powers || !game.bot || game.hex) return ''; // your chess rating: not from hex games
-    const cls = timeClass(game.spec.clock), all = stats.rating = stats.rating || {};
+    const cls = ratingClass(game), all = stats.rating = stats.rating || {};
+    if (!cls) return game.B.powers && !game.auto && !game.local && game.bot && !game.hex ? '. Not rated: the bot did not have the same power-ups' : '';
     const r = all[cls] = all[cls] || { r: 1000, n: 0, log: [] };
     const score = res === 'w' ? 1 : res === 'd' ? 0.5 : 0, k = r.n < 20 ? 40 : 20;
     const delta = Math.round(k * (score - 1 / (1 + Math.pow(10, (botElo(game) - r.r) / 400))));
     r.r = Math.max(100, r.r + delta); r.n++;
     r.log.push([Date.now(), r.r]);
     if (r.log.length > 400) r.log.splice(0, r.log.length - 400);
-    return '. Your ' + TIME_CLASSES[cls].toLowerCase() + ' rating: ' + r.r + ' (' + (delta >= 0 ? '+' : '') + delta + ')';
+    return (cls === 'power' ? '. Your power-up rating: ' : '. Your ' + TIME_CLASSES[cls].toLowerCase() + ' rating: ') + r.r + ' (' + (delta >= 0 ? '+' : '') + delta + ')';
   }
   // The rating box on the New Game tab: one number per time control and the curve of the last games.
   function renderRatings() {
-    const box = $('#ratings'), all = stats.rating || {}, keys = Object.keys(TIME_CLASSES).filter((k) => all[k]);
+    const box = $('#ratings'), all = stats.rating || {}, keys = Object.keys(RATING_NAMES).filter((k) => all[k]);
     if (!keys.length) { box.innerHTML = ''; box.style.display = 'none'; return; }
     box.style.display = '';
-    let html = '<h3>Your ratings</h3><div class="pz-rating">' + keys.map((k) => '<div><small>' + TIME_CLASSES[k] + '</small><b>' + all[k].r + '</b><small>' + all[k].n + (all[k].n === 1 ? ' game' : ' games') + '</small></div>').join('') + '</div>';
-    const cur = all[timeClass(setup.clock)];
+    let html = '<h3>Your ratings</h3><div class="pz-rating">' + keys.map((k) => '<div><small>' + RATING_NAMES[k] + '</small><b>' + all[k].r + '</b><small>' + all[k].n + (all[k].n === 1 ? ' game' : ' games') + '</small></div>').join('') + '</div>';
+    const curCls = setupRatingClass(), cur = all[curCls];
     if (cur && cur.log.length >= 2) {
       const vals = cur.log.slice(-60).map((x) => x[1]), lo = Math.min.apply(null, vals) - 20, hi = Math.max.apply(null, vals) + 20;
       const pts = vals.map((v, i) => (i / (vals.length - 1) * 300).toFixed(1) + ',' + (70 - (v - lo) / (hi - lo) * 66 - 2).toFixed(1)).join(' ');
       html += '<svg class="pz-graph" viewBox="0 0 300 72" preserveAspectRatio="none"><polyline points="' + pts + '" fill="none" stroke="#81b64c" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>' +
-        '<div class="pz-axis"><span>' + TIME_CLASSES[timeClass(setup.clock)] + ', ' + Math.round(lo) + ' to ' + Math.round(hi) + '</span><span>last ' + vals.length + ' games</span></div>';
+        '<div class="pz-axis"><span>' + RATING_NAMES[curCls] + ', ' + Math.round(lo) + ' to ' + Math.round(hi) + '</span><span>last ' + vals.length + ' games</span></div>';
     }
-    html += '<p class="sub">Games against the bots without power-ups count. The bots are rated at the level they play.</p>';
+    html += '<p class="sub">Games against the bots count, power-up games when the bot has the same power-ups. The bots are rated at the level they play.</p>';
     box.innerHTML = html;
   }
   const ENGINES = [
@@ -132,7 +144,7 @@
       opt: 'double', opts: [[2, '2 moves per turn'], [3, '3 moves per turn']] },
     { id: 'snipers', name: 'Snipers', one: 'Sniper', icon: 'wB', skin: 'camo', first: 'sniper',
       desc: 'The pieces you pick can shoot anything they attack without leaving their square. A shot uses your move. On the board a sniper has a vine wound around it. All gives it to every piece there is: kings, pawns, fairy, Ouroboros and checkers pieces.',
-      multi: [['sniperP', 'Pawns', 'P'], ['archer', 'Knights', 'N'], ['sniper', 'Bishops', 'B'], ['sniperR', 'Rooks', 'R'], ['sniperQ', 'Queens', 'Q'], ['sniperK', 'King', 'K'], ['sniperAll', 'All pieces', '*']] },
+      multi: [['sniperP', 'Pawns', 'P'], ['archer', 'Knights', 'N'], ['sniper', 'Bishops', 'B'], ['sniperR', 'Rooks', 'R'], ['sniperQ', 'Queens', 'Q'], ['sniperK', 'King', 'K'], ['sniperAll', 'All pieces', '*'], ['sniperNP', 'All but pawns', '-']] },
     { id: 'midas', name: 'Midas Touch', icon: 'wQ', gold: true,
       desc: 'Turn an enemy piece you could take into a gold statue, as long as taking it would not leave your king in check. A statue never moves, cannot be captured and gives no check, it only stands in the way. A free action on top of your move, or with Uses turn the gild is your move.',
       opt: 'midasPerTurn', opts: [[1, 'Once per turn'], [0, 'Unlimited'], [-1, 'Uses turn']] },
@@ -168,28 +180,45 @@
       desc: 'Your pawns promote two ranks early, on the sixth rank. In variants the pawn turns into a queen on its own.' },
     { id: 'ghosts', name: 'Ghosts', one: 'Ghost', icon: 'wR', skin: 'ghost', first: 'ghost',
       desc: 'The pieces you pick move and attack straight through your own pieces. Ghosts are half transparent on the board.',
-      multi: [['ghostB', 'Bishops', 'B'], ['ghost', 'Rooks', 'R'], ['ghostQ', 'Queens', 'Q']] },
+      multi: [['ghostB', 'Bishops', 'B'], ['ghost', 'Rooks', 'R'], ['ghostQ', 'Queens', 'Q'], ['ghostAll', 'All pieces', '*'], ['ghostNP', 'All but pawns', '-']] },
     { id: 'iron', name: 'Iron Pawns', icon: 'wP', badge: 'Fe',
       desc: 'Your pawns can only be captured by pawns. Pieces bounce off them, and explosions leave them standing.' },
     { id: 'swap', name: 'Royal Swap', icon: 'wK', badge: '<>',
       desc: 'As your move, the king changes places with one of your rooks, wherever the two stand. Not into check.' },
     { id: 'turncoat', name: 'Turncoat', icon: 'bQ', badge: 'x1',
-      desc: 'Once per game, an enemy piece of your choice joins your side. Never the king, and never a piece that would give check at once. Free action, does not use your move. Against Stockfish 19 your army has to stay one a real game could produce, so a piece can only join once you are a pawn down. Fairy-Stockfish has no such limit.' }
+      desc: 'Once per game, an enemy piece of your choice joins your side. Never the king, and never a piece that would give check at once. Free action, does not use your move. Against Stockfish 19 your army has to stay one a real game could produce, so a piece can only join once you are a pawn down. Fairy-Stockfish has no such limit.' },
+    { id: 'shield', name: 'Shield', icon: 'wR', badge: '\u26e8',
+      desc: 'Once per turn, shield one of your pieces (not the king): it cannot be captured, shot or blown up on the other side\'s next turn. Free action, does not use your move.' },
+    { id: 'tempo', name: 'Tempo', icon: 'wK', badge: 'x2',
+      desc: 'Twice per game you may pass: skip your move, and the other side has to move again. Not while in check. Strongest in the endgame, where having to move can lose.' },
+    { id: 'helmet', name: 'Spiked Helmet', icon: 'wN', wear: 'helmet', first: ['helmetP', 'helmetN', 'helmetB', 'helmetR', 'helmetQ'],
+      multi: [['helmetP', 'Pawns', 'P'], ['helmetN', 'Knights', 'N'], ['helmetB', 'Bishops', 'B'], ['helmetR', 'Rooks', 'R'], ['helmetQ', 'Queens', 'Q'], ['helmetAll', 'All pieces', '*'], ['helmetNP', 'All but pawns', '-']],
+      desc: 'Your pieces wear a spiked helmet. A capture of a helmeted piece bounces off: the helmet breaks, both pieces stay where they are, the attacker\'s move is used (a shot\'s too) and the attacker is frozen on its next turn. A blast only breaks the helmet. Kings wear none. In the board editor it goes on single pieces of either colour.' },
+    { id: 'vest', name: 'Explosive Vest', icon: 'wN', wear: 'vest', first: ['vestN', 'vestB', 'vestR', 'vestQ'],
+      multi: [['vestP', 'Pawns', 'P'], ['vestN', 'Knights', 'N'], ['vestB', 'Bishops', 'B'], ['vestR', 'Rooks', 'R'], ['vestQ', 'Queens', 'Q'], ['vestAll', 'All pieces', '*'], ['vestNP', 'All but pawns', '-']],
+      desc: 'Your pieces wear an explosive vest. Instead of moving, a piece can go up: it and every piece in the 3 x 3 square around it are destroyed, your own as well. Kings, statues and what is safe from blasts survive, and a helmet takes the blast. Double-click the piece, or select it and press Detonate. Kings wear none.' }
   ];
-  const POWER_KEYS = ['sniper', 'midas', 'freeze', 'dragon', 'amazon', 'rocket', 'explosive', 'drops', 'portals', 'immortal', 'storm', 'timestop', 'veto', 'puppet', 'rampage', 'bodyguard', 'earlypromo', 'ghost', 'archer', 'iron', 'swap', 'turncoat', 'sniperP', 'sniperR', 'sniperQ', 'sniperK', 'ghostB', 'ghostQ', 'sniperAll'];
+  const POWER_KEYS = ['sniper', 'midas', 'freeze', 'dragon', 'amazon', 'rocket', 'explosive', 'drops', 'portals', 'immortal', 'storm', 'timestop', 'veto', 'puppet', 'rampage', 'bodyguard', 'earlypromo', 'ghost', 'archer', 'iron', 'swap', 'turncoat', 'sniperP', 'sniperR', 'sniperQ', 'sniperK', 'ghostB', 'ghostQ', 'sniperAll', 'shield', 'tempo', 'helmet', 'vest', 'sniperNP', 'ghostNP', 'ghostAll',
+    'helmetP', 'helmetN', 'helmetB', 'helmetR', 'helmetQ', 'helmetAll', 'helmetNP', 'vestP', 'vestN', 'vestB', 'vestR', 'vestQ', 'vestAll', 'vestNP'];
   const HUMAN_ONLY = ['veto', 'puppet', 'portals']; // a bot cannot be handed these
   // A card on the Power-ups tab is one power-up, or several of a kind (snipers, ghosts) with a flag per piece type.
   const CARD = {}, POWER_LIST = [];
   POWERS.forEach((p) => {
     CARD[p.id] = p;
-    if (p.multi) p.multi.forEach((m) => POWER_LIST.push({ key: m[0], name: m[0] === 'sniperAll' ? 'Snipers on all pieces' : p.one + ' ' + m[1] }));
+    const GROUP = { sniperAll: 'Snipers on all pieces', sniperNP: 'Snipers on all but pawns', ghostAll: 'Ghosts on all pieces', ghostNP: 'Ghosts on all but pawns',
+      helmetAll: 'Helmets on all pieces', helmetNP: 'Helmets on all but pawns', vestAll: 'Vests on all pieces', vestNP: 'Vests on all but pawns' };
+    // a wearable upgrade by kind: "Pawns with helmets", "Knights with vests"
+    if (p.multi) p.multi.forEach((m) => POWER_LIST.push({ key: m[0], name: GROUP[m[0]] || (p.wear ? m[1] + ' with ' + p.wear + 's' : p.one + ' ' + m[1]) }));
     else POWER_LIST.push({ key: p.id, name: p.name });
   });
   const flagOn = (pw, key) => (key === 'double' ? pw.double > 0 : !!pw[key]);
   const powerOn = (pw, id) => (CARD[id] && CARD[id].multi ? CARD[id].multi.some((m) => !!pw[m[0]]) : flagOn(pw, id));
   const SNIPER_KINDS = ['sniperP', 'archer', 'sniper', 'sniperR', 'sniperQ', 'sniperK'];
   // Snipers for all pieces is one entry, not seven
-  const powerNames = (pw) => (pw ? POWER_LIST.filter((x) => flagOn(pw, x.key) && !(pw.sniperAll && SNIPER_KINDS.indexOf(x.key) >= 0)).map((x) => x.name) : []);
+  const WEAR_KINDS = (w) => ['P', 'N', 'B', 'R', 'Q'].map((k) => w + k);
+  const powerNames = (pw) => (pw ? POWER_LIST.filter((x) => flagOn(pw, x.key) && !(pw.sniperAll && SNIPER_KINDS.indexOf(x.key) >= 0) &&
+    !(pw.helmetAll && WEAR_KINDS('helmet').indexOf(x.key) >= 0) && !(pw.vestAll && WEAR_KINDS('vest').indexOf(x.key) >= 0)).map((x) => x.name)
+    .concat(pw.helmet ? ['Spiked Helmet'] : [], pw.vest ? ['Explosive Vest'] : []) : []); // helmet/vest: the old levels (puzzles, saved games)
   /* Skins: every piece image once more as a sniper and as a statue. They are painted on a canvas at
      start and kept as images, which is steadier than blending layers on the board.
      A sniper keeps its normal look and gets a vine wound around it, with a few leaves that reach
@@ -391,7 +420,7 @@
     { g: 'ouroboros', s: 'army', n: "Troll bridge", d: "Trolls on both banks of a river that is dry only in the middle.", f: '1bфk1пb1/8/8/8/8/8/8/1NП1KФB1 w - - 0 1', t: { walls: [], water: ["a4","h5","b4","g5","c4","f5","f4","c5","g4","b5","h4","a5"], portals: [] }, kc: true },
     { g: 'ouroboros', s: 'army', n: "Assassins at night", d: "Assassins, a blade dancer and a decoy against royal guards and musketeers.", f: '2ξ1k3/1μ4μ1/8/8/8/8/8/2ΡΛKБΡ1 w - - 0 1', t: { walls: ["c4","f5","d6"], water: [], portals: [] }, kc: true },
     { g: 'ouroboros', s: 'army', n: "Dragon's nest", d: "Eggs, a whelp, a dragon and fire birds against vikings and a bowman.", f: '1τζηkυε1/3ζ4/8/8/8/8/8/1VSTKS2 w - - 0 1', t: { walls: [], water: ["d5","e5","d4","e4"], portals: [] }, kc: true },
-    { g: 'ouroboros', s: 'army', n: "The gorgon's lair", d: "A gorgon, a reaper and martyrs against guns, a catapult and a golem.", f: '2цшk3/1щщ1p1з1/8/8/8/8/8/XГ1ЪK1Μ1 w - - 0 1', t: { walls: ["b5","g4"], water: ["e5"], portals: [] }, kc: true },
+    { g: 'ouroboros', s: 'army', n: "The gorgon's lair", d: "A gorgon, a reaper and a martyr against guns, a catapult and a golem.", f: '2цшk3/1щ2p1з1/8/8/8/8/8/XГ1ЪK1Μ1 w - - 0 1', t: { walls: ["b5","g4"], water: ["e5"], portals: [] }, kc: true, sp: [12, 16, 12] }, // sp: balanced by self-play (white wins, black wins, draws), the search misjudges martyr blasts
     { g: 'ouroboros', s: 'army', n: "The crusade", d: "Crusaders, a templar and a cardinal against vikings and berserkers.", f: '1s1sk1s1/2t2t2/8/8/8/8/8/1O1ΝKΘO1 w - - 0 1', t: { walls: ["e4","d5"], water: [], portals: [] }, kc: true },
     { g: 'ouroboros', s: 'army', n: "The plague", d: "Lepers and martyrs against marching pawns and quartermasters.", f: '2з1kз2/1щ1з2щ1/8/8/8/8/Д1Д2Д1Д/1Ы1NK1Ы1 w - - 0 1', t: { walls: [], water: ["a5","h4"], portals: [] }, kc: true },
     { g: 'ouroboros', s: 'army', n: "The siege", d: "A corner fortress of catapults and bowmen against war wagons and a mounted king.", f: '5vxk/6μμ/8/8/8/8/3S1S2/2Ι1Э1Ι1 w - - 0 1', t: { walls: ["e6","f5","g4"], water: [], portals: [] }, kc: true },
@@ -481,6 +510,15 @@
   setup.powers2 = Object.assign(noPowers(), saved.setup && saved.setup.powers2); // the other side's own set
   if (!Fairy.VARIANTS.some((v) => v.id === setup.variant)) setup.variant = 'chess';
   setup.ai = Object.assign({ anticipate: false, use: 'none' }, saved.setup && saved.setup.ai);
+  [setup.powers, setup.powers2].forEach((pw) => {
+    // Spiked Helmet and Explosive Vest were levels once (1 chess pieces, 2 all but pawns, 3 all): by kind now
+    if (!pw) return;
+    ['helmet', 'vest'].forEach((w) => {
+      const lv = +pw[w] || 0;
+      if (lv === 1) ['P', 'N', 'B', 'R', 'Q'].forEach((k) => { pw[w + k] = true; }); else if (lv === 2) pw[w + 'NP'] = true; else if (lv === 3) pw[w + 'All'] = true;
+      pw[w] = 0;
+    });
+  });
   if (setup.ai.use === true) setup.ai.use = 'same'; // settings saved before each side had its own set
   if (['none', 'same', 'own'].indexOf(setup.ai.use) < 0) setup.ai.use = 'none';
   setup.botW = Object.assign({ engine: 'auto', bot: 'max' }, saved.setup && saved.setup.botW);
@@ -502,7 +540,7 @@
   let custom = null;  // loaded custom variant { uci, title, fen, ini, glyphs }
   let customErr = '';
   const ui = { sgHover: -1, tab: 'new', flipped: setup.color === 'b', sel: null, mode: null, draft: [], arrows: [], marks: [], drag: null, paint: null, overlay: null, rc: -1, dropFrom: -1, hintArrow: null, hintWanted: false, thinking: false, premoves: [], pwSet: 'a', eval: { cp: 0, mate: null, depth: 0 } };
-  const ed = { board: [], W: 8, H: 8, turn: 'w', castling: '', brush: null, errs: [], terrain: { walls: [], water: [], portals: [], holes: [] }, ghosts: [], snipers: [] };
+  const ed = { board: [], W: 8, H: 8, turn: 'w', castling: '', brush: null, errs: [], terrain: { walls: [], water: [], portals: [], holes: [] }, ghosts: [], snipers: [], helmets: [], vests: [] };
 
   const engine = new Engine();
   let engineReady = false;
@@ -615,8 +653,13 @@
     if (ui.tab === 'puzzles') return { s: R.fromFen(R.START_FEN), W: 8, H: 8, glyphs: {}, cfg: null }; // no puzzle on the board right now
     const V = Fairy.byId(setup.variant);
     if (stdVariant(V.id)) {
+      // the game as it will start: what the power-ups put on the pieces (helmets, vests, ghosts, camo) and the upgrades by hand
+      const me = setup.mode === 'human' && setup.color === 'b' ? 'b' : 'w', pw = { w: null, b: null };
+      const theirs = setup.ai.use === 'same' ? setup.powers : setup.ai.use === 'own' ? setup.powers2 : null;
+      pw[me] = setup.powers || null; pw[R.other(me)] = theirs || null;
+      const pcfg = { side: 'w', pw: pw, traits: hasTraits(setup.traits) ? setup.traits : null, freeArmy: true, terrain: hasTerrain(setup.terrain) ? setup.terrain : null };
       let s;
-      try { s = R.fromFen(setup.fen); } catch (e) { s = R.fromFen(R.START_FEN); }
+      try { s = R.fromFen(setup.fen, pcfg); } catch (e) { s = R.fromFen(R.START_FEN); }
       return { s: s, W: s.W || 8, H: s.H || 8, glyphs: {}, cfg: hasTerrain(setup.terrain) ? { side: 'w', terrain: setup.terrain } : null };
     }
     if (V.checkers) { const s = R.fromFen(checkersBoard(setup.fen) ? setup.fen : V.fen); return { s: s, W: s.W || 8, H: s.H || 8, glyphs: {}, cfg: null }; }
@@ -627,7 +670,7 @@
   function view() {
     const m = mode();
     if (m === 'modes') return modesView();
-    if (m === 'editor') return { s: Object.assign(blank(ed.board, ed.turn), { ghosts: ed.ghosts, snipers: ed.snipers, W: ed.W, H: ed.H }), W: ed.W, H: ed.H, glyphs: {}, cfg: { side: 'w', terrain: ed.terrain } };
+    if (m === 'editor') return { s: Object.assign(blank(ed.board, ed.turn), { ghosts: ed.ghosts, snipers: ed.snipers, helmets: ed.helmets, vests: ed.vests, W: ed.W, H: ed.H }), W: ed.W, H: ed.H, glyphs: {}, cfg: { side: 'w', terrain: ed.terrain } };
     if (m === 'preview') return preview();
     if (m === 'analysis') return { s: A.cur.state, W: A.W, H: A.H, glyphs: A.glyphs, cfg: A.cfg };
     if (m === 'puzzle') return { s: pz.cur.shown || pz.cur.state, W: 8, H: 8, glyphs: {}, cfg: pz.cur.cfg.pw ? pz.cur.cfg : null };
@@ -736,6 +779,7 @@
     else if (kind === 'gold') [1568, 2093, 2637, 3136].forEach((f, i) => tone(t + i * 0.05, 0.32, f, 0.06));
     else if (kind === 'ice') { [2400, 1900, 3100].forEach((f, i) => tone(t + i * 0.04, 0.22, f, 0.05, 'triangle')); noise(t, 0.18, 5200, 2, 0.35); }
     else if (kind === 'shot') { noise(t, 0.13, 2600, 0.7, 1.1); tone(t, 0.14, 1400, 0.1, 'sawtooth', 180); }
+    else if (kind === 'clank') { tone(t, 0.16, 1850, 0.16, 'triangle', 1500); tone(t, 0.3, 2650, 0.07, 'sine', 2400); noise(t, 0.05, 3200, 1.4, 0.5); }
     else if (kind === 'boom') { noise(t, 0.5, 170, 0.6, 1.8); noise(t, 0.25, 640, 0.8, 0.8); tone(t, 0.4, 90, 0.35, 'sine', 40); }
     else if (kind === 'portal') { tone(t, 0.25, 320, 0.09, 'sine', 1250); tone(t + 0.04, 0.25, 480, 0.05, 'sine', 1800); }
     else if (kind === 'roll') { let at = t; for (let k = 0; k < 20; k++) { noise(at, 0.028, 1800 + Math.random() * 1600, 1.6, 0.42); at += 0.04 + k * 0.004; } } // dice rattling in a cup
@@ -745,7 +789,8 @@
   function moveSound(m, fx, check) {
     if (m.shot) { snd('shotgun'); if (check) snd('check', 0.2); return; } // a Shotgun King's blast
     if (m.reload) { snd('shell'); return; }
-    if (m.snipe) snd('shot');
+    if (fx && fx.bounce >= 0) snd('clank'); // off a helmet
+    else if (m.snipe) snd('shot');
     else if (fx && fx.boom) snd('boom');
     else if (fx && fx.tp >= 0) snd('portal');
     else if (fx ? fx.capture : !!m.cap) snd('capture');
@@ -904,6 +949,7 @@
     if (e.roll) return [];
     if (e.gild != null) return [e.gild];
     if (e.freeze != null) return [e.freeze];
+    if (e.shield != null) return [e.shield];
     if (e.convert != null) return [e.convert];
     if (e.stop || e.m.storm) return [];
     if (e.m.drop) return [e.m.to];
@@ -967,9 +1013,10 @@
       if (!p) continue;
       if (inGame && fogged(R.colorOf(p))) continue; // Fog of War
       const gold = s.gold.indexOf(sq) >= 0, ice = !gold && !!s.ice && s.ice.indexOf(sq) >= 0;
-      const d = h('div', 'piece' + (gold ? ' gold' : '') + (ice ? ' ice' : '') + (s.reborn && s.reborn.indexOf(sq) >= 0 ? ' spent' : '')); // spent: a fire chick or phoenix that already came back
+      const d = h('div', 'piece' + (gold ? ' gold' : '') + (ice ? ' ice' : '') + (s.reborn && s.reborn.indexOf(sq) >= 0 ? ' spent' : '') + (s.guard && s.guard.indexOf(sq) >= 0 ? ' shielded' : '')); // spent: a fire chick or phoenix that already came back; shielded: Shield
       const up = (s.snipers && s.snipers.indexOf(sq) >= 0 && !/camo/.test(d.className) ? ' camo' : '') + (s.ghosts && s.ghosts.indexOf(sq) >= 0 ? ' ghost' : '');
       paint(d, p, v.glyphs, v.cfg, up);
+      wearOn(d, s, sq);
       if (gold || ice) {
         /* a statue or a frozen piece keeps its shape and the shade of its side: bright gold or pale ice for
            White, deep gold or dark blue for Black. A frozen sniper keeps its vine, a ghost its style. */
@@ -1033,9 +1080,10 @@
       const PB = md === 'puzzle' ? pz.cur.B : G.B, plg = md === 'puzzle' ? pz.cur.legal : G.legal;
       // the free actions belong to the live game (or the puzzle): never mark them on a board that shows another position
       const freeOk = md === 'puzzle' || (inGame && canAct() && s === live());
-      if (ui.mode && !freeOk && (ui.mode === 'gild' || ui.mode === 'freeze' || ui.mode === 'convert')) ui.mode = null;
+      if (ui.mode && !freeOk && (ui.mode === 'gild' || ui.mode === 'freeze' || ui.mode === 'convert' || ui.mode === 'shield')) ui.mode = null;
       if (ui.mode === 'gild') PB.gildTargets(s, plg).forEach((sq) => hint(sq, 'gild'));
       else if (ui.mode === 'freeze') PB.freezeTargets(s).forEach((sq) => hint(sq, 'cold'));
+      else if (ui.mode === 'shield') PB.shieldTargets(s).forEach((sq) => hint(sq, 'shieldh'));
       else if (ui.mode === 'convert') PB.convertTargets(s).forEach((sq) => hint(sq, 'turn'));
       else if (ui.sel && settings.legal) {
         const seen = {};
@@ -1051,6 +1099,7 @@
           }
           if (cands.some((x) => x.snipe || (x.shot && !sgArmed()))) hint(m.to, 'aim');
         });
+        if (ui.sel.blast) blastZone(s, ui.sel.sq).forEach((q) => hint(q, 'blast')); // what the vest would take with it
       }
     }
     if (v.sk) skHints(hint);
@@ -1335,7 +1384,10 @@
     navFromPop = true;
     try { setTab(tab); } finally { navFromPop = false; }
   });
+  const MORE_TABS = ['review', 'analysis', 'archive', 'settings']; // under More on a phone
   function setTab(tab) {
+    if (tab === 'more') { $('#moreSheet').classList.toggle('on'); return; }
+    $('#moreSheet').classList.remove('on');
     if (ui.tab === 'analysis' && tab !== 'analysis' && A && A.searching) { A.searching = false; stopEngines(); }
     if (ui.tab === 'puzzles' && tab !== 'puzzles') pzLeave();
     const from = ui.tab;
@@ -1352,7 +1404,7 @@
     closeOverlay();
     if (from === 'editor') ed.touched = false;
     const navTab = SETUP_STEPS.some((x) => x[0] === tab) ? 'new' : tab; // the four setup steps are one entry in the sidebar
-    document.querySelectorAll('.nav').forEach((b) => b.classList.toggle('on', b.dataset.tab === navTab));
+    document.querySelectorAll('.nav').forEach((b) => b.classList.toggle('on', b.dataset.tab === navTab || (b.dataset.tab === 'more' && MORE_TABS.indexOf(navTab) >= 0)));
     document.querySelectorAll('.view').forEach((v) => v.classList.toggle('on', v.id === 'view-' + tab));
     document.body.dataset.tab = tab; // the phone layout hides the board on the pages that do not use it
     const icon = document.querySelector('.nav[data-tab="' + navTab + '"] svg').outerHTML;
@@ -1375,6 +1427,7 @@
     renderBoard(anims);
     renderBars();
     renderGame();
+    renderGuide();
     renderEval();
     if (ui.tab === 'review') renderReview();
     if (ui.tab === 'analysis') renderAnalysis();
@@ -1400,6 +1453,7 @@
     if (s.turn !== G.cfg.side) return G.botName + ' is thinking' + (ui.premoves.length > 1 ? ', ' + ui.premoves.length + ' premoves set' : ui.premoves.length ? ', premove set' : '');
     if (ui.mode === 'gild') return 'Midas Touch: click a glowing piece';
     if (ui.mode === 'freeze') return 'Freeze Ray: click the piece to freeze';
+    if (ui.mode === 'shield') return 'Shield: click the piece to shield';
     if (ui.mode === 'convert') return 'Turncoat: click the piece that should join you';
     if (ui.mode === 'portal') return ui.draft.length ? 'Click the square for the orange portal' : 'Click the square for the blue portal';
     if (ui.sel && ui.sel.drop) return 'Click an empty square to drop the piece';
@@ -1581,6 +1635,7 @@
       : G.local ? '<b>White</b> against <b>Black</b><span class="chip">Two players</span>' : 'You against <b>' + G.botName + '</b>';
     if (G.variantGame || G.dice || G.checkers || G.duck) hh += '<span class="chip">' + G.vname + '</span>';
     if (G.spec && G.spec.gameMode) hh += '<span class="chip gm">' + modeChip(G.spec.gameMode) + '</span>';
+    if (G.spec && G.spec.daily) hh += '<span class="chip gm">Daily challenge</span>';
     if (G.B.kc) hh += '<span class="chip">King capture</span>';
     if (G.B.ups) hh += '<span class="chip">Upgrades by hand</span>';
     const chips = (pw, cls, pre) => powerNames(pw).map((n) => '<span class="chip' + cls + '">' + pre + n + '</span>').join('');
@@ -1603,6 +1658,8 @@
     fl.innerHTML = '';
     if (ui.info != null && (G.B.kind === 'std' || G.hex) && mode() === 'game' && sv.board[ui.info]) {
       const card = G.hex ? hexCard(sv.board[ui.info]) : pieceCard(sv.board[ui.info], cfg, sv);
+      if (sv.helmets && sv.helmets.indexOf(ui.info) >= 0) card.insertAdjacentHTML('beforeend', '<div class="pc-wear"><i class="wear helmet"></i>Spiked helmet: the next capture of this piece bounces off, breaks the helmet and freezes the attacker for a turn</div>');
+      if (sv.vests && sv.vests.indexOf(ui.info) >= 0) card.insertAdjacentHTML('beforeend', '<div class="pc-wear"><i class="wear vest"></i>Explosive vest: instead of moving it can go up and take the 3 x 3 square around it with it</div>');
       if (ui.peek && ui.peek.sq === ui.info) card.insertAdjacentHTML('beforeend', peekLegend()); // what the red marks on the board mean
       fl.appendChild(card); // floats over the move list
     }
@@ -1659,6 +1716,36 @@
       row.appendChild(b);
       const mineIce = s.ice.filter((q) => s.board[q] && R.colorOf(s.board[q]) !== me);
       row.appendChild(h('span', '', mineIce.length ? mineIce.map(sqLabel).join(', ') + ' frozen' : (s.freezeUsed && s.turn === me ? 'Used this turn' : 'Ready')));
+      bar.appendChild(row);
+    }
+    if ((s.vests || []).some((q) => s.board[q] && R.colorOf(s.board[q]) === me && s.gold.indexOf(q) < 0)) {
+      // Explosive Vest: the selected piece goes up
+      const row = h('div', 'prow'), bl = act && ui.sel && ui.sel.blast;
+      const b = h('button', 'btn' + (bl ? ' red' : ''), 'Detonate');
+      b.disabled = !bl;
+      b.onclick = () => { if (ui.sel && ui.sel.blast) blastAt(ui.sel.sq); };
+      row.appendChild(b);
+      row.appendChild(h('span', '', bl ? 'The ' + (R.fairyOf(s.board[ui.sel.sq]) ? R.fairyOf(s.board[ui.sel.sq]).name : { q: 'queen', r: 'rook', b: 'bishop', n: 'knight', p: 'pawn' }[s.board[ui.sel.sq].toLowerCase()] || 'piece').toLowerCase() + ' on ' + sqLabel(ui.sel.sq) + ' goes up, and everything around it' : 'Select a piece with a vest, or double-click it'));
+      bar.appendChild(row);
+    }
+    if (mine.shield) {
+      const row = h('div', 'prow');
+      const ready = act && !s.shieldUsed && G.B.shieldTargets(s).length > 0;
+      const b = h('button', 'btn' + (ui.mode === 'shield' ? ' on' : ''), ui.mode === 'shield' ? 'Cancel' : 'Shield');
+      b.disabled = !ready && ui.mode !== 'shield';
+      b.onclick = () => { ui.mode = ui.mode === 'shield' ? null : 'shield'; ui.sel = null; renderAll(); };
+      row.appendChild(b);
+      const mineG = (s.guard || []).filter((q) => s.board[q] && R.colorOf(s.board[q]) === me);
+      row.appendChild(h('span', '', mineG.length ? mineG.map(sqLabel).join(', ') + ' shielded' : (s.shieldUsed && s.turn === me ? 'Used this turn' : 'Ready')));
+      bar.appendChild(row);
+    }
+    if (mine.tempo) {
+      const row = h('div', 'prow'), pass = act ? G.legal.find((x) => x.pass) : null, left = 2 - ((s.passed || '').split(me).length - 1);
+      const b = h('button', 'btn', 'Pass');
+      b.disabled = !pass;
+      b.onclick = () => { if (pass) applyMove(pass); };
+      row.appendChild(b);
+      row.appendChild(h('span', '', left > 0 ? left + (left === 1 ? ' pass left' : ' passes left') : 'No passes left'));
       bar.appendChild(row);
     }
     if (mine.portals) {
@@ -1720,6 +1807,8 @@
       const chk = /\s(\d+)\+(\d+)\s/.exec(s.fen);
       if (chk) bar.appendChild(h('div', 'prow', '<b>Checks still needed</b><span>White ' + chk[1] + ', Black ' + chk[2] + '</span>'));
     }
+    // what the text next to a button says, also as its hold text (a phone shows the buttons only)
+    bar.querySelectorAll('.prow').forEach((row) => { const b = row.querySelector('button'), t = row.querySelector(':scope > span'); if (b && t && t.textContent && !b.title) b.title = t.textContent; });
     bar.classList.toggle('on', bar.children.length > 0);
 
     // move list
@@ -1741,7 +1830,7 @@
         if (c === 'w' && !r.w.length) cell.textContent = '...';
         r[c].forEach((i) => {
           const e = G.log[i];
-          const b = h('button', 'mv' + (G.view === i + 1 ? ' on' : '') + (e.gild != null ? ' au' : '') + (e.freeze != null || e.convert != null ? ' ice' : '') + (e.roll ? ' rollmv' + (e.wasted ? ' wasted' : '') : ''), e.san);
+          const b = h('button', 'mv' + (G.view === i + 1 ? ' on' : '') + (e.gild != null ? ' au' : '') + (e.freeze != null || e.convert != null || e.shield != null ? ' ice' : '') + (e.roll ? ' rollmv' + (e.wasted ? ' wasted' : '') : ''), e.san);
           if (e.roll) { e.roll.forEach((t) => b.appendChild(paint(h('i', 'mdie'), e.by === 'w' ? t.toUpperCase() : t, null, null))); b.title = 'Rolled ' + e.roll.map(pieceName).join(', ') + (e.wasted ? ': nothing could move' : ''); }
           b.onclick = () => gotoView(i + 1);
           cell.appendChild(b);
@@ -1886,7 +1975,7 @@
       searchmoves: () => null,
       find: (lg, uci) => Hex.find(lg, uci),
       uci: (m) => Hex.uci(m),
-      gildTargets: none, freezeTargets: none, convertTargets: none, stopReady: () => false, timeStop: () => null,
+      gildTargets: none, freezeTargets: none, shieldTargets: none, shield: () => null, convertTargets: none, stopReady: () => false, timeStop: () => null,
       withPortals: (s) => s, unrolled: () => false, diceCount: 0,
       dispose: () => {}
     };
@@ -1977,7 +2066,7 @@
     try { const s0 = R.fromFen(startFen, cfg); fairy = R.hasFairy(s0.board); W = s0.W || 8; H = s0.H || 8; kingless = !!s0.kingless; } catch (e) { fairy = false; }
     const ups = hasTraits(cfg.traits), big = W !== 8 || H !== 8; // big: any board that is not 8 x 8, which the chess engines cannot read
     const powers = R.hasPowers(cfg) || !!cfg.dice || !!cfg.terrain || fairy || !!cfg.kingCapture || ups || big || kingless; // anything the chess engines do not know about (a side without a king too)
-    const special = (m) => m.drop || m.snipe || m.storm || m.swap || m.duck || m.spawn || m.shot || m.reload;
+    const special = (m) => m.drop || m.snipe || m.storm || m.swap || m.duck || m.spawn || m.shot || m.reload || m.blast;
     const geo = { W: W, H: H }, at = () => R.use(geo); // square names depend on the board size, which rules.js keeps for the last board it saw
     return {
       kind: 'std', W: W, H: H, big: big, powers: powers, kingless: kingless, dice: !!cfg.dice, fairy: fairy, terrain: !!cfg.terrain || ups || big, kc: !!cfg.kingCapture, ups: ups,
@@ -1987,13 +2076,13 @@
         const n = R.play(s, m, cfg), fx = n.fx;
         fx.anims = [];
         if (m.swap) fx.anims.push({ from: m.from, to: m.to }, { from: m.to, to: m.from });
-        else if (!special(m)) {
+        else if (!special(m) && !(fx.bounce >= 0)) { // a capture that bounced off a helmet: nobody moves
           fx.anims.push({ from: m.from, to: fx.tp >= 0 ? fx.tp : m.to });
           if (m.castle === 'K') fx.anims.push({ from: m.to + 1, to: m.to - 1 });
           if (m.castle === 'Q') fx.anims.push({ from: m.to - 2, to: m.to + 1 });
         }
         if (fx.demons) fx.demons.forEach((d) => { if (d.to >= 0) fx.anims.push({ from: d.from, to: d.to }); }); // the demons' own steps
-        fx.capture = !!m.cap || !!(fx.demonTook && fx.demonTook.length);
+        fx.capture = (!!m.cap && !(fx.bounce >= 0)) || !!(fx.demonTook && fx.demonTook.length);
         fx.booms = fx.boom ? fx.removed.map((x) => x.sq) : [];
         return n;
       },
@@ -2004,6 +2093,8 @@
       gild: (s, sq) => R.gild(s, sq, cfg),
       freezeTargets: (s) => R.freezeTargets(s, cfg),
       freeze: (s, sq) => R.freeze(s, sq, cfg),
+      shieldTargets: (s) => R.shieldTargets(s, cfg),
+      shield: (s, sq) => R.shield(s, sq, cfg),
       withPortals: (s, a, b) => Object.assign({}, s, { portals: [a, b], fx: null }),
       fen: (s) => R.toFen(s),
       key: (s) => R.posKey(s),
@@ -2036,7 +2127,7 @@
   }
 
   // A move as a short text, stable enough to find the same move again when a game is replayed.
-  const moveKey = (m) => (m.duck ? 'Q' + m.duck : m.spawn ? 'P' : m.shot ? 'G' : m.reload ? 'L' : m.storm ? 'S' : m.drop ? 'D' + m.drop : m.snipe ? 'X' : (m.kind || 'n')) + ':' + m.from + ':' + m.to + ':' + (m.promo || ''); // the same keys as brain.js
+  const moveKey = (m) => (m.duck ? 'Q' + m.duck : m.spawn ? 'P' : m.shot ? 'G' : m.reload ? 'L' : m.storm ? 'S' : m.drop ? 'D' + m.drop : m.snipe ? 'X' : m.blast ? 'V' : (m.kind || 'n')) + ':' + m.from + ':' + m.to + ':' + (m.promo || ''); // the same keys as brain.js
   const nameOf = (g, c) => g.names[c];
 
   /* A spec is everything needed to set a game up again. New games, rematches and
@@ -2070,6 +2161,7 @@
       pw = pw || {};
       const o = { double: pw.double || 0, midasPerTurn: pw.midasPerTurn == null ? 1 : pw.midasPerTurn };
       POWER_KEYS.forEach((k) => { o[k] = !!pw[k]; });
+      o.helmet = +pw.helmet || 0; o.vest = +pw.vest || 0; // which pieces wear it: 1 chess pieces, 2 all but pawns, 3 all
       return o;
     };
     /* cfg carries the player's own flags (that is what the panel reads) plus cfg.pw with one set per
@@ -2207,9 +2299,132 @@
     saveLive(); // a new game takes the place of the kept one
   }
 
+  /* A running game left for another one is given up: in the record, the rating and the archive, as a
+     resignation (a bot match or a two-player game is stopped). Before your first move it is just called
+     off. Game Modes keep theirs (MS.pending). false: the player keeps playing. */
+  function leaveRunning(msg) {
+    if (!G || G.over || !G.log.length || (G.spec && G.spec.gameMode)) return true;
+    const played = G.auto || G.local ? G.log.length : G.log.filter((e) => e.by === G.cfg.side).length;
+    if (!played) return true;
+    if (!confirm(G.auto ? 'A bot match is running. Stop it?' : G.local ? 'A game is still running. End it here?' : msg)) return false;
+    finish(G.auto || G.local ? { over: true, result: 'draw', reason: 'stopped' } : { over: true, result: R.other(mySide()), reason: 'resignation' }, true);
+    return true;
+  }
+
+  /* ---------- the daily challenge ----------
+     One game a day, the same for everybody that day: two power-ups drawn from the date, for both sides (fair), a bot
+     that gets stronger through the week (Monday easy, Sunday hard, like a newspaper puzzle), your colour by the day.
+     The first result of the day counts; the Game Modes tab shows the last two weeks and the streak of days won. */
+  const DAILY_KEY = 'powerchess_daily';
+  let daily = {};
+  try { daily = JSON.parse(localStorage.getItem(DAILY_KEY)) || {}; } catch (e) { daily = {}; }
+  const saveDaily = () => { try { localStorage.setItem(DAILY_KEY, JSON.stringify(daily)); } catch (e) { /* private mode */ } };
+  const DAILY_POOL = ['sniper', 'midas', 'freeze', 'dragon', 'amazon', 'rocket', 'explosive', 'timestop', 'rampage', 'bodyguard', 'earlypromo', 'ghost', 'iron', 'turncoat', 'shield', 'tempo', 'archer', 'sniperR'];
+  const DAILY_BOT = ['b5', 'b1', 'b2', 'b3', 'b3', 'b4', 'b4']; // Sunday to Saturday
+  const dayKeyOf = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  function dailyOf(key) {
+    let h = 2166136261;
+    for (let i = 0; i < key.length; i++) { h ^= key.charCodeAt(i); h = Math.imul(h, 16777619); }
+    const rnd = () => { h = (Math.imul(h, 1664525) + 1013904223) >>> 0; return h / 4294967296; };
+    const a = DAILY_POOL[Math.floor(rnd() * DAILY_POOL.length)];
+    let b = a;
+    while (b === a) b = DAILY_POOL[Math.floor(rnd() * DAILY_POOL.length)];
+    const day = new Date(key + 'T12:00:00').getDay();
+    return { key: key, powers: [a, b], bot: DAILY_BOT[day], side: rnd() < 0.5 ? 'w' : 'b', day: day, seed: (h % 0x7ffffffe) + 1 };
+  }
+  function dailySpec(d) {
+    const pw = noPowers();
+    d.powers.forEach((k) => { pw[k] = true; });
+    return { mode: 'human', variant: 'chess', engine: prefEngine('auto'), bot: d.bot, bots: null, flipEach: false, side: d.side, powers: pw, powers2: null,
+      ai: { anticipate: false, use: 'same' }, seed: d.seed, fen: R.START_FEN, customIni: null, clock: 0, terrain: null, kingCapture: false, diceV: 2, traits: null, daily: d.key };
+  }
+  async function startDaily() {
+    if (starting || !leaveRunning('A game is still running. Starting the daily challenge counts as a resignation. Resign it?')) return;
+    starting = true;
+    let g;
+    try { g = await createGame(dailySpec(dailyOf(dayKeyOf(new Date())))); } catch (e) { toast(e.message || 'The game could not be set up'); return; } finally { starting = false; }
+    installGame(g);
+    botBrain.fresh(); evalBrain.fresh();
+    snd('start');
+    setTab('play');
+    afterAction(true);
+  }
+  // days won in a row, up to today (today still open does not break it)
+  function dailyStreak() {
+    let n = 0;
+    const d = new Date();
+    if (!daily[dayKeyOf(d)]) d.setDate(d.getDate() - 1);
+    for (;;) { const r = daily[dayKeyOf(d)]; if (!r || r.r !== 'w') return n; n++; d.setDate(d.getDate() - 1); }
+  }
+  const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  function dailyModeCard() {
+    const key = dayKeyOf(new Date()), d = dailyOf(key), rec = daily[key], bot = botLabel(botById(d.bot), false);
+    const names = d.powers.map((k) => (POWER_LIST.find((x) => x.key === k) || { name: k }).name);
+    let html = '<div class="gm-card"><div class="gm-head"><h2>Daily Challenge</h2><div class="gm-credits"><b>' + dailyStreak() + '</b><span>streak</span></div></div>';
+    html += '<p class="gm-fixed">' + WEEKDAYS[d.day] + ': ' + bot.name + ' (' + bot.elo + '). Both sides have ' + names.join(' and ') + '. You play ' + (d.side === 'w' ? 'White' : 'Black') + '.</p>';
+    if (rec) html += '<p class="gm-fixed"><b>' + (rec.r === 'w' ? 'Won' : rec.r === 'd' ? 'Drawn' : 'Lost') + '</b> in ' + rec.n + ' moves. Again any time, only the first game counts.</p>';
+    html += '<button class="btn green gm-wide" data-gm="dailystart">' + (rec ? 'Play again' : 'Play today\'s challenge') + '</button>';
+    html += '<div class="gm-lab">The last two weeks</div><div class="pz-days">';
+    for (let i = 13; i >= 0; i--) {
+      const dt = new Date(); dt.setDate(dt.getDate() - i);
+      const r = daily[dayKeyOf(dt)];
+      html += '<button disabled class="' + (r ? (r.r === 'w' ? 'ok' : r.r === 'l' ? 'bad' : '') : '') + (i === 0 ? ' on' : '') + '"><b>' + dt.getDate() + '.' + (dt.getMonth() + 1) + '.</b><span>' + (r ? (r.r === 'w' ? 'won' : r.r === 'd' ? 'drawn' : 'lost') : i ? '' : 'today') + '</span></button>';
+    }
+    return html + '</div></div>';
+  }
+
+  /* ---------- the first start ----------
+     A short welcome on the very first start, and a guided first game: the Rookie, Freeze Ray and Sniper Bishops for
+     you, three tips one after the other. Settings can show the welcome again. */
+  const INTRO_KEY = 'powerchess_intro';
+  const introDone = () => { try { return localStorage.getItem(INTRO_KEY) === '1'; } catch (e) { return true; } };
+  const setIntroDone = () => { try { localStorage.setItem(INTRO_KEY, '1'); } catch (e) { /* private mode */ } };
+  function showIntro() {
+    if ($('#intro')) return;
+    const box = h('div', '', '<div class="intro-box"><img src="pieces/wN.svg" alt=""><h2>Welcome to Power Chess</h2><p>Chess with power-ups: freeze a piece, shoot from a distance, turn pieces to gold. The bots know them too.</p>' +
+      '<div class="intro-btns"><button class="btn green" id="introGo">Play a guided game</button><button class="btn" id="introSkip">Look around</button></div></div>');
+    box.id = 'intro';
+    document.body.appendChild(box);
+    const close = () => { box.remove(); setIntroDone(); };
+    $('#introSkip').onclick = close;
+    $('#introGo').onclick = () => { close(); startGuide(); };
+  }
+  async function startGuide() {
+    if (starting || !leaveRunning('A game is still running. Starting the guided game counts as a resignation. Resign it?')) return;
+    const pw = noPowers();
+    pw.freeze = true; pw.sniper = true;
+    const spec = { mode: 'human', variant: 'chess', engine: prefEngine('auto'), bot: 'b1', bots: null, flipEach: false, side: 'w', powers: pw, powers2: null,
+      ai: { anticipate: false, use: 'none' }, seed: 1 + Math.floor(Math.random() * 1e9), fen: R.START_FEN, customIni: null, clock: 0, terrain: null, kingCapture: false, diceV: 2, traits: null, guide: true };
+    starting = true;
+    let g;
+    try { g = await createGame(spec); } catch (e) { toast(e.message || 'The game could not be set up'); return; } finally { starting = false; }
+    installGame(g);
+    botBrain.fresh(); evalBrain.fresh();
+    snd('start');
+    setTab('play');
+    afterAction(true);
+  }
+  // the tips of the guided game: one at a time, by what has happened so far
+  const GUIDE_TIPS = [
+    'Your bishops are snipers. Click one: a ringed enemy piece can be shot without the bishop moving. A shot is your move.',
+    'Freeze Ray: press it in the bar above the moves, then click an enemy piece. It cannot move on its next turn, and freezing costs you no move.',
+    'That is the idea. New Game has all the power-ups, the variants and the board editor, Game Modes the daily challenge and the runs. Point at a button to see what it does.'
+  ];
+  function renderGuide() {
+    const box = $('#guide');
+    if (!box) return;
+    if (!G || !G.spec || !G.spec.guide || G.over || G.guideDone || mode() !== 'game') { box.innerHTML = ''; box.style.display = 'none'; return; }
+    const mine = G.log.filter((e) => e.by === G.cfg.side), moves = mine.filter((e) => e.m).length, froze = mine.some((e) => e.freeze != null);
+    const tip = moves === 0 ? 0 : !froze && moves < 6 ? 1 : 2;
+    box.style.display = 'block';
+    box.innerHTML = '<div class="guide-tip"><button class="guide-x" id="guideOk" title="' + (tip === 2 ? 'Got it' : 'Hide the tips') + '">×</button><b>Tip ' + (tip + 1) + ' of 3</b><p>' + GUIDE_TIPS[tip] + '</p></div>';
+    $('#guideOk').onclick = () => { G.guideDone = true; renderAll(); };
+  }
+
   let starting = false;
   async function startGame() {
     if (starting) return;
+    if (!leaveRunning('A game is still running. Starting a new one counts as a resignation. Resign it?')) return;
     starting = true;
     $('#startBtn').textContent = 'Loading';
     let g;
@@ -2243,6 +2458,7 @@
       if (p !== portals) { portals = p; if (p) out.push('p|' + p); }
       if (e.gild != null) out.push('g|' + e.gild);
       else if (e.freeze != null) out.push('f|' + e.freeze);
+      else if (e.shield != null) out.push('h|' + e.shield);
       else if (e.stop) out.push('t|');
       else if (e.convert != null) out.push('c|' + e.convert);
       else if (e.roll) out.push('r|' + e.roll.join(','));
@@ -2262,6 +2478,7 @@
       }
       if (kind === 'g') { n = g.B.gild(s, +arg); entry = { by: by, gild: +arg, san: '✦' + Fairy.sqName(+arg, g.W, g.H), removed: [] }; }
       else if (kind === 'f') { n = g.B.freeze(s, +arg); entry = { by: by, freeze: +arg, san: '❄' + Fairy.sqName(+arg, g.W, g.H), removed: [] }; }
+      else if (kind === 'h') { n = g.B.shield(s, +arg); entry = { by: by, shield: +arg, san: '\u26e8' + Fairy.sqName(+arg, g.W, g.H), removed: [] }; }
       else if (kind === 't') { n = g.B.timeStop(s); entry = { by: by, stop: true, san: '⧖', removed: [] }; }
       else if (kind === 'c') { n = g.B.convert(s, +arg); entry = { by: by, convert: +arg, san: '⇄' + Fairy.sqName(+arg, g.W, g.H), removed: [] }; }
       else if (kind === 'r') { const f = arg.split(','); n = g.B.roll(s, f); entry = { by: by, roll: f, san: '', removed: [], wasted: !!(n && n.wasted) }; }
@@ -2340,7 +2557,7 @@
   async function openArchived(id) {
     const rec = archive.find((r) => r.id === id);
     if (!rec || starting) return;
-    if (G && !G.over && G.log.length && !confirm('A game is still running. Give it up and open the archived game?')) return;
+    if (!leaveRunning('A game is still running. Opening another one counts as a resignation. Resign it?')) return;
     let g;
     starting = true;
     try {
@@ -2540,6 +2757,8 @@
   }
 
   function pushState(n, entry) {
+    // watching a bot match: the piece looked at stays looked at, its squares worked out again for the new position
+    const watch = G.auto && ui.peek ? peekFollow(ui.peek.sq, entry, n) : -1;
     ui.peek = null;
     if (G.local && G.db) G.dbReveal = null; // both drawbacks hidden again until the next player has the device
     G.states.push(n);
@@ -2549,6 +2768,20 @@
     G.analysis = null;
     modeProgress();
     saveLive();
+    if (watch >= 0) { ui.peek = peekOf(watch, n, G.cfg); ui.info = watch; } else if (G.auto && ui.info != null && !n.board[ui.info]) ui.info = null;
+  }
+  // Where the piece on sq stands after this move (it moved, castled, swapped, went through a portal), or -1 when it is gone.
+  function peekFollow(sq, entry, n) {
+    const m = entry.m;
+    let to = sq;
+    if (entry.removed && entry.removed.some((x) => x.sq === sq) && !(m && m.from === sq && !m.snipe && !m.blast)) return -1; // taken
+    if (m && !m.snipe && !m.stay && !m.blast && !m.shot && !m.reload && !(n.fx && n.fx.bounce >= 0)) {
+      if (m.swap) to = sq === m.from ? m.to : sq === m.to ? m.from : sq;
+      else if (m.from === sq) to = entry.tp >= 0 ? entry.tp : m.to;
+      else if (m.castle === 'K' && sq === m.to + 1) to = m.to - 1;
+      else if (m.castle === 'Q' && sq === m.to - 2) to = m.to + 1;
+    }
+    return n.board[to] ? to : -1;
   }
 
   // Is the game over? If not, whoever is to move gets going. fresh = the start position, not counted twice.
@@ -2631,6 +2864,7 @@
     if (!m.reload && n.sg && s.sg && n.sg[by] && s.sg[by] && n.sg[by][0] > s.sg[by][0]) snd('shell', 0.12); // a step put a shell in
     if (m.snipe) fxTracer(m.from, m.to);
     if (fx.boom) fx.booms.forEach((sq) => fxRing(sq, 'boom'));
+    if (fx.bounce >= 0) fxRing(fx.bounce, 'orange');
     if (fx.tp >= 0) { fxRing(m.to, 'blue'); fxRing(fx.tp, 'orange'); }
     moveSound(m, fx, G.B.checks(n).length > 0 && !G.B.status(n, G.legal).over);
     afterAction();
@@ -2646,6 +2880,17 @@
     renderAll();
     fxRing(sq, 'glint');
     snd('gold');
+    afterAction();
+  }
+  function doShield(sq) {
+    const s = live(), n = G.B.shield(s, sq);
+    if (!n) return;
+    n.fx = null;
+    pushState(n, { by: s.turn, shield: sq, san: '\u26e8' + sqLabel(sq), removed: [] });
+    ui.sel = null; ui.mode = null; ui.hintArrow = null;
+    renderAll();
+    fxRing(sq, 'blue');
+    snd('ice');
     afterAction();
   }
   function doFreeze(sq) {
@@ -2724,7 +2969,7 @@
     if (st.over) finish(st); else analyse();
   }
 
-  function finish(st) {
+  function finish(st, quiet) { // quiet: given up for a new game, no sound
     G.over = st;
     G.endOpen = true;
     saveLive(); // over: nothing to come back to
@@ -2741,6 +2986,7 @@
       save();
     }
     G.counted = true;
+    if (G.spec && G.spec.daily && !daily[G.spec.daily] && !G.auto && !G.local) { daily[G.spec.daily] = { r: res, n: Math.ceil(G.log.filter((x) => x.m).length / 2) }; saveDaily(); }
     if (st.result && st.result !== 'draw') ui.eval = { cp: null, mate: 0, depth: 0, lost: R.other(st.result) }; // a king capture or an explosion ends it as surely as a mate
     const modeLine = settleMode(res); // a bet or a run stage is settled here, once
     const txt = resultText(st), rec = stats[G.statKey] || { w: 0, l: 0, d: 0 };
@@ -2751,7 +2997,7 @@
       : G.local ? 'Two players at one board, ' + G.log.filter((e) => e.m).length + ' half-moves'
       : modeLine || 'Your record against ' + G.botName + ': ' + rec.w + ' won, ' + rec.d + ' drawn, ' + rec.l + ' lost' + ratingNote;
     endButtons();
-    snd(G.auto || G.local ? 'draw' : res === 'w' ? 'win' : res === 'l' ? 'lose' : 'draw');
+    if (!quiet) snd(G.auto || G.local ? 'draw' : res === 'w' ? 'win' : res === 'l' ? 'lose' : 'draw');
     archiveGame();
     renderAll();
     renderSetup();
@@ -2987,6 +3233,7 @@
   function actLabel(B, s, legal, act) {
     if (act.gild != null) return '\u2726' + sqLabel(act.gild);
     if (act.freeze != null) return '\u2744' + sqLabel(act.freeze);
+    if (act.shield != null) return '\u26e8' + sqLabel(act.shield);
     if (act.convert != null) return '\u21c4' + sqLabel(act.convert);
     if (act.stop) return '\u29d6';
     return B.san(s, act.m, legal, B.play(s, act.m));
@@ -2994,17 +3241,17 @@
   // Is this a standard-rules game with power-ups, the kind the power-up search has to judge?
   function brainGame(B, cfg) { return B.kind === 'hex' || B.kind === 'std' && ((!!cfg.pw && R.hasPowers(cfg)) || !!B.fairy || !!B.terrain || !!B.kc || newDice(cfg)); }
   const newDice = (cfg) => !!cfg && !!cfg.dice && !cfg.legacyDice; // Dice Chess with real throws: the odds-aware search plays and judges it
-  const hasTraits = (t) => !!t && ((t.ghosts && t.ghosts.length > 0) || (t.snipers && t.snipers.length > 0));
+  const hasTraits = (t) => !!t && ((t.ghosts && t.ghosts.length > 0) || (t.snipers && t.snipers.length > 0) || (t.helmets && t.helmets.length > 0) || (t.vests && t.vests.length > 0));
   const hasTerrain = (t) => !!t && ((t.walls && t.walls.length > 0) || (t.water && t.water.length > 0) || (t.portals && t.portals.length === 2) || (t.holes && t.holes.length > 0) || (t.ducks && t.ducks.length > 0) || (t.bducks && t.bducks.length > 0));
   function keyToAct(key, pool) {
     // free actions are a letter and a square number. Anything else is a move key ("fly:12:30:" is a move, not a freeze).
-    const free = /^([gfc])(\d+)$/.exec(key);
-    if (free) return free[1] === 'g' ? { gild: +free[2] } : free[1] === 'f' ? { freeze: +free[2] } : { convert: +free[2] };
+    const free = /^([gfch])(\d+)$/.exec(key);
+    if (free) return free[1] === 'g' ? { gild: +free[2] } : free[1] === 'f' ? { freeze: +free[2] } : free[1] === 'h' ? { shield: +free[2] } : { convert: +free[2] };
     return key === 't' ? { stop: true } : { m: pool.find((m) => moveKey(m) === key) };
   }
   // Drop what the real game does not allow here (the dice can rule out a Midas target the search saw).
   function actFits(game, s, pool, x) {
-    return x.gild != null ? game.B.gildTargets(s, pool).indexOf(x.gild) >= 0 : x.freeze != null ? game.B.freezeTargets(s).indexOf(x.freeze) >= 0 :
+    return x.gild != null ? game.B.gildTargets(s, pool).indexOf(x.gild) >= 0 : x.freeze != null ? game.B.freezeTargets(s).indexOf(x.freeze) >= 0 : x.shield != null ? game.B.shieldTargets(s).indexOf(x.shield) >= 0 :
       x.convert != null ? game.B.convertTargets(s).indexOf(x.convert) >= 0 : x.stop ? game.B.stopReady(s) : !!x.m;
   }
 
@@ -3163,7 +3410,7 @@
     const me = s.turn, cfg = game.cfg;
     if (!R.checkedSquares(s, me, cfg).length) return true;
     let n = null;
-    try { n = act.gild != null ? game.B.gild(s, act.gild) : act.freeze != null ? game.B.freeze(s, act.freeze) : act.convert != null ? game.B.convert(s, act.convert) : game.B.timeStop(s); } catch (e) { n = null; }
+    try { n = act.gild != null ? game.B.gild(s, act.gild) : act.freeze != null ? game.B.freeze(s, act.freeze) : act.shield != null ? game.B.shield(s, act.shield) : act.convert != null ? game.B.convert(s, act.convert) : game.B.timeStop(s); } catch (e) { n = null; }
     return !!n && (n.turn === me || !R.checkedSquares(n, me, cfg).length);
   }
   // How long a full-strength bot thinks: the setting, except in a game mode, which keeps its own fixed rules.
@@ -3193,6 +3440,7 @@
         ui.thinking = false;
         if (act.gild != null) doGild(act.gild);
         else if (act.freeze != null) doFreeze(act.freeze);
+        else if (act.shield != null) doShield(act.shield);
         else if (act.convert != null) doConvert(act.convert);
         else doTimeStop();
         return;
@@ -3286,6 +3534,7 @@
     const m = act.m;
     if (act.gild != null) { ui.marks = [act.gild]; toast('Hint: use Midas Touch on ' + sqLabel(act.gild)); renderBoard(); }
     else if (act.freeze != null) { ui.marks = [act.freeze]; toast('Hint: freeze the piece on ' + sqLabel(act.freeze)); renderBoard(); }
+    else if (act.shield != null) { ui.marks = [act.shield]; toast('Hint: shield the piece on ' + sqLabel(act.shield)); renderBoard(); }
     else if (act.convert != null) { ui.marks = [act.convert]; toast('Hint: use Turncoat on ' + sqLabel(act.convert)); renderBoard(); }
     else if (act.stop) toast('Hint: use Time Stop now');
     else if (!m) return;
@@ -3314,7 +3563,7 @@
       if (!G.local && s.turn !== G.cfg.side) continue; // against a bot the take-back goes to the start of your own turn
       const free = i > 0 && !G.log[i - 1].m && !G.log[i - 1].roll && G.log[i - 1].by === s.turn; // reached by a free action: the turn began earlier
       if (newDice(G.cfg) && !(s.dice && s.rolled && s.dice.length === s.rolled.length)) continue; // Dice Chess: back to just after your throw, never before it
-      if ((!s.movesLeft || s.movesLeft === full) && !s.midasUsed && !s.freezeUsed && !free && !(s.again >= 0) && !(G.cfg.dice3 && s.dice && s.dice.length < 3)) return i;
+      if ((!s.movesLeft || s.movesLeft === full) && !s.midasUsed && !s.freezeUsed && !s.shieldUsed && !free && !(s.again >= 0) && !(G.cfg.dice3 && s.dice && s.dice.length < 3)) return i;
     }
     return -1;
   }
@@ -3533,7 +3782,7 @@
       for (let i = 0; i < game.log.length; i++) {
         const e = game.log[i], rec = my.evals[i], nx = my.evals[i + 1];
         if (!rec.bestAct || rec.over) continue;
-        const played = e.m ? moveKey(e.m) : e.gild != null ? 'g' + e.gild : e.freeze != null ? 'f' + e.freeze : e.convert != null ? 'c' + e.convert : 't';
+        const played = e.m ? moveKey(e.m) : e.gild != null ? 'g' + e.gild : e.freeze != null ? 'f' + e.freeze : e.shield != null ? 'h' + e.shield : e.convert != null ? 'c' + e.convert : 't';
         if (played !== rec.best && Review.chanceFor(rec.ev, e.by) - Review.chanceFor(nx.ev, e.by) > 0.05) todo.push(i);
       }
       for (let k = 0; k < todo.length; k++) {
@@ -3541,7 +3790,7 @@
         const bar = $('#rvProg');
         if (bar) { bar.style.width = ((k + 1) / todo.length * 100) + '%'; $('#rvProgText').textContent = 'Checking the critical moves, ' + (k + 1) + ' of ' + todo.length; }
         let nb = null;
-        try { nb = a.m ? game.B.play(s, a.m) : a.gild != null ? game.B.gild(s, a.gild) : a.freeze != null ? game.B.freeze(s, a.freeze) : a.convert != null ? game.B.convert(s, a.convert) : game.B.timeStop(s); } catch (err) { nb = null; }
+        try { nb = a.m ? game.B.play(s, a.m) : a.gild != null ? game.B.gild(s, a.gild) : a.freeze != null ? game.B.freeze(s, a.freeze) : a.shield != null ? game.B.shield(s, a.shield) : a.convert != null ? game.B.convert(s, a.convert) : game.B.timeStop(s); } catch (err) { nb = null; }
         if (!nb) continue;
         const lgb = game.B.legal(nb), stb = game.B.status(nb, lgb);
         if (stb.over) { my.evals[i].bestAfter = { win: stb.result }; continue; }
@@ -3562,7 +3811,7 @@
     game.log.forEach((e, i) => {
       const s = game.states[i], n = game.states[i + 1], rec = my.evals[i], nx = my.evals[i + 1];
       if (e.roll) { plies.push({ idx: i, by: e.by, san: '', special: 'roll', rated: false, roll: e.roll, wasted: !!e.wasted, npm: material2(s.board) }); return; }
-      const special = e.gild != null ? 'gild' : e.freeze != null ? 'freeze' : e.convert != null ? 'convert' : e.stop ? 'stop' : null;
+      const special = e.gild != null ? 'gild' : e.freeze != null ? 'freeze' : e.shield != null ? 'shield' : e.convert != null ? 'convert' : e.stop ? 'stop' : null;
       let bestSan = '';
       if (rec.bestAct && !rec.bestAct.m) bestSan = actLabel(game.B, s, my.legal[i], rec.bestAct); // the best thing here was a free action
       else if (special && !my.byBrain) { if (rec.pwAct) bestSan = actLabel(game.B, s, my.legal[i], rec.pwAct); } // a variant: the power-up search names the alternative
@@ -3575,7 +3824,7 @@
         }
       }
       const prev = i > 0 ? game.log[i - 1] : null, capture = !!(e.removed && e.removed.length);
-      const keyOf = (x) => (x.gild != null ? 'g' + x.gild : x.freeze != null ? 'f' + x.freeze : x.convert != null ? 'c' + x.convert : x.stop ? 't' : null);
+      const keyOf = (x) => (x.gild != null ? 'g' + x.gild : x.freeze != null ? 'f' + x.freeze : x.shield != null ? 'h' + x.shield : x.convert != null ? 'c' + x.convert : x.stop ? 't' : null);
       // Free actions of one turn can be played in any order. If the one the search wanted first follows later in the same turn, nothing was done wrong.
       let sameTurn = false;
       if (special && rec.best) for (let k = i + 1; k < game.log.length && game.log[k].by === e.by && !game.log[k - 1].m; k++) if (keyOf(game.log[k]) === rec.best) { sameTurn = true; break; }
@@ -3603,7 +3852,7 @@
       plies.push({
         dice: diceAfter != null, base: base, baseAll: baseAll,
         idx: i, by: e.by, san: e.san, special: special, rated: !!special, // free actions are rated like moves
-        target: special && special !== 'stop' ? { piece: s.board[e.gild != null ? e.gild : e.freeze != null ? e.freeze : e.convert], name: (COMPOUND[((game.glyphs || {})[String(s.board[e.gild != null ? e.gild : e.freeze != null ? e.freeze : e.convert]).toLowerCase()] || []).join('')] || [])[0] || '', sq: Fairy.sqName(e.gild != null ? e.gild : e.freeze != null ? e.freeze : e.convert, game.W, game.H) } : null,
+        target: special && special !== 'stop' ? { piece: s.board[e.gild != null ? e.gild : e.freeze != null ? e.freeze : e.shield != null ? e.shield : e.convert], name: (COMPOUND[((game.glyphs || {})[String(s.board[e.gild != null ? e.gild : e.freeze != null ? e.freeze : e.shield != null ? e.shield : e.convert]).toLowerCase()] || []).join('')] || [])[0] || '', sq: Fairy.sqName(e.gild != null ? e.gild : e.freeze != null ? e.freeze : e.shield != null ? e.shield : e.convert, game.W, game.H) } : null,
         played: special ? (sameTurn ? rec.best : keyOf(e)) : (my.byBrain ? moveKey(e.m) : game.B.uci(e.m)),
         best: special && !my.byBrain ? (rec.pwBest || null) : rec.best, bestSan: bestSan,
         before: diceAfter ? rec.ev : (rec.bestAfter || rec.ev), after: diceAfter || nx.ev, // bestAfter: the preferred move judged at the same depth as the played one second: rec.second, forced: !special && rec.n === 1,
@@ -3807,7 +4056,7 @@
         if (!fit) break;
         act = fit;
       }
-      const n = act.m ? B.play(s, act.m) : act.gild != null ? B.gild(s, act.gild) : act.freeze != null ? B.freeze(s, act.freeze) : act.convert != null ? B.convert(s, act.convert) : B.timeStop(s);
+      const n = act.m ? B.play(s, act.m) : act.gild != null ? B.gild(s, act.gild) : act.freeze != null ? B.freeze(s, act.freeze) : act.shield != null ? B.shield(s, act.shield) : act.convert != null ? B.convert(s, act.convert) : B.timeStop(s);
       if (!n) break;
       out.push(act);
       if (n.turn !== s.turn && ++turns >= 3) break;
@@ -4459,7 +4708,29 @@
 
   function select(sq) {
     const list = mode() === 'analysis' ? A.legal : mode() === 'puzzle' ? pz.cur.legal : canTry() ? rvLegal(G.view) : G.legal;
-    ui.sel = { sq: sq, moves: list.filter((m) => !m.drop && !m.duck && !m.reload && m.from === sq) };
+    const own = list.filter((m) => !m.drop && !m.duck && !m.reload && m.from === sq);
+    // a vest going up is never a click on a square: only a double click or the Detonate button set it off
+    ui.sel = { sq: sq, moves: own.filter((m) => !m.blast), blast: own.find((m) => m.blast) || null };
+  }
+  /* Spiked Helmet and Explosive Vest on a piece of the board: a small helmet on top, a belt of dynamite below. */
+  function wearOn(el, s, sq) {
+    if (s.helmets && s.helmets.indexOf(sq) >= 0) el.appendChild(h('i', 'wear helmet'));
+    if (s.vests && s.vests.indexOf(sq) >= 0 && s.gold.indexOf(sq) < 0) el.appendChild(h('i', 'wear vest'));
+  }
+  // The 3 x 3 square a vest on sq would take with it (on the board in view).
+  function blastZone(s, sq) {
+    const W = s.W || 8, H = s.H || 8, r = Math.floor(sq / W), c = sq % W, out = [];
+    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) { const rr = r + dr, cc = c + dc; if (rr >= 0 && rr < H && cc >= 0 && cc < W) out.push(rr * W + cc); }
+    return out;
+  }
+  // Set off the vest of the piece on sq, in the game, the analysis or a puzzle. true when it went up.
+  function blastAt(sq) {
+    const md = mode(), list = md === 'puzzle' ? (pzCanMove() ? pz.cur.legal : null) : md === 'analysis' ? (canAnalyse() ? A.legal : null) : canAct() ? G.legal : null;
+    const m = list && list.find((x) => x.blast && x.from === sq);
+    if (!m) return false;
+    ui.sel = null;
+    dispatch(m);
+    return true;
   }
   /* The duck part of a turn: the duck to move is in hand already, a duck waiting off the board (Duck Chess) or the
      only yellow duck left, so one click on a free square places it. */
@@ -4529,7 +4800,7 @@
     if (ui.tab === 'review' && !trying) return;
     const s = anl ? A.cur.state : trying ? G.states[G.view] : live(), p = s.board[sq];
     // Whose pieces may be picked up: yours, or whoever is to move on the review board or under Puppet Master.
-    const mine = !!p && R.colorOf(p) === (trying || G.puppetNow ? s.turn : mySide());
+    const mine = !!p && !(G.auto && !trying) && R.colorOf(p) === (trying || G.puppetNow ? s.turn : mySide()); // a bot match: nobody's, every piece can be looked at
     /* A look at a piece (standard rules): every piece clicked shows its card in the panel, and a piece of the other
        side also shows where it could go on its own turn. A click on it while one of your pieces could take it
        stays a capture. */
@@ -4559,10 +4830,14 @@
       return;
     }
     if (!trying && !canAct()) return;
-    if (trying && (ui.mode === 'gild' || ui.mode === 'freeze' || ui.mode === 'convert')) ui.mode = null; // those act on the live game only
+    if (trying && (ui.mode === 'gild' || ui.mode === 'freeze' || ui.mode === 'convert' || ui.mode === 'shield')) ui.mode = null; // those act on the live game only
     if (ui.mode === 'gild') {
       if (G.B.gildTargets(s, G.legal).indexOf(sq) >= 0) doGild(sq);
       else { ui.mode = null; renderAll(); }
+      return;
+    }
+    if (ui.mode === 'shield') {
+      if (G.B.shieldTargets(s).indexOf(sq) >= 0) doShield(sq); else { ui.mode = null; renderAll(); }
       return;
     }
     if (ui.mode === 'freeze') {
@@ -4670,6 +4945,13 @@
   }
   function peekAt(sq, s, cfg) {
     if (s.hex) { hexPeek(sq, s); return; }
+    ui.peek = peekOf(sq, s, cfg);
+    ui.sel = null;
+    renderAll();
+  }
+  // Where the piece on sq could go on its own turn, and what else it covers (the red marks of a look at a piece).
+  function peekOf(sq, s, cfg) {
+    if (s.hex) return null;
     const c = R.colorOf(s.board[sq]), t = Object.assign({}, s, { turn: c, dice: null, rolled: null, again: -1, ep: -1 });
     let to = [];
     try { to = R.legalAll(t, cfg).filter((m) => m.from === sq).map((m) => ({ to: m.to, cap: !!m.cap })); } catch (err) { to = []; }
@@ -4694,9 +4976,7 @@
       const nx = R.demonNext(s, cfg, sq);
       if (nx >= 0) { if (s.board[nx]) to.push({ to: nx, cap: true }); else reach.push({ to: nx, guard: false }); }
     }
-    ui.peek = { sq: sq, to: to, reach: reach, state: s };
-    ui.sel = null;
-    renderAll();
+    return { sq: sq, to: to, reach: reach, state: s };
   }
   // The red marks of an enemy piece on the board, explained under its card.
   function peekLegend() {
@@ -4822,7 +5102,7 @@
         if (sq >= 0) ed.board[sq] = p;
         // the piece takes its upgrades along, the one it lands on loses its own
         const move = (list) => list.filter((q) => q !== sq).map((q) => (q === d.sq ? sq : q)).filter((q) => q >= 0);
-        ed.ghosts = move(ed.ghosts); ed.snipers = move(ed.snipers);
+        ed.ghosts = move(ed.ghosts); ed.snipers = move(ed.snipers); ed.helmets = move(ed.helmets); ed.vests = move(ed.vests);
         edSync();
       }
       return;
@@ -4842,6 +5122,7 @@
   });
   // a double click (or two taps): Midas Touch on a target, or a sniper's shot
   function dblAt(sq) {
+    if (sq >= 0 && blastAt(sq)) return true; // a double click on a piece with a vest sets it off
     if (!canAct() || sq < 0) return false;
     const s = live();
     if (G.cfg.midas && G.B.gildTargets(s, G.legal).indexOf(sq) >= 0) { doGild(sq); return true; }
@@ -5083,7 +5364,8 @@
       const blocked = (p.id === 'drops' && hasDrops) || (((second && !local) || bots) && HUMAN_ONLY.indexOf(p.id) >= 0) || (local && (p.id === 'veto' || p.id === 'puppet'));
       const on = powerOn(pw, p.id) && !blocked;
       const el = h('div', 'pw' + (on ? ' on' : '') + (blocked ? ' off' : ''));
-      const ic = h('div', 'ic' + (p.skin ? ' ' + p.skin : ''), p.badge ? '<b>' + p.badge + '</b>' : '');
+      if (window.PWA && PWA.touch) el.title = p.desc; // a phone shows the text of a card that is off when it is held
+      const ic = h('div', 'ic' + (p.skin ? ' ' + p.skin : ''), (p.badge ? '<b>' + p.badge + '</b>' : '') + (p.wear ? '<i class="wear ' + p.wear + '"></i>' : ''));
       ic.style.backgroundImage = p.fairy ? 'url(pieces/fairy/w_' + p.fairy + '.svg)' : p.skin === 'camo' ? skinUrl('camo', p.icon) : imgUrl(p.icon);
       if (p.gold) ic.style.filter = 'brightness(.74) sepia(1) saturate(7) hue-rotate(-6deg) brightness(1.18)';
       if (p.ice) ic.style.backgroundColor = '#6fc8ee';
@@ -5097,13 +5379,27 @@
         // which piece types get it: one small button each, in the same dress as on the board
         const row = h('div', 'picks');
         p.multi.forEach((m) => {
-          const all = m[0] === 'sniperAll', b = h('button', 'pick ' + p.skin + (all ? ' all' : '') + (pw[m[0]] ? ' on' : ''), all ? 'All' : '');
-          if (!all) b.style.backgroundImage = p.skin === 'camo' ? skinUrl('camo', 'w' + m[2]) : imgUrl('w' + m[2]);
-          b.title = p.one + ' ' + m[1];
+          // '*' every piece, '-' every piece but the pawns (the ones in the editor's sense: any kind, fairy too)
+          const all = m[2] === '*', np = m[2] === '-', b = h('button', 'pick ' + (p.skin || '') + (all ? ' all' : '') + (np ? ' nopawn' : '') + (pw[m[0]] ? ' on' : ''), all ? 'All' : '');
+          if (p.wear && !all) b.innerHTML = '<i class="wear ' + p.wear + '"></i>';
+          if (!all) b.style.backgroundImage = p.skin === 'camo' ? skinUrl('camo', 'w' + (np ? 'P' : m[2])) : imgUrl('w' + (np ? 'P' : m[2]));
+          b.title = POWER_LIST.find((x) => x.key === m[0]).name;
           b.onclick = (e) => {
             e.stopPropagation();
-            // All switches every kind on (and off) with it; taking one kind away is no longer all
-            if (all) { const v = !pw.sniperAll; p.multi.forEach((x) => { pw[x[0]] = v; }); } else { pw[m[0]] = !pw[m[0]]; if (!pw[m[0]]) pw.sniperAll = false; }
+            // All Snipers switches every kind on (and off) with it; taking one kind away is no longer all.
+            // The other group buttons are one or the other.
+            // All and All but pawns switch the kinds with them (the pawns too, or all but the pawns), and each other off;
+            // a kind switched off again is no longer the group. (Ghosts on all pieces stays a group of its own.)
+            const kinds = p.multi.filter((x) => x[2] !== '*' && x[2] !== '-'), groups = p.multi.filter((x) => x[2] === '*' || x[2] === '-');
+            if (all || np) {
+              const v = !pw[m[0]];
+              groups.forEach((x) => { pw[x[0]] = false; });
+              if (!(m[0] === 'ghostAll')) kinds.forEach((x) => { pw[x[0]] = v && !(np && x[2] === 'P'); });
+              pw[m[0]] = v;
+            } else {
+              pw[m[0]] = !pw[m[0]];
+              if (!pw[m[0]]) groups.forEach((x) => { if (x[0] !== 'ghostAll' && (x[2] === '*' || m[2] !== 'P')) pw[x[0]] = false; });
+            }
             changed();
           };
           row.appendChild(b);
@@ -5114,7 +5410,8 @@
       el.onclick = () => {
         if (blocked) return;
         if (p.id === 'double') pw.double = on ? 0 : 2;
-        else if (p.multi) { if (on) p.multi.forEach((m) => { pw[m[0]] = false; }); else pw[p.first] = true; }
+        else if (p.opt === p.id) pw[p.id] = on ? 0 : p.opts[0][0]; // a level of its own (helmet, vest)
+        else if (p.multi) { if (on) p.multi.forEach((m) => { pw[m[0]] = false; }); else [].concat(p.first).forEach((k) => { pw[k] = true; }); }
         else pw[p.id] = !on;
         changed();
       };
@@ -5220,7 +5517,10 @@
     if (!variant && setup.fen !== R.START_FEN) pos.push(V.id === 'chess' && checkersBoard(setup.fen) ? '<b>checkers board</b>, played by checkers rules' : '<b>custom</b>');
     if (V.checkers && checkersBoard(setup.fen) && setup.fen !== V.fen) pos.push('<b>from the board editor</b>');
     if (autoKC().on && !V.dice && !V.duckChess) pos.push('<b>king capture</b>, take the king to win');
-    if (stdVariant(V.id) && hasTraits(setup.traits)) pos.push([setup.traits.ghosts.length ? setup.traits.ghosts.length + ' ghost' : '', setup.traits.snipers.length ? setup.traits.snipers.length + ' camo' : ''].filter(Boolean).join(', ') + ' by hand');
+    if (stdVariant(V.id) && hasTraits(setup.traits)) {
+      const T = setup.traits, n = (l) => (l || []).length;
+      pos.push([n(T.ghosts) ? n(T.ghosts) + ' ghost' : '', n(T.snipers) ? n(T.snipers) + ' camo' : '', n(T.helmets) ? n(T.helmets) + ' helmet' : '', n(T.vests) ? n(T.vests) + ' vest' : ''].filter(Boolean).join(', ') + ' by hand');
+    }
     if (pos.length) row('Position', pos.join(', '));
     let html = '<div class="sumhead">' + head + '</div><dl class="sumgrid">' + rows.join('') + '</dl>';
     const errs = startErrs();
@@ -5275,6 +5575,8 @@
       el.appendChild(sw);
       box.appendChild(el);
     });
+    // a phone shows the names only; the explanation comes when a row is held
+    if (window.PWA && PWA.touch) box.querySelectorAll('.setrow').forEach((r) => { const sm = r.querySelector('small'); if (sm) r.title = sm.textContent; });
   }
 
   /* Settings, App: install it as an app (when the browser offers it), and a backup of everything this device keeps
@@ -5289,6 +5591,10 @@
       b.onclick = () => PWA.install().then(renderAppBox);
       r.appendChild(b); box.appendChild(r);
     }
+    const ri = h('div', 'setrow', '<div>Introduction<small>The welcome and the guided first game.</small></div>');
+    const ib = h('button', 'btn sm', 'Show');
+    ib.onclick = showIntro;
+    ri.appendChild(ib); box.appendChild(ri);
     const r2 = h('div', 'setrow', '<div>Backup<small>Your games, puzzles, Game Mode progress and settings as one file.</small></div>');
     const ex = h('button', 'btn sm', 'Save'), im = h('button', 'btn sm', 'Load');
     ex.onclick = exportBackup;
@@ -5361,7 +5667,7 @@
   const MODES_KEY = 'powerchess_modes';
   let MS = Modes.fresh(), msTimer = null, msSel = null, gmTab = 'dice';
   let msPeek = null; // a piece kind whose card is open, picked from the army list or the reward offers
-  try { const t0 = localStorage.getItem('powerchess_gmtab'); gmTab = t0 === 'run' || t0 === 'drawback' || t0 === 'hex' || t0 === 'sk' ? t0 : 'dice'; } catch (e) { /* first visit */ }
+  try { const t0 = localStorage.getItem('powerchess_gmtab'); gmTab = t0 === 'run' || t0 === 'drawback' || t0 === 'hex' || t0 === 'sk' || t0 === 'daily' ? t0 : 'daily'; } catch (e) { /* first visit */ }
   // Hexagonal Chess settings, like Drawback Chess
   let hexSet = { bot: 'b3', side: 'w', match: null };
   try { hexSet = Object.assign(hexSet, JSON.parse(localStorage.getItem('powerchess_hexset')) || {}); } catch (e) { /* first visit */ }
@@ -5488,7 +5794,7 @@
       if (!run || !run.next) return; // only a stage that has been revealed
       spec = modeSpec('run', { id: 'r' + Date.now(), stage: run.stage, bot: run.next.bot, side: 'w', fen: Modes.stageFen(run), terrain: Modes.terrainIdx(run.next.terrain) });
     }
-    if (G && !G.over && G.log.length && !(G.spec && G.spec.gameMode) && !confirm('A game is still running. Leave it and start this one?')) return;
+    if (!leaveRunning('A game is still running. Starting this one counts as a resignation. Resign it?')) return;
     let g;
     starting = true;
     try { g = await createGame(spec); } catch (e) { toast('The game could not be set up: ' + (e.message || 'unknown reason')); return; } finally { starting = false; }
@@ -5622,6 +5928,7 @@
   function modesView() {
     const run = MS.run;
     if (gmTab === 'hex') return { s: Hex.initial(), W: 11, H: 11, glyphs: {}, cfg: null, hex: true };
+    if (gmTab === 'daily') return { s: R.fromFen(R.START_FEN), W: 8, H: 8, glyphs: {}, cfg: null };
     if (gmTab === 'sk') return skView();
     if (gmTab === 'dice' || gmTab === 'drawback') return { s: R.fromFen(R.START_FEN), W: 8, H: 8, glyphs: {}, cfg: null };
     if (!run) return { s: blank(Modes.boardOf([['e1', 'K'], ['e2', 'P']], []), 'w'), W: 8, H: 8, glyphs: {}, cfg: null }; // the king and his pawn; the rest is drawn at the start
@@ -5631,7 +5938,7 @@
   }
   function modesMarks(mark) {
     // Shotgun King: a king in check is marked as in every other game
-    if (gmTab === 'sk') { const r = skRun(); if (skLive() && SKM.inCheck(r, r.F)) mark(r.F.king, 'check'); return; }
+    if (gmTab === 'sk') { skMarks(mark); return; }
     const run = MS.run;
     if (gmTab !== 'run' || !run) return;
     if (run.edit && run.edit.kind === 'place') Modes.freeHome(run, run.edit.piece).map(Modes.sq).forEach((q) => mark(q, 'homesq'));
@@ -5670,6 +5977,7 @@
     if (gmTab === 'dice') return color === 'w' ? { you: true, name: 'You', tag: num(MS.dice.credits) + ' credits' } : { you: false, name: 'Dice Arena', tag: 'pick a table' };
     // Shotgun King: the White army at the top, the Black King at the bottom (the bars go by colour, so it is turned round here)
     if (gmTab === 'sk') { const r = skRun(); return color === 'w' ? { you: true, name: 'The Black King', tag: r ? SKM.GUN[r.gun].name : 'Shotgun King' } : { you: false, name: 'The White Army', tag: r ? 'floor ' + Math.min(r.floor, 12) + ', rank ' + r.rank : 'rank ' + Math.min(skUi.rank, skData().maxRank) }; }
+    if (gmTab === 'daily') { const d = dailyOf(dayKeyOf(new Date())); return color === d.side ? { you: true, name: 'You', tag: 'Daily challenge' } : { you: false, name: botLabel(botById(d.bot), false).name, tag: botLabel(botById(d.bot), false).elo }; }
     if (gmTab === 'hex') return color === 'w' ? { you: true, name: 'You', tag: 'Hexagonal Chess' } : { you: false, name: botLabel(botById(hexSet.bot), true).name, tag: 'hex engine' };
     if (gmTab === 'drawback') return color === 'w' ? { you: true, name: 'You', tag: 'a hidden drawback' } : { you: false, name: botLabel(botById(dbSet.bot), true).name, tag: 'a hidden drawback' };
     if (color === 'w') return { you: true, name: 'You', tag: run ? 'stage ' + run.stage : '' };
@@ -5698,7 +6006,7 @@
       html += '<div class="gm-pend"><b>Unfinished game</b><span>' + (p.kind === 'dice' ? 'Dice Arena, ' + Modes.tier(p.tier).name + ' table' : p.kind === 'drawback' ? 'Drawback Chess' : 'Ouroboros Run, stage ' + p.stage) +
         ', ' + (p.actions || []).filter((a) => a[0] === 'm' || a[0] === 'M').length + ' moves so far.</span><div class="gm-row"><button class="btn green" data-gm="resume">Resume</button><button class="btn" data-gm="giveup">Give up</button></div></div>';
     }
-    html += '<div class="seg gm-switch"><button data-gmtab="dice" class="' + (gmTab === 'dice' ? 'on' : '') + '">Dice Chess Arena</button><button data-gmtab="run" class="' + (gmTab === 'run' ? 'on' : '') + '">Ouroboros Run</button><button data-gmtab="drawback" class="' + (gmTab === 'drawback' ? 'on' : '') + '">Drawback Chess</button><button data-gmtab="hex" class="' + (gmTab === 'hex' ? 'on' : '') + '">Hexagonal Chess</button><button data-gmtab="sk" class="' + (gmTab === 'sk' ? 'on' : '') + '">Shotgun King</button></div>';
+    html += '<div class="seg gm-switch"><button data-gmtab="daily" class="' + (gmTab === 'daily' ? 'on' : '') + '">Daily</button><button data-gmtab="dice" class="' + (gmTab === 'dice' ? 'on' : '') + '">Dice Chess Arena</button><button data-gmtab="run" class="' + (gmTab === 'run' ? 'on' : '') + '">Ouroboros Run</button><button data-gmtab="drawback" class="' + (gmTab === 'drawback' ? 'on' : '') + '">Drawback Chess</button><button data-gmtab="hex" class="' + (gmTab === 'hex' ? 'on' : '') + '">Hexagonal Chess</button><button data-gmtab="sk" class="' + (gmTab === 'sk' ? 'on' : '') + '">Shotgun King</button></div>';
     // Dice Chess Arena
     if (gmTab === 'dice') html += '<section class="gm-card"><div class="gm-head"><h2>Dice Chess Arena</h2><div class="gm-credits"><b>' + num(d.credits) + '</b><span>credits</span></div></div>' +
       '<p class="gm-fixed">Three dice a turn, all of them used. Take the king to win. Pay the entry, win double.</p>' + twoPRows('dc') + (diceSet.twoP ? '<button class="btn green gm-wide" data-gm="dc2start">Play two players</button>' : '') + (p && !diceSet.twoP ? '<p class="gm-block">Finish or give up the unfinished game first.</p>' : '') + '<div class="gm-tiers">';
@@ -5713,6 +6021,7 @@
     if (gmTab === 'run') html += runCard(run, p);
     if (gmTab === 'drawback') html += drawbackCard(p);
     if (gmTab === 'hex') html += hexModeCard();
+    if (gmTab === 'daily') html += dailyModeCard();
     if (gmTab === 'sk') html += skCard();
     const swLeft = box.querySelector('.gm-switch') ? box.querySelector('.gm-switch').scrollLeft : null; // the phone's chip row keeps its place
     box.innerHTML = html;
@@ -5820,9 +6129,11 @@
      over the board, the cone his shot would cover. A turn is played in two parts so the board can show them one
      after the other: the king's action (pellets, hits, pieces breaking), then the White army's moves. */
   const SKM = typeof Shotgun !== 'undefined' ? Shotgun : null;
-  const skUi = { hover: -1, soul: -1, grenade: false, blade: false, busy: false, folly: -1, gun: 'solomon', rank: 1, danger: true };
-  try { const o = JSON.parse(localStorage.getItem('powerchess_skset') || 'null'); if (o) { skUi.gun = SKM && SKM.GUN[o.gun] ? o.gun : 'solomon'; skUi.rank = +o.rank || 1; skUi.danger = o.danger !== false; } } catch (e) { /* first visit */ }
-  const skSaveSet = () => { try { localStorage.setItem('powerchess_skset', JSON.stringify({ gun: skUi.gun, rank: skUi.rank, danger: skUi.danger })); } catch (e) { /* private mode */ } };
+  // the danger squares start hidden, as the original's Squares of Influence do (v2: settings saved before that start hidden too)
+  // pick: a card's action waiting for its square ({ k, id } of the action, from: the piece picked first for Hypnosis)
+  const skUi = { hover: -1, soul: -1, grenade: false, blade: false, pick: null, busy: false, folly: -1, gun: 'solomon', rank: 1, danger: false };
+  try { const o = JSON.parse(localStorage.getItem('powerchess_skset') || 'null'); if (o) { skUi.gun = SKM && SKM.GUN[o.gun] ? o.gun : 'solomon'; skUi.rank = +o.rank || 1; skUi.danger = o.v === 2 && o.danger === true; } } catch (e) { /* first visit */ }
+  const skSaveSet = () => { try { localStorage.setItem('powerchess_skset', JSON.stringify({ v: 2, gun: skUi.gun, rank: skUi.rank, danger: skUi.danger })); } catch (e) { /* private mode */ } };
   const skData = () => MS.sk || (MS.sk = Modes.fresh().sk);
   const skRun = () => skData().run;
   const skLive = () => { const r = skRun(); return !!(r && r.F && r.phase === 'play' && !r.F.over); };
@@ -5834,6 +6145,9 @@
     if (run && run.F && !(run.settled && run.closed)) {
       // a cleared floor: the army is gone, except while the victory sequence still strikes it down piece by piece
       if (run.F.over !== 'won' || skUi.victory) run.F.pieces.forEach((p) => { if (!(skUi.victory && skUi.victory.struck[p.id])) b[p.sq] = SK_LETTER[p.t] || 'P'; });
+      // the king's allies are black pieces, his hologram a second king (drawn pale)
+      (run.F.allies || []).forEach((a) => { b[a.sq] = a.t; });
+      if (run.F.holo >= 0 && run.F.over !== 'dead') b[run.F.holo] = 'ґ';
       if (run.F.over !== 'dead') b[run.F.king] = 'ґ';
     } else { b[60] = 'ґ'; b[4] = 'K'; [11, 12, 13, 18, 21].forEach((q) => { b[q] = 'P'; }); b[6] = 'N'; b[2] = 'B'; } // a first floor, for the look of it
     return { s: blank(b, 'b'), W: 8, H: 8, glyphs: {}, cfg: null, sk: true };
@@ -5855,9 +6169,44 @@
       el.appendChild(h('i', 'sktime' + (p.tm <= 1 ? ' now' : ''), Array.from({ length: p.spd }, (_, i) => '<u class="' + (i < p.tm ? 'on' : '') + '"></u>').join('')));
       if (p.mark) el.appendChild(h('i', 'skmark', '☠'));
       if (p.leader) el.classList.add('skleader');
+      if (p.spy) el.classList.add('skspy'); // The Mole: a spy wears a mask
+      if (p.id === run.F.orb) el.classList.add('skorbed');
+      if (p.id === run.F.strafe) el.classList.add('sktarget');
     });
-    if (run.F.over !== 'dead' && els[run.F.king]) { els[run.F.king].classList.add('skking'); els[run.F.king].style.backgroundImage = skGunKing('b', run.gun); }
+    // the allies: their own hourglass, in green
+    (run.F.allies || []).forEach((a) => {
+      const el = els[a.sq];
+      if (!el) return;
+      el.classList.add('skally');
+      el.appendChild(h('i', 'sktime ally' + (a.tm <= 1 ? ' now' : ''), Array.from({ length: a.spd }, (_, i) => '<u class="' + (i < a.tm ? 'on' : '') + '"></u>').join('')));
+    });
+    if (run.F.holo >= 0 && els[run.F.holo] && run.F.holo !== run.F.king) { els[run.F.holo].classList.add('skholo'); els[run.F.holo].style.backgroundImage = skGunKing('b', run.gun); }
+    if (run.F.over !== 'dead' && els[run.F.king]) { els[run.F.king].classList.add('skking'); if (run.F.stealth > 0) els[run.F.king].classList.add('skstealth'); els[run.F.king].style.backgroundImage = skGunKing('b', run.gun); }
   }
+  // the squares the cards mark: the moat, holes, flagstones, pentagrams, cannonballs, the waypoint; and a king in check
+  function skMarks(mark) {
+    const r = skRun();
+    if (!skLive()) return;
+    const F = r.F;
+    if (F.moat) for (let f = 0; f < 8; f++) mark(SKM.MOAT * 8 + f, 'water');
+    (F.holes || []).forEach((q) => mark(q, 'skhole'));
+    (F.stones || []).forEach((q) => mark(q, 'skstone'));
+    (F.penta || []).forEach((x) => mark(x.sq, 'skpenta' + (x.on ? '' : ' off')));
+    (F.balls || []).forEach((q) => mark(q, 'skball'));
+    if (F.way >= 0) mark(F.way, 'skway');
+    if (SKM.inCheck(r, F)) mark(F.king, 'check');
+  }
+  // the actions a card's pick mode can play now (Hypnosis: the pieces first, then the squares of the one picked)
+  function skPickActs(run, F, acts) {
+    const pk = skUi.pick;
+    if (!pk) return [];
+    let list = acts.filter((a) => a.k === pk.k && (pk.id == null || a.id === pk.id));
+    if (pk.k === 'project') { const s0 = skUi.soul >= 0 ? skUi.soul : list.length ? list[0].soul : -1; list = list.filter((a) => a.soul === s0); }
+    if (pk.from != null) list = list.filter((a) => a.from === pk.from);
+    return list;
+  }
+  // the square a pick action is played by: the piece's for the orb and the strafe target, the action's own otherwise
+  const skPickSq = (F, a) => (a.k === 'orb' || a.k === 'strafe' ? (F.pieces.find((p) => p.id === a.id) || {}).sq : a.k === 'wand' && a.id === 'wandhypnosis' && skUi.pick && skUi.pick.from == null ? a.from : a.to);
   // the hints: attacked squares, steps, soul moves, blade targets
   function skHints(hint) {
     const run = skRun();
@@ -5865,14 +6214,20 @@
     const F = run.F, acts = SKM.actions(run, F);
     if (skUi.danger) for (let q = 0; q < 64; q++) if (q !== F.king && !SKM.pieceAt(F, q) && SKM.attackedFrom(run, F, q)) hint(q, 'skdanger');
     if (skUi.busy) return;
-    if (skUi.soul >= 0) acts.filter((a) => a.k === 'soul' && a.soul === skUi.soul).forEach((a) => hint(a.to, 'dot sksoul'));
+    if (skUi.soul >= 0 && !(skUi.pick && skUi.pick.k === 'project')) acts.filter((a) => a.k === 'soul' && a.soul === skUi.soul).forEach((a) => hint(a.to, 'dot sksoul'));
     else acts.filter((a) => a.k === 'move').forEach((a) => hint(a.to, 'dot'));
     if (skUi.blade) acts.filter((a) => a.k === 'blade').forEach((a) => hint(a.to, 'ring'));
+    acts.filter((a) => a.k === 'jump').forEach((a) => hint(a.to, 'dot skjump'));
+    const seen = {};
+    skPickActs(run, F, acts).forEach((a) => { const q = skPickSq(F, a); if (q >= 0 && !seen[q]) { seen[q] = 1; hint(q, SKM.pieceAt(F, q) ? 'ring skpick' : 'dot sksoul'); } });
+    // Seer's Orb: where the piece goes next
+    const op = F.orb >= 0 ? F.pieces.find((p) => p.id === F.orb) : null, to = op ? SKM.predict(run, F, op) : -1;
+    if (to >= 0) hint(to, 'skorbto');
   }
   // the fire cone: the arc around the aim, faint up to the shortest reach, stronger where pellets may stop
   function skCone() {
     const run = skRun();
-    if (!skLive() || skUi.busy || skUi.hover < 0 || skUi.soul >= 0) return '';
+    if (!skLive() || skUi.busy || skUi.hover < 0 || skUi.soul >= 0 || skUi.pick || run.F.disrupt) return '';
     const F = run.F, q = skUi.hover, st = SKM.stats(run, F);
     if (q === F.king) return '';
     if (skUi.grenade) {
@@ -5970,6 +6325,7 @@
       else if (e.e === 'fall') skDamage(e.sq, 0, 'fall');
       else if (e.e === 'arrive' || e.e === 'promote') fxRing(e.sq != null ? e.sq : (skRun().F.pieces.find((p) => p.id === e.id) || {}).sq, 'boom');
       else if (e.e === 'grenade') { fxRing(e.to, 'boom'); snd('boom'); wait = 420; }
+      else if (e.e === 'wand') { const kf = skRun().F; if (kf) fxRing(kf.king, e.id === 'wandgust' ? 'blue' : 'orange'); snd(e.id === 'wandgust' ? 'portal' : 'shell'); }
       else if (e.e === 'rat') fxTracer(e.from, e.to);
       else if (e.e === 'flip' || e.e === 'unflip') { const cd = SKM.CARD[e.card]; if (cd) toast(cd.name + (e.e === 'flip' ? ' is face down for this floor' : ' is back')); }
       else if (e.e === 'mist') { toast('Black Mist: death passes you by'); fxRing(skRun().F.king, 'boom'); }
@@ -5977,6 +6333,16 @@
       else if (e.e === 'countdown') toast('Final Countdown: ' + e.n + ' turns to finish the floor');
       else if (e.e === 'scare' || e.e === 'stun' || e.e === 'shield' || e.e === 'immune' || e.e === 'heal' || e.e === 'bleed') fxRing(e.sq, 'boom');
       else if (e.e === 'leave') skDamage(e.sq, 0, 'fall');
+      else if (e.e === 'strike' || e.e === 'bolt' || (e.e === 'throw' && e.to >= 0)) fxTracer(e.from, e.to);
+      else if (e.e === 'ally' || e.e === 'convert' || e.e === 'holo' || e.e === 'lift' || e.e === 'dig' || e.e === 'key' || e.e === 'penta') fxRing(e.sq, 'boom');
+      else if (e.e === 'tunnel') fxRing(e.to, 'boom');
+      else if (e.e === 'allydead') skShatter(e.sq, pieceUrl(e.t), false);
+      else if (e.e === 'stealth') toast(e.n ? 'The king is stealthy for ' + e.n + ' turns' : 'The king is no longer stealthy');
+      else if (e.e === 'pentaAll') toast('Unholy Call: every pentagram triggered, +2 firepower for this floor');
+      else if (e.e === 'mission' || e.e === 'spy') toast('Disrupt the White Army: pick one');
+      else if (e.e === 'disrupt') toast(SK_DISRUPT[e.id] ? SK_DISRUPT[e.id][0] : e.id);
+      else if (e.e === 'refill') toast('Wand of Execution is ready again');
+      else if (e.e === 'secret') toast('Secret Move: +' + e.n + ' firepower on your next shot');
       else if (e.e === 'cleared') victory = true;
     });
     if (dead) setTimeout(() => { const r0 = skRun(); skShatter(kingFrom, skGunKing('b', r0 && r0.gun), false); snd('lose'); }, 230);
@@ -6034,9 +6400,9 @@
   function skDo(a) {
     const run = skRun();
     if (!skLive() || skUi.busy) return;
-    const snap = () => { const o = {}; run.F.pieces.forEach((p) => { o[p.id] = { sq: p.sq, pic: skPicOf(p), boss: !!skBossPic(p) }; }); return o; };
+    const snap = () => { const o = {}; run.F.pieces.concat(run.F.carry && run.F.carry.p ? [run.F.carry.p] : []).forEach((p) => { o[p.id] = { sq: p.sq, pic: skPicOf(p), boss: !!skBossPic(p) }; }); return o; };
     const before = snap(), kingFrom = run.F.king;
-    skUi.busy = true; skUi.soul = -1; skUi.grenade = false; skUi.blade = false; skUi.folly = -1;
+    skUi.busy = true; skUi.soul = -1; skUi.grenade = false; skUi.blade = false; skUi.folly = -1; skUi.pick = null;
     const ev1 = SKM.act(run, a, { split: true });
     skAnimate(ev1, before, kingFrom, () => {
       const pre = run.F ? snap() : {}, kq = run.F ? run.F.king : kingFrom;
@@ -6060,12 +6426,30 @@
     if (!skLive() || skUi.busy || sq < 0) return;
     const F = run.F, acts = SKM.actions(run, F), check = SKM.inCheck(run, F);
     const folly = (what) => {
-      // a Folly Shield: an action that leaves the king in check is only played on the second click
+      // a Folly Shield: an action that leaves the king in check is only played on the second click. As in the original
+      // not for a shot at an attacker next to the king that the pellets surely kill.
       if (!check || skUi.folly === sq) return true;
+      const tp = SKM.pieceAt(F, sq), st0 = SKM.stats(run, F);
+      if (what === 'A shot' && tp && SKM.attackedBy(run, F, F.king).indexOf(tp) >= 0 && Math.max(Math.abs((sq >> 3) - (F.king >> 3)), Math.abs((sq & 7) - (F.king & 7))) === 1 && tp.hp <= st0.fp) return true;
       skUi.folly = sq;
       toast('Folly Shield: the king is in check. ' + what + ' leaves him there unless it kills the attacker. Click again to do it anyway.');
       return false;
     };
+    if (F.disrupt) { toast('Pick a disruption first'); return; }
+    if (skUi.pick) {
+      // a card's action waiting for its square (Hypnosis: the piece first, then where it goes)
+      const pk = skUi.pick, list = skPickActs(run, F, acts);
+      if (pk.k === 'wand' && pk.id === 'wandhypnosis' && pk.from == null && list.some((x) => x.from === sq)) { pk.from = sq; renderAll(); return; }
+      let pa = list.find((x) => skPickSq(F, x) === sq);
+      if (!pa && pk.k === 'throw') {
+        // a throw goes along one of the eight lines from the king: a click anywhere on the line
+        const dr = (sq >> 3) - (F.king >> 3), df = (sq & 7) - (F.king & 7);
+        if (dr === 0 || df === 0 || Math.abs(dr) === Math.abs(df)) pa = list.find((x) => x.to === F.king + Math.sign(dr) * 8 + Math.sign(df));
+      }
+      skUi.pick = null;
+      if (pa) skDo(pa); else { renderModes(); renderAll(); }
+      return;
+    }
     if (skUi.soul >= 0) {
       const a = acts.find((x) => x.k === 'soul' && x.soul === skUi.soul && x.to === sq);
       if (a) skDo(a); else { skUi.soul = -1; renderAll(); }
@@ -6077,17 +6461,18 @@
       else { skUi.grenade = false; renderAll(); }
       return;
     }
-    const step = acts.find((x) => x.k === 'move' && x.to === sq);
+    const step = acts.find((x) => x.k === 'move' && x.to === sq) || acts.find((x) => x.k === 'jump' && x.to === sq);
     if (step) { skDo(step); return; }
     const blade = acts.find((x) => x.k === 'blade' && x.to === sq);
     if (blade && skUi.blade) { skDo(blade); return; }
     if (sq === F.king) return;
-    if (F.gun[0] <= 0) { toast('The shotgun is empty: a step puts a shell in, or press Space to load one in place'); return; }
+    if (F.gun[0] <= 0) { toast('The shotgun is empty: a step fills it from the reserve, or press Space to load in place'); return; }
     if (folly('A shot')) { const k0 = skUi.decree && acts.some((x) => x.k === 'decree') ? 'decree' : 'shoot'; skUi.decree = false; skDo({ k: k0, to: sq }); }
   }
   function skReload() {
     const run = skRun();
     if (!skLive() || skUi.busy) return;
+    if (run.F.disrupt) { toast('Pick a disruption first'); return; }
     const acts = SKM.actions(run, run.F), r = acts.find((a) => a.k === 'reload') || acts.find((a) => a.k === 'wait');
     if (!r) { toast(run.F.gun[1] <= 0 ? 'No shells left in reserve: a step brings one back' : 'The shotgun is full'); return; }
     if (SKM.inCheck(run, run.F) && skUi.folly !== -2) { skUi.folly = -2; toast('Folly Shield: the king is in check, standing still is death. Press again to do it anyway.'); return; }
@@ -6097,7 +6482,7 @@
     const d = skData(), last = d.run;
     const gun = again && last ? last.gun : skUi.gun, rank = again && last ? last.rank : Math.min(skUi.rank, d.maxRank);
     d.run = SKM.newRun({ gun: gun, rank: rank, seed: (Date.now() ^ Math.floor(Math.random() * 1e9)) >>> 0 });
-    skUi.soul = -1; skUi.grenade = false; skUi.blade = false; skUi.busy = false;
+    skUi.soul = -1; skUi.grenade = false; skUi.blade = false; skUi.busy = false; skUi.pick = null;
     MS.rev = (MS.rev || 0) + 1;
     saveModes(); snd('start'); renderModes(); renderAll();
   }
@@ -6144,6 +6529,7 @@
     if (g.search) L.push(['search', g.search + ' Search per floor']);
     if (g.grenades) L.push(['grenade', g.grenades + ' Grenade']);
     if (g.move > 1) L.push(['move', 'Steps up to ' + g.move]);
+    if (g.jump) L.push(['jump', g.jump === 1 ? '1 Jump a turn' : g.jump + ' Jumps a turn']);
     return '<ul class="sk-gstats' + (cls ? ' ' + cls : '') + '">' + L.map((x) => '<li>' + skIcon(x[0]) + '<span>' + x[1] + '</span></li>').join('') + '</ul>';
   }
   // the gun's shells: the magazine, and under it the reserve in the same shells (filled = there, dark = room left)
@@ -6153,14 +6539,16 @@
   };
   const skIcon = (k) => '<svg class="ski-i" viewBox="0 0 16 16" fill="currentColor">' + (SKI[k] || '') + '</svg>';
   const skPieceIcon = (t) => '<i class="ski-p" style="background-image:url(' + pieceUrl(t.toUpperCase()) + ')"></i>';
+  const skPieceIconB = (t) => '<i class="ski-p" style="background-image:url(' + pieceUrl(t.toLowerCase()) + ')"></i>'; // a black piece: an ally
   const skNum = (v, unit) => (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v) + (unit || '');
   // the small chips of a card the run owns: its numbers as icons (stats, army, HP, speed), from its fx
   function skCardIcons(c) {
     const out = [], chip = (inner) => out.push('<span class="ski">' + inner + '</span>');
-    const UNIT = { arc: '°', pierce: '%', knock: '%' }, ICON = { regen: 'res', grenades: 'grenade', gdmg: 'grenade', search: 'search', fright: 'eye', shrapnel: 'fp' };
+    const UNIT = { arc: '°', pierce: '%', knock: '%' }, ICON = { regen: 'res', grenades: 'grenade', gdmg: 'grenade', search: 'search', fright: 'eye', shrapnel: 'fp', jdmg: 'jump' };
     (c.fx || []).forEach((e) => {
       if (e.s && !e.every) chip(skNum(e.s === 'pierce' || e.s === 'knock' ? Math.round(e.v * 100) : e.v, UNIT[e.s]) + skIcon(ICON[e.s] || e.s));
       else if (e.a && !e.after && !e.every) chip(skNum(e.v) + skPieceIcon(e.a));
+      else if (e.ally) chip(skNum(e.v) + skPieceIconB(e.ally));
       else if (e.hp) chip(skNum(e.v) + skIcon('hp') + (e.hp === 'leader' ? skIcon('leader') : e.hp === 'all' ? skIcon('all') : skPieceIcon(e.hp)));
       else if (e.spd && !e.every) chip(skNum(-e.v) + skIcon('spd') + (e.spd === 'all' ? skIcon('all') : e.spd === 'leader' ? skIcon('leader') : skPieceIcon(e.spd)));
     });
@@ -6169,6 +6557,15 @@
 
   // the rules' short lines (RULE effects), and what flips a card or switches it off
   const SK_RULE_TEXT = {
+    wandfrenzy: ['res', 'Once a floor, free: full gun and ammo'], wandgust: ['spd', 'Once a floor, free: push all back'], wandwings: ['turn', 'Once a floor, free: fly up to 3 squares'],
+    wanddownpour: ['fp', 'Once a floor, free: 10 random damage'], wandexecution: ['blade', 'Free: destroy a pawn; kills refill'], wandhypnosis: ['swap', 'Once a floor, free: move a white piece'],
+    wandsouls: ['souls', 'Once a floor, free: stun, take a soul'], wandtreachery: ['swap', 'Once a floor, free: turn a neighbour'], wandwrath: ['fp', 'Once a floor, free: Pellets as damage'],
+    flagstone: ['jump', 'A flagstone to jump to: +1 Pellet'], cloaking: ['eye', 'Hologram: 6 turns of stealth'], deepwaters: ['shield', 'No attacks from the moat'], elusive: ['shield', 'Pieces about to move can\'t attack'],
+    steed: ['swap', 'Your knight takes the blow, carries you'], holoking: ['souls', 'Soul move: a hologram stays'], shotput: ['knock', '+1 Cannonball to throw'], shoulders: ['knock', 'Once a floor: lift and throw a piece'],
+    disguise: ['eye', 'Pawn dies: 2 turns of stealth'], shackles: ['clock', 'The orbed piece is bound, slower'], patience: ['search', 'Next black card: any you like'], rapunzel: ['leader', 'First dead rook: a black queen'],
+    loafers: ['range', 'Steps fire at a target, +15°'], secretmove: ['jump', 'All jumps used: Pellets for the shot'], orb: ['eye', 'See a piece\'s next move'], shovel: ['move', '2 holes to dig and travel'],
+    silencer: ['eye', 'Shots keep your stealth'], smallkey: ['swap', 'Key: remove a rook, free a prisoner'], projection: ['souls', 'A soul becomes an ally'], moat: ['shield', 'A moat across the middle'],
+    mole: ['eye', '+1 Spy among the pawns'], undercover: ['turn', 'A waypoint: disrupt the army'], unholy: ['fp', '3 pentagrams: extra turns, +2 Pellets'],
     august: ['eye', 'No piece comes next to you'], mist: ['shield', 'Survive death once a floor'], plague: ['bleed', 'Each turn: 1 random damage'], bloodless: ['all', 'Pawns can\'t attack'],
     boldplan: ['swap', 'Swap one of the white cards'], bushido: ['blade', 'Free execution once a turn'], caltropsSlow: ['spd', 'Bleeding pieces are slower'], caltrops: ['bleed', 'Moving pieces may bleed'],
     fodder: ['fp', 'Pawn souls: +2 Pellets'], jousting: ['turn', 'Extra turn per knight kill'], scope: ['range', 'Aim: -45° Spread, +2 Range'], fearsome: ['eye', 'Kills scare nearby pieces'],
@@ -6190,7 +6587,7 @@
     undead: ['all', 'Dead pieces rise as pawns'], vampire: ['hp', 'Leader, queens drink blood'], vendetta: ['spd', 'Kills rouse their kind']
   };
   const SK_FLIP_TEXT = { pawnKilled: 'Flips when a pawn dies', reload: 'Flips when you reload', promote: 'Flips when a pawn promotes', queenKilled: 'Flips when a queen dies', bishopAt15: 'Flips: bishop alive at turn 15' };
-  const SK_OFF_TEXT = { notEdge: 'Only on the edge', adjacent: 'Off with a piece next to you', noRook: 'Off without rooks', noPawn: 'Off without pawns', noBishop: 'Off without bishops', onlyQueens: 'Off with only queens left' };
+  const SK_OFF_TEXT = { notEdge: 'Only on the edge', adjacent: 'Off with a piece next to you', noRook: 'Off without rooks', noPawn: 'Off without pawns', noBishop: 'Off without bishops', onlyQueens: 'Off with only queens left', notStealth: 'Only while stealthy' };
   const SK_PIECE = { p: ['Pawn', 'Pawns'], n: ['Knight', 'Knights'], b: ['Bishop', 'Bishops'], r: ['Rook', 'Rooks'], q: ['Queen', 'Queens'], k: ['King', 'Kings'] };
   /* A card's effects, one line each with its icon, the way the shotgun cards show their stats: "+1 Pellet",
      "-10° Spread", "+3 Pawns", "+2 HP Leader", or a short line for a rule. Built from the card's fx, the same list
@@ -6201,8 +6598,8 @@
     const STAT = { fp: (v) => one(v, 'Pellet', 'Pellets'), arc: (v) => skNum(v, '°') + ' Spread', range: (v) => skNum(v) + ' Range', cap: (v) => one(v, 'Shell', 'Shells'), res: (v) => skNum(v) + ' Reserve',
       pierce: (v) => skNum(Math.round(v * 100), '%') + ' Pierce', knock: (v) => skNum(Math.round(v * 100), '%') + ' Knockback', souls: (v) => one(v, 'Soul slot', 'Soul slots'), move: (v) => skNum(v) + ' Step range',
       mark: () => 'Hits are marked', blade: (v) => skNum(v) + ' Blade', regen: (v) => skNum(v) + ' Regen', grenades: (v) => one(v, 'Grenade', 'Grenades'), gdmg: (v) => skNum(v) + ' Grenade dmg',
-      search: (v) => skNum(v) + ' Search', fright: (v) => skNum(v) + ' Fright radius', shrapnel: (v) => skNum(v) + ' Shrapnel' };
-    const ICON = { regen: 'res', grenades: 'grenade', gdmg: 'grenade', search: 'search', fright: 'eye', shrapnel: 'fp' };
+      search: (v) => skNum(v) + ' Search', fright: (v) => skNum(v) + ' Fright radius', shrapnel: (v) => skNum(v) + ' Shrapnel', jump: (v) => one(v, 'Jump', 'Jumps'), jdmg: (v) => skNum(v) + ' Jump dmg' };
+    const ICON = { regen: 'res', grenades: 'grenade', gdmg: 'grenade', search: 'search', fright: 'eye', shrapnel: 'fp', jdmg: 'jump' };
     // whom it is for: the leader or all pieces by word, a kind of piece by its picture
     const whoTag = (t) => (t === 'leader' ? ' Leader' : t === 'all' ? ' All' : '</span>' + skPieceIcon(t) + '<span hidden>');
     const army = (e) => one(e.v, (SK_PIECE[e.a] || [e.a])[0], (SK_PIECE[e.a] || [e.a, e.a])[1]);
@@ -6220,6 +6617,7 @@
       }
       if (e.s && STAT[e.s]) line(skIcon(ICON[e.s] || e.s), STAT[e.s](e.v) + (e.every ? ' every ' + e.every + ' turns' : ''), !!e.every);
       else if (e.a) line(skPieceIcon(e.a), army(e) + (e.after ? ' at turn ' + e.after : e.every ? ' every ' + e.every + ' turns' : ''), !!(e.after || e.every));
+      else if (e.ally) line(skPieceIconB(e.ally), one(e.v, 'Ally', 'Allies'));
       else if (e.hp) line(skIcon('hp'), skNum(e.v) + ' HP' + whoTag(e.hp));
       else if (e.spd) line(skIcon('spd'), skNum(-e.v) + ' Speed' + (e.every ? ' every ' + e.every + ' turns' : '') + whoTag(e.spd), !!e.every); // the card's own sign: + is faster
       else if (e.r && SK_RULE_TEXT[e.r]) line(skIcon(SK_RULE_TEXT[e.r][0]), SK_RULE_TEXT[e.r][1], true);
@@ -6264,6 +6662,9 @@
       html += '<p class="gm-fixed">Floor ' + run.floor + ' cleared. Take one pair: the black card is yours, the white card goes to the army.</p><div class="sk-pairs">' +
         run.offer.map((pr, i) => '<div class="sk-pair">' + skCardHtml(pr[0], run) + skCardHtml(pr[1], run) + '<button class="btn green" data-skpair="' + i + '">Take this pair</button></div>').join('') + '</div>' +
         (run.searchLeft > 0 ? '<button class="btn gm-wide" data-gm="sksearch">Search: draw a new offer (' + run.searchLeft + ' left)</button>' : '');
+      // Patience: the black card of this pick may be any from the deck; it goes into both pairs
+      const br = SKM.browsable(run);
+      if (br.length) html += '<h3 class="sk-h">Patience: any black card for this pick</h3><div class="sk-browse">' + br.map((id) => '<button class="btn' + (run.offer[0][0] === id ? ' on' : '') + '" data-skbrowse="' + id + '" title="' + SKM.CARD[id].text.split('; ').map((t) => t.charAt(0).toUpperCase() + t.slice(1)).join('. ') + '">' + SKM.CARD[id].name + '</button>').join('') + '</div>';
       return html + skOwned(run) + '</section>';
     }
     const shells = skMag(F.gun[0], st.cap, F.gun[1], st.res);
@@ -6278,8 +6679,22 @@
     const goal = !leader && F.goal ? (F.goal.indexOf('all') >= 0 ? 'Kill every piece.' : 'Kill all ' + F.goal.map((g) => ({ n: 'knights', b: 'bishops' })[g]).join(' or all ') + '.') : '';
     html += '<div class="sk-row small">' + (leader ? 'Leader: ' + (leader.boss ? 'the crowned Boss Pawn' : skFloorName(run.floor)) + ', ' + leader.hp + ' of ' + leader.max + ' HP.' : goal) + ' Turn ' + F.turn + '.' +
       (F.paralysis > 0 ? ' Paralysed for ' + F.paralysis + (F.paralysis === 1 ? ' turn.' : ' turns.') : '') + (F.countdown != null ? ' ' + F.countdown + ' turns left.' : '') + '</div>';
+    // what the newer cards hold: stealth, a carried piece, jumps, allies, the pentagrams' firepower
+    const more = [];
+    if (F.stealth > 0) more.push(F.stealth === 1 ? 'Stealthy for 1 more turn.' : 'Stealthy for ' + F.stealth + ' more turns.');
+    if (F.carry) more.push('Carrying: ' + (F.carry.ball ? 'Cannonball' : SKM.NAMES[F.carry.p.t]) + '.');
+    if (st.jump) more.push('Jumps left: ' + Math.max(0, st.jump - (F.jumps || 0)) + ' of ' + st.jump + '.');
+    if ((F.allies || []).length) more.push('Allies: ' + F.allies.length + '.');
+    if (F.pentaFp) more.push('Pentagrams: +' + F.pentaFp + ' Pellets.');
+    if (more.length) html += '<div class="sk-row small">' + more.join(' ') + '</div>';
     if (check) html += '<div class="sk-warn">Check: get out of the attack or kill the attacker this turn.</div>';
-    html += '<div class="gm-row sk-acts"><button class="btn" data-gm="skreload"' + (F.gun[0] >= st.cap || F.gun[1] <= 0 ? ' disabled' : '') + ' title="Put one shell into the gun from the reserve (that is your turn)">Load (Space)</button>' +
+    if (F.disrupt) {
+      // Undercover Mission, The Mole, Small Key: one disruption, then the king acts again
+      return html + '<div class="sk-warn ok">Disrupt the White Army: pick one. Then you act again.</div><div class="gm-row sk-acts sk-disrupt">' +
+        SKM.actions(run, F).map((a) => '<button class="btn" data-gm="skdisrupt:' + a.id + '" title="' + SK_DISRUPT[a.id][1] + '">' + SK_DISRUPT[a.id][0] + '</button>').join('') + '</div>' + skOwned(run) + '</section>';
+    }
+    html += '<div class="gm-row sk-acts"><button class="btn" data-gm="skreload"' + (F.gun[0] >= st.cap || F.gun[1] <= 0 ? ' disabled' : '') + ' title="Fill the gun from the reserve (that is your turn)">Load (Space)</button>' +
+      skTools(run, F) +
       (st.blade ? '<button class="btn' + (skUi.blade ? ' on' : '') + '" data-gm="skblade">Blade</button>' : '') +
       (F.grenades > 0 ? '<button class="btn' + (skUi.grenade ? ' on' : '') + '" data-gm="skgrenade">Grenade (' + F.grenades + ')</button>' : '') +
       (SKM.rule(run, F, 'decree') && F.gun[0] > 1 ? '<button class="btn' + (skUi.decree ? ' on' : '') + '" data-gm="skdecree" title="Unjust Decree: the next shot fires every loaded shell">Fire all</button>' : '') +
@@ -6287,6 +6702,42 @@
       '<button class="btn' + (skUi.danger ? ' on' : '') + '" data-gm="skdanger">Danger</button><button class="btn" data-gm="skquit">Give up</button></div>';
     html += '<div class="sk-row small" id="skHover"></div>';
     return html + skOwned(run) + '</section>';
+  }
+  /* The buttons of the cards' own actions: the wands (once a floor each), the orb, the strafe target, lifting and
+     throwing, the key, the shovel, Soul Projection. A button the king can use now is lit; one with a target waits for
+     a click on the board (skUi.pick), the others act at once. [kind, wand id, label, tooltip] */
+  const SK_TOOLS = [
+    ['wand', 'wandfrenzy', 'Frenzy', 'Wand of Frenzy: refill your ammo and reload your gun. Free, once a floor'], ['wand', 'wandgust', 'Gust', 'Wand of Gust: every white piece one square back, and their next move two turns later. Free, once a floor'],
+    ['wand', 'wandwings', 'Wings', 'Wand of Wings: move up to 3 squares in a straight line. Free, once a floor'],
+    ['wand', 'wanddownpour', 'Downpour', 'Wand of Downpour: 10 damage spread over up to 4 random pieces. Free, once a floor'],
+    ['wand', 'wandexecution', 'Execution', 'Wand of Execution: destroy a pawn. Free; ready again when you kill a piece that is not a pawn'],
+    ['wand', 'wandhypnosis', 'Hypnosis', 'Wand of Hypnosis: pick a white piece, then where it goes. Free, once a floor'],
+    ['wand', 'wandsouls', 'Souls', 'Wand of Souls: stun a piece for 3 turns and take its soul. Free, once a floor'],
+    ['wand', 'wandtreachery', 'Treachery', 'Wand of Treachery: a piece next to the king changes sides. Free, once a floor'],
+    ['wand', 'wandwrath', 'Wrath', 'Wand of Wrath: your firepower as damage to a piece that is not a king. Free, once a floor'],
+    ['orb', '', 'Orb', 'Seer\'s Orb: pick a piece to see where it moves next. Free'],
+    ['strafe', '', 'Strafe', 'Royal Loafers: pick a target, and your steps fire at it with 15° more spread. Free'],
+    ['lift', '', 'Lift', 'Lift a piece or a cannonball next to the king. Free'],
+    ['throw', '', 'Throw', 'Throw what the king carries: click a line from him. 3 damage to the first piece it hits'],
+    ['key', '', 'Key', 'Small Key: a rook next to the king goes, or a jailed piece next to him changes sides; then disrupt the White Army. Free, once a floor'],
+    ['dig', '', 'Dig', 'Shovel: dig a hole next to the king (that is your turn)'],
+    ['project', '', 'Ally', 'Soul Projection: spend a soul to make an ally next to the king. Free']
+  ];
+  const SK_DIRECT = { wandfrenzy: 1, wandgust: 1, wanddownpour: 1 };
+  const SK_TOOL_RULE = { orb: ['orb'], strafe: ['loafers'], lift: ['shoulders', 'shotput'], key: ['smallkey'], dig: ['shovel'], project: ['projection'] };
+  const SK_DISRUPT = { sabotage: ['Sabotage', 'A random white card goes face down for this floor'], poison: ['Poison their water', 'Every white piece: -1 max HP'], stab: ['Stab their king', 'The White King takes 4 damage'],
+    ammo: ['Steal their ammo', 'Full gun, full reserve, grenades back'], glue: ['Glue their shoes', 'Every white piece moves one turn slower'], guards: ['Remove the guards\' weapons', 'Pawns can\'t attack for this floor'] };
+  function skTools(run, F) {
+    const acts = SKM.actions(run, F), out = [];
+    SK_TOOLS.forEach((w) => {
+      const k = w[0], id = w[1];
+      const owned = k === 'wand' ? SKM.rule(run, F, id) > 0 : k === 'throw' ? !!F.carry : SK_TOOL_RULE[k].some((r) => SKM.rule(run, F, r) > 0) && !(k === 'lift' && F.carry);
+      if (!owned) return;
+      const ready = acts.some((a) => a.k === k && (!id || a.id === id));
+      const on = (skUi.pick && skUi.pick.k === k && (skUi.pick.id || '') === id) || (k === 'strafe' && F.strafe >= 0);
+      out.push('<button class="btn' + (on ? ' on' : '') + '" data-gm="sktool:' + k + ':' + id + '"' + (ready ? '' : ' disabled') + ' title="' + w[3] + '">' + w[2] + '</button>');
+    });
+    return out.join('');
   }
   function skOwned(run) {
     const ids = Object.keys(run.cards).filter((k) => run.cards[k] > 0);
@@ -6297,8 +6748,18 @@
   function skHoverInfo() {
     const el = $('#skHover'), run = skRun();
     if (!el || !skLive()) return;
-    const p = SKM.pieceAt(run.F, skUi.hover);
-    el.textContent = p ? (p.boss ? 'The crowned Boss Pawn' : SKM.NAMES[p.t]) + (p.leader ? ' (leader)' : '') + ': ' + p.hp + ' of ' + p.max + ' HP, moves ' + (p.tm <= 1 ? 'after your next turn' : 'in ' + p.tm + ' turns') + ' (every ' + p.spd + ')' + (p.bleed ? ', bleeding' : '') + (p.mark ? ', marked' : '') + '.' : '';
+    const F = run.F, q = skUi.hover, p = SKM.pieceAt(F, q), al = SKM.allyAt(F, q), when = (t) => (t <= 1 ? 'after your next turn' : 'in ' + t + ' turns');
+    let tx = p ? (p.boss ? 'The crowned Boss Pawn' : SKM.NAMES[p.t]) + (p.leader ? ' (leader)' : '') + ': ' + p.hp + ' of ' + p.max + ' HP, moves ' + when(p.tm) + ' (every ' + p.spd + ')' + (p.bleed ? ', bleeding' : '') + (p.mark ? ', marked' : '') + '.' : '';
+    if (p && p.spy === 1) tx += ' A spy: step next to it.';
+    else if (al) tx = 'Ally: ' + SKM.NAMES[al.t] + ', moves ' + when(al.tm) + ' (every ' + al.spd + ').';
+    else if (!p && q === F.holo) tx = 'Your hologram: a piece that takes it is stunned for 2 turns.';
+    else if (!p && (F.balls || []).indexOf(q) >= 0) tx = 'A cannonball: lift it, then throw it.';
+    else if (!p && (F.stones || []).indexOf(q) >= 0) tx = 'A flagstone: step onto it from anywhere, +1 firepower while you stand on it.';
+    else if (!p && (F.penta || []).some((x) => x.sq === q)) tx = (F.penta.find((x) => x.sq === q).on ? 'A pentagram: step onto it for an extra turn.' : 'A spent pentagram.');
+    else if (!p && (F.holes || []).indexOf(q) >= 0) tx = 'A hole: from next to one, travel to any other.';
+    else if (!p && q === F.way) tx = 'The waypoint: reach it to disrupt the White Army.';
+    else if (!p && F.moat && (q >> 3) === SKM.MOAT) tx = 'The moat: only knights cross it in one move.';
+    el.textContent = tx;
   }
   function wireSk(box) {
     box.querySelectorAll('[data-skgun]').forEach((b) => { b.onclick = () => { skUi.gun = b.dataset.skgun; skSaveSet(); renderModes(); renderAll(); }; });
@@ -6306,8 +6767,9 @@
     box.querySelectorAll('[data-sksoul]').forEach((b) => { b.onclick = () => {
       const i = +b.dataset.sksoul, r0 = skRun();
       if (r0 && r0.souls[i] === 'p') { skDo({ k: 'fodder', soul: i }); return; } // Cannon Fodder: a pawn's soul feeds the next shot
-      skUi.soul = skUi.soul === i ? -1 : i; skUi.grenade = false; renderModes(); renderAll();
+      skUi.soul = skUi.soul === i ? -1 : i; skUi.grenade = false; if (!(skUi.pick && skUi.pick.k === 'project')) skUi.pick = null; renderModes(); renderAll();
     }; });
+    box.querySelectorAll('[data-skbrowse]').forEach((b) => { b.onclick = () => { const run = skRun(); if (run && SKM.browse(run, b.dataset.skbrowse)) { saveModes(); renderModes(); } }; });
     box.querySelectorAll('[data-skpair]').forEach((b) => { b.onclick = () => { const run = skRun(); if (run && SKM.choosePair(run, +b.dataset.skpair)) { MS.rev = (MS.rev || 0) + 1; saveModes(); snd('start'); renderModes(); renderAll(); } }; });
   }
   function wireModes(box) {
@@ -6339,13 +6801,25 @@
         else if (k === 'dc2start') startMode('dice', JSON.parse(JSON.stringify(diceSet)));
         else if (k === 'hxstart') startMode('hex', JSON.parse(JSON.stringify(hexSet)));
         else if (k === 'skstart') skStart(false);
+        else if (k === 'dailystart') startDaily();
         else if (k === 'skagain') skStart(true);
         else if (k === 'skclose') { const r = skRun(); if (r) r.closed = true; saveModes(); renderModes(); renderAll(); }
         else if (k === 'skreload') skReload();
-        else if (k === 'skblade') { skUi.blade = !skUi.blade; skUi.grenade = false; skUi.soul = -1; renderModes(); renderAll(); }
-        else if (k === 'skgrenade') { skUi.grenade = !skUi.grenade; skUi.blade = false; skUi.soul = -1; renderModes(); renderAll(); }
+        else if (k === 'skblade') { skUi.blade = !skUi.blade; skUi.grenade = false; skUi.soul = -1; skUi.pick = null; renderModes(); renderAll(); }
+        else if (k === 'skgrenade') { skUi.grenade = !skUi.grenade; skUi.blade = false; skUi.soul = -1; skUi.pick = null; renderModes(); renderAll(); }
         else if (k === 'skdecree') { skUi.decree = !skUi.decree; renderModes(); renderAll(); }
         else if (k === 'skscope') skDo({ k: 'scope' });
+        else if (k.indexOf('sktool:') === 0) {
+          const kind = k.split(':')[1], id = k.split(':')[2], r = skRun();
+          if (SK_DIRECT[id]) { const a = r && r.F && SKM.actions(r, r.F).find((x) => x.k === kind && x.id === id); if (a) skDo(a); }
+          else {
+            const same = skUi.pick && skUi.pick.k === kind && (skUi.pick.id || '') === id;
+            skUi.pick = same ? null : { k: kind, id: id || null }; skUi.grenade = false; skUi.blade = false;
+            if (kind !== 'project') skUi.soul = -1;
+            renderModes(); renderAll();
+          }
+        }
+        else if (k.indexOf('skdisrupt:') === 0) { const r = skRun(), a = r && r.F && SKM.actions(r, r.F).find((x) => x.k === 'disrupt' && x.id === k.slice(10)); if (a) skDo(a); }
         else if (k === 'skdanger') { skUi.danger = !skUi.danger; skSaveSet(); renderModes(); renderAll(); }
         else if (k === 'sksearch') { const r = skRun(); if (r && SKM.search(r)) { saveModes(); renderModes(); } }
         else if (k === 'skquit') { const r = skRun(); if (r && confirm('Give up this run? It ends on floor ' + r.floor + '.')) { r.phase = 'lost'; if (r.F) r.F.over = 'dead'; skSettle(); saveModes(); renderModes(); renderAll(); } }
@@ -6381,14 +6855,15 @@
     if ((s.W !== ed.W || s.H !== ed.H) && ed.terrain) ed.terrain = { walls: [], water: [], portals: [], holes: [] }; // the old terrain does not fit a board of another size
     ed.W = s.W || 8; ed.H = s.H || 8;
     ed.board = s.board.slice();
-    ed.ghosts = []; ed.snipers = []; // a new position starts without upgrades
+    ed.ghosts = []; ed.snipers = []; ed.helmets = []; ed.vests = []; // a new position starts without upgrades
     ed.turn = s.turn;
     ed.castling = s.castling;
   }
   function edSync() {
     // an upgrade belongs to a piece: it goes when the square is empty
     ed.ghosts = ed.ghosts.filter((q) => !!ed.board[q]); ed.snipers = ed.snipers.filter((q) => !!ed.board[q]);
-    setup.traits = { ghosts: ed.ghosts.slice(), snipers: ed.snipers.slice() };
+    ed.helmets = ed.helmets.filter((q) => !!ed.board[q] && !R.isRoyal(ed.board[q])); ed.vests = ed.vests.filter((q) => !!ed.board[q] && !R.isRoyal(ed.board[q]));
+    setup.traits = { ghosts: ed.ghosts.slice(), snipers: ed.snipers.slice(), helmets: ed.helmets.slice(), vests: ed.vests.slice() };
     R.use({ W: ed.W, H: ed.H });
     const T = ed.terrain;
     if (!T.holes) T.holes = [];
@@ -6399,7 +6874,8 @@
     if (ui.tab === 'editor') ed.touched = true; // the board was changed by hand (see setTab)
     changed();
   }
-  const UPGRADE_TOOLS = [['ghost', 'Ghost', 'Moves through its own pieces, like the Ghost power-ups, and attacks through them'], ['camo', 'Camo', 'Shoots what it could take without leaving its square, like the Sniper power-ups']];
+  const UPGRADE_TOOLS = [['ghost', 'Ghost', 'Moves through its own pieces, like the Ghost power-ups, and attacks through them'], ['camo', 'Camo', 'Shoots what it could take without leaving its square, like the Sniper power-ups'],
+    ['helmet', 'Helmet', 'Spiked helmet: the next capture of this piece bounces off, breaks the helmet and freezes the attacker for a turn. Not for kings'], ['vest', 'Vest', 'Explosive vest: instead of moving the piece can go up and take the 3 x 3 square around it with it. Not for kings']];
   const TERRAIN_TOOLS = [['duck', 'Yellow duck', 'Has to be moved to another free square after every move, by the side that moved. Nothing enters or passes it, nothing takes it, a knight jumps over. Several of them all have to move, never onto a square a yellow duck stood on. One with nowhere to go ends the game in a draw'], ['bduck', 'Blue duck', 'Blocks like a yellow duck, but moving it is up to you: each blue duck may be moved once a turn, at any point of the turn'], ['wall', 'Boulder', 'Nothing can enter or pass this square'], ['water', 'Water', 'A piece may slide into it, but not through it. Jumps and shots go over it'], ['portal', 'Teleporter', 'Two of them make a pair: a piece that lands on one comes out at the other'], ['hole', 'Remove square', 'The square is gone: nothing stands on it and nothing slides across it, a jump goes over it']];
   /* Board size. A start position for any size: the pawns on the second rank, the king in the middle with the
      queen beside it, then bishop, knight and rook outwards, repeated on wide boards so a rook stands in each
@@ -6422,7 +6898,7 @@
     if (fresh) {
       ed.board = sizedStart(w, h);
       ed.terrain = { walls: [], water: [], portals: [], holes: [] };
-      ed.ghosts = []; ed.snipers = [];
+      ed.ghosts = []; ed.snipers = []; ed.helmets = []; ed.vests = [];
       ed.turn = 'w'; ed.castling = w === 8 && h === 8 ? 'KQkq' : ''; // the normal start, castling included
     } else {
       /* Keep the position: the top half stays at the top, the bottom half at the bottom (so both armies keep
@@ -6438,7 +6914,7 @@
       ed.board = nb;
       ed.terrain = { walls: mv(T.walls), water: mv(T.water), portals: mv(T.portals), holes: mv(T.holes) };
       if (ed.terrain.portals.length !== T.portals.length) ed.terrain.portals = [];
-      ed.ghosts = mv(ed.ghosts); ed.snipers = mv(ed.snipers);
+      ed.ghosts = mv(ed.ghosts); ed.snipers = mv(ed.snipers); ed.helmets = mv(ed.helmets); ed.vests = mv(ed.vests);
     }
     ed.W = w; ed.H = h;
     if (w !== 8 || h !== 8) ed.castling = '';
@@ -6461,7 +6937,7 @@
       const list = ed.brush === 'duck' ? T.ducks : T.bducks;
       if (drop(list, sq)) { edSync(); return; }
       drop(T.ducks, sq); drop(T.bducks, sq); drop(T.walls, sq); drop(T.holes, sq);
-      ed.board[sq] = ''; drop(ed.ghosts, sq); drop(ed.snipers, sq);
+      ed.board[sq] = ''; drop(ed.ghosts, sq); drop(ed.snipers, sq); drop(ed.helmets, sq); drop(ed.vests, sq);
       list.push(sq);
       edSync();
       return;
@@ -6474,15 +6950,16 @@
       if (ed.brush === 'wall' || ed.brush === 'hole') { drop(T.ducks, sq); drop(T.bducks, sq); }
       if (ed.brush === 'portal' && T.portals.length >= 2) T.portals.shift();
       list.push(sq);
-      if (ed.brush === 'wall' || ed.brush === 'hole') { ed.board[sq] = ''; drop(ed.ghosts, sq); drop(ed.snipers, sq); }
+      if (ed.brush === 'wall' || ed.brush === 'hole') { ed.board[sq] = ''; drop(ed.ghosts, sq); drop(ed.snipers, sq); drop(ed.helmets, sq); drop(ed.vests, sq); }
       if (ed.brush === 'hole') ui.paint = { hole: true }; // drag on to cut out more squares
       edSync();
       return;
     }
-    if (ed.brush === 'ghost' || ed.brush === 'camo') {
-      // an upgrade on one piece: a second click takes it off again
+    if (ed.brush === 'ghost' || ed.brush === 'camo' || ed.brush === 'helmet' || ed.brush === 'vest') {
+      // an upgrade on one piece: a second click takes it off again (no helmet or vest for a king)
       if (!ed.board[sq]) return;
-      const list = ed.brush === 'ghost' ? ed.ghosts : ed.snipers;
+      if ((ed.brush === 'helmet' || ed.brush === 'vest') && R.isRoyal(ed.board[sq])) { toast('Kings wear neither a helmet nor a vest'); return; }
+      const list = ed.brush === 'ghost' ? ed.ghosts : ed.brush === 'camo' ? ed.snipers : ed.brush === 'helmet' ? ed.helmets : ed.vests;
       if (!drop(list, sq)) list.push(sq);
       edSync();
       return;
@@ -6493,7 +6970,7 @@
     ui.paint = { v: ed.brush };
     drop(T.ducks, sq); drop(T.bducks, sq); // a piece pushes a duck off its square
     ed.board[sq] = ed.brush;
-    drop(ed.ghosts, sq); drop(ed.snipers, sq); // a new piece, without the upgrades of the one before
+    drop(ed.ghosts, sq); drop(ed.snipers, sq); drop(ed.helmets, sq); drop(ed.vests, sq); // a new piece, without the upgrades of the one before
     edSync();
   }
   /* How the piece in hand moves, as a small diagram: the piece in the middle of an empty board,
@@ -6582,7 +7059,7 @@
     const NAMES = { k: 'King', q: 'Queen', r: 'Rook', b: 'Bishop', n: 'Knight', p: 'Pawn' };
     const ter = TERRAIN_TOOLS.find((t) => t[0] === br), upt = UPGRADE_TOOLS.find((t) => t[0] === br);
     pick.classList.toggle('withdia', !upt && !ter && br !== null && br !== 'erase'); // a piece: diagram, text and legend in a grid
-    if (upt) pick.innerHTML = '<div class="pic ter up"><span class="piece ' + (br === 'ghost' ? 'ghost' : 'camo') + '" style="background-image:' + (br === 'ghost' ? imgUrl('wR') : skinUrl('camo', 'wB')) + '"></span></div><div><b>' + upt[1] + '</b><span>' + upt[2] + '. Click a piece to give it the upgrade, click it again to take it off. Any piece can have it, of either colour.</span></div>';
+    if (upt) pick.innerHTML = '<div class="pic ter up"><span class="piece ' + (br === 'ghost' ? 'ghost' : br === 'camo' ? 'camo' : '') + '" style="background-image:' + (br === 'ghost' ? imgUrl('wR') : br === 'camo' ? skinUrl('camo', 'wB') : imgUrl('wN')) + '">' + (br === 'helmet' || br === 'vest' ? '<i class="wear ' + br + '"></i>' : '') + '</span></div><div><b>' + upt[1] + '</b><span>' + upt[2] + '. Click a piece to give it the upgrade, click it again to take it off. Any piece can have it, of either colour.</span></div>';
     else if (br === null) pick.innerHTML = '<div class="pic hand">\u270b</div><div><b>Hand</b><span>Drag a piece to another square, or off the board to remove it</span></div>';
     else if (br === 'erase') pick.innerHTML = '<div class="pic hand">\u2715</div><div><b>Eraser</b><span>Click a square to clear it, pieces and terrain alike</span></div>';
     else if (ter) pick.innerHTML = '<div class="pic ter ' + br + '"></div><div><b>' + ter[1] + '</b><span>' + ter[2] + '. Click a square to put it there, click again to take it away</span></div>';
@@ -6634,8 +7111,9 @@
     const upp = $('#upgradePalette');
     upp.innerHTML = '';
     UPGRADE_TOOLS.forEach((t) => {
-      const b = h('button', 'ter up ' + t[0] + (ed.brush === t[0] ? ' on' : ''), '<span class="piece ' + (t[0] === 'ghost' ? 'ghost' : 'camo') + '"></span>' + t[1]);
-      b.querySelector('span').style.backgroundImage = t[0] === 'ghost' ? imgUrl('wR') : skinUrl('camo', 'wB');
+      const worn = t[0] === 'helmet' || t[0] === 'vest';
+      const b = h('button', 'ter up ' + t[0] + (ed.brush === t[0] ? ' on' : ''), '<span class="piece ' + (t[0] === 'ghost' ? 'ghost' : worn ? '' : 'camo') + '">' + (worn ? '<i class="wear ' + t[0] + '"></i>' : '') + '</span>' + t[1]);
+      b.querySelector('span').style.backgroundImage = t[0] === 'ghost' ? imgUrl('wR') : worn ? imgUrl('wN') : skinUrl('camo', 'wB');
       b.title = t[2];
       b.onclick = () => { ed.brush = t[0]; renderEditor(); };
       upp.appendChild(b);
@@ -6828,8 +7306,19 @@
 
   const PZ_KEY = 'powerchess_puzzles', PZCFG = { side: 'w' };
   // The rules a puzzle is played by: plain chess, or the power-up sets it came with ({ w, b }).
-  const pzCfg = (item) => (item.pw ? { side: 'w', pw: item.pw } : PZCFG);
+  const pzCfg = (item) => (item.pw ? { side: 'w', pw: item.pw, traits: item.traits || null } : PZCFG); // traits: a vest or a helmet on one piece
   let prof = Puzzles.load(localStorage.getItem(PZ_KEY));
+  /* Power-up puzzles have a rated track of their own, beside the plain one: its own rating, streak and
+     history (puzzles/power.json, made by tools/make_power_puzzles.js). */
+  const PZP_KEY = 'powerchess_pzpower';
+  let profP = Puzzles.load(localStorage.getItem(PZP_KEY));
+  function pzSaveP() { try { localStorage.setItem(PZP_KEY, JSON.stringify(profP)); } catch (e) { /* private mode */ } }
+  const profOf = (P) => (P && (P.kind === 'power' || P.from === 'power') ? profP : prof);
+  const pzCounts = (P) => P.kind === 'rated' || P.kind === 'daily' || P.kind === 'power'; // a miss costs something
+  function pzPowerReady() {
+    if (!pz.powerLoading) pz.powerLoading = fetch('puzzles/power.json').then((r) => (r.ok ? r.json() : [])).then((list) => { pz.power = list; }, () => { pz.power = []; });
+    return pz.powerLoading;
+  }
   const pz = { view: 'rated', list: null, loading: null, err: '', cur: null, rush: null, custom: { themes: [], band: 'all', source: 'lichess' }, gen: null, genLoading: null, shown: {} };
   function pzSave() { try { localStorage.setItem(PZ_KEY, JSON.stringify(prof)); } catch (e) { /* private mode */ } }
   function pzReady() {
@@ -6847,6 +7336,7 @@
     pzReady().then(() => {
       if (ui.tab !== 'puzzles') return;
       if (!pz.cur && pz.list && pz.view === 'rated') pzNextRated();
+      else if (!pz.cur && pz.view === 'power') pzNextPower();
       else renderAll();
     });
     if (pz.cur) { ui.flipped = pz.cur.solver === 'b'; BW = 0; }
@@ -6928,14 +7418,16 @@
   }
   // Make a move on the puzzle board, with the same sound and animation as in a game. Returns what to animate.
   function pzPlay(m) {
-    const P = pz.cur, before = P.state, n = R.play(before, m, P.cfg), anims = m.snipe ? [] : [{ from: m.from, to: m.to }];
+    const P = pz.cur, before = P.state, n = R.play(before, m, P.cfg), still = m.snipe || m.blast || (n.fx && n.fx.bounce >= 0), anims = still ? [] : [{ from: m.from, to: m.to }];
     if (m.castle === 'K') anims.push({ from: m.to + 1, to: m.to - 1 });
     if (m.castle === 'Q') anims.push({ from: m.to - 2, to: m.to + 1 });
     if (m.cap && before.board[m.capSq]) anims.push({ ghost: before.board[m.capSq], at: m.capSq });
     P.state = n; P.legal = R.legalMoves(n, P.cfg); P.last = [m.from, m.to];
     ui.sel = null; ui.hintArrow = null; ui.marks = []; ui.mode = null;
     if (m.snipe) fxTracer(m.from, m.to);
-    moveSound(m, null, R.inCheck(n, n.turn, P.cfg) && R.status(n, P.cfg, P.legal).reason !== 'checkmate');
+    if (n.fx && n.fx.bounce >= 0) fxRing(n.fx.bounce, 'orange');
+    if (m.blast && n.fx) n.fx.removed.forEach((x) => fxRing(x.sq, 'boom'));
+    moveSound(m, n.fx && (n.fx.bounce >= 0 || m.blast) ? n.fx : null, R.inCheck(n, n.turn, P.cfg) && R.status(n, P.cfg, P.legal).reason !== 'checkmate');
     return anims;
   }
   // A wrong move is shown on the board and then taken back. This takes it back (now, or when its moment is over).
@@ -6957,6 +7449,7 @@
     P.booked = true;
     P.secs = (performance.now() - P.t0) / 1000;
     if (P.kind === 'rated') { P.delta = Puzzles.record(prof, P.item, won, P.secs, Date.now()); pzSave(); }
+    else if (P.kind === 'power') { P.delta = Puzzles.record(profP, P.item, won, P.secs, Date.now()); pzSaveP(); }
     else if (P.kind === 'daily') {
       if (!prof.daily[P.day]) prof.daily[P.day] = { ok: won ? 1 : 0, t: Math.round(P.secs) };
       pzSave();
@@ -6964,7 +7457,7 @@
   }
   /* Solution steps. A plain puzzle writes its moves as UCI (e2e4). A power-up puzzle writes moves as the
      search's keys (n:12:28:) and free actions as f12 (freeze), g12 (gild), c12 (turncoat), t (time stop). */
-  const pzIsFree = (step) => /^[gfc]\d+$|^t$/.test(step || '');
+  const pzIsFree = (step) => /^[gfch]\d+$|^t$/.test(step || '');
   function pzStepMove(lg, step) {
     if (!step || pzIsFree(step)) return null;
     R.use(null);
@@ -6974,7 +7467,7 @@
   function pzApplyFree(s, step, cfg) {
     if (step === 't') return R.timeStop(s, cfg);
     const sq = +step.slice(1);
-    return step[0] === 'g' ? R.gild(s, sq, cfg) : step[0] === 'f' ? R.freeze(s, sq, cfg) : R.convert(s, sq, cfg);
+    return step[0] === 'g' ? R.gild(s, sq, cfg) : step[0] === 'f' ? R.freeze(s, sq, cfg) : step[0] === 'h' ? R.shield(s, sq, cfg) : R.convert(s, sq, cfg);
   }
   // A free action on the puzzle board: the state changes, the turn goes on.
   function pzPlayFree(step) {
@@ -7009,7 +7502,7 @@
     P.mark = { sq: sq, ok: false };
     snd('wrong', 0.12);
     if (P.kind === 'rush') { pzRushResult(false, anims); return; }
-    if (P.kind === 'rated' || P.kind === 'daily') { pzBook(false); P.status = 'lost'; P.msg = 'Incorrect'; }
+    if (pzCounts(P)) { pzBook(false); P.status = 'lost'; P.msg = 'Incorrect'; }
     else P.msg = 'Not the move. Try again.';
     if (keep) {
       // it stays for a moment with its mark, then goes back where it came from
@@ -7028,13 +7521,17 @@
     renderAll(anims);
     pzReply(P, 420);
   }
+  // The last step of a power-up puzzle may be answered with any action as good as the solution's (item.alt).
+  const pzAlt = (P, key) => !!(P.item.alt && P.item.alt[P.idx] && P.item.alt[P.idx].indexOf(key) >= 0);
   function pzMove(m) {
     const P = pz.cur;
     if (!pzCanMove()) return;
     const want = P.item.moves[P.idx], keep = { state: P.state, legal: P.legal, last: P.last, m: m };
     const mates = R.status(R.play(P.state, m, P.cfg), P.cfg).reason === 'checkmate';
+    const alt = pzAlt(P, moveKey(m)); // as good as the solution's move (the last step only)
     const anims = pzPlay(m); // right or wrong, the move is made on the board, with its sound
-    if (!(pzMoveIs(m, want) || mates)) { pzWrong(P, keep, anims, m.to); return; }
+    if (!(pzMoveIs(m, want) || mates || alt)) { pzWrong(P, keep, anims, m.to); return; }
+    if (alt && !pzMoveIs(m, want)) { P.sub = P.sub || {}; P.sub[P.idx] = moveKey(m); }
     pzRightStep(P, anims, m.to);
   }
   // A free action chosen on the puzzle board (freeze, gild, turncoat, time stop).
@@ -7042,8 +7539,9 @@
     const P = pz.cur;
     if (!pzCanMove()) return;
     const want = P.item.moves[P.idx];
-    if (step !== want) { ui.mode = null; pzWrong(P, null, undefined, step === 't' ? -1 : +step.slice(1)); return; }
+    if (step !== want && !pzAlt(P, step)) { ui.mode = null; pzWrong(P, null, undefined, step === 't' ? -1 : +step.slice(1)); return; }
     if (!pzPlayFree(step)) return;
+    if (step !== want) { P.sub = P.sub || {}; P.sub[P.idx] = step; }
     pzRightStep(P, undefined, step === 't' ? -1 : +step.slice(1));
   }
   function pzSolved(anims) {
@@ -7052,10 +7550,89 @@
     P.secs = P.secs || (performance.now() - P.t0) / 1000;
     snd('right', 0.15);
     if (P.kind === 'rush') { pzRushResult(true, anims); return; }
-    if (P.kind === 'rated' || P.kind === 'daily') pzBook(P.clean);
+    if (pzCounts(P)) pzBook(P.clean);
     if (P.kind === 'mine' && P.clean && !P.item.solved) { P.item.solved = 1; saveMine(); }
     P.msg = P.clean ? 'Correct' : (P.hint ? 'Solved with a hint' : 'Solved');
     renderAll(anims);
+    pzAfter(P);
+  }
+
+  /* After a puzzle (solved, or its solution shown): the play goes on for a moment, the other side's best answer and
+     your reply to it, found by the power-up search and played on the board, and the idea behind the solution is put
+     into words (Coach.idea). Not in Puzzle Rush, which is about speed. */
+  function pzKit(P) {
+    const names = {}, values = {};
+    R.FAIRY_LETTERS.forEach((l) => { names[l] = R.FAIRY[l].name.toLowerCase(); values[l] = Math.round(R.FAIRY[l].value / 100); });
+    return { B: P.B, std: true, R: R, cfg: P.cfg, names: names, values: values, name: (sq) => (R.use(null), R.sqName(sq)), label: (st, lg, act) => actLabel(P.B, st, lg, act) };
+  }
+  // a step of a puzzle line as an action ({ m } or a free action), in state s
+  function pzActOf(P, s, key) {
+    const lg = P.B.legal(s);
+    if (pzIsFree(key)) return keyToAct(key, lg);
+    const m = pzStepMove(lg, key);
+    return m ? { m: m } : null;
+  }
+  // the power-up that makes this move possible at all (a dragon's leap, a rocket's run), by its name, or null
+  function pzPowerOf(P, s, act) {
+    if (!act.m || !P.cfg.pw) return null;
+    const me = s.turn, mine = R.powersOf(P.cfg, me);
+    const has = (cfg) => R.legalMoves(s, cfg).some((x) => moveKey(x) === moveKey(act.m));
+    const pw0 = Object.assign({}, P.cfg.pw); pw0[me] = null;
+    if (has(Object.assign({}, P.cfg, { pw: pw0 }))) return null;
+    const names = powerNames(mine);
+    if (names.length === 1) return names[0];
+    for (const x of POWER_LIST) {
+      if (!flagOn(mine, x.key)) continue;
+      const one = {}; one[x.key] = mine[x.key];
+      const pw1 = Object.assign({}, P.cfg.pw); pw1[me] = one;
+      if (has(Object.assign({}, P.cfg, { pw: pw1 }))) return x.name;
+    }
+    return 'your power-ups';
+  }
+  async function pzAfter(P) {
+    if (P.kind === 'rush' || P.after || pz.cur !== P) return;
+    const after = P.after = { idea: null, follow: [], i: 0 };
+    const cfgFor = (st) => (P.cfg.pw ? brainCfg(P.cfg, st.turn, true) : P.cfg);
+    // the other side's best answer and your reply: one turn each, at most six actions
+    let s = P.state, side = s.turn, turns = 2;
+    while (after.follow.length < 6) {
+      const lg = P.B.legal(s);
+      if (P.B.status(s, lg).over) break;
+      if (s.turn !== side) { side = s.turn; if (--turns === 0) break; } // a new turn: two of them, then it stops
+      let res = null;
+      try { res = await evalBrain.think(s, cfgFor(s), { ms: 450, margin: 0, allow: lg.map(moveKey), free: true }); } catch (e) { res = null; }
+      if (pz.cur !== P || P.after !== after) return;
+      const pick = res && res.actions && res.actions.map((a) => ({ key: a.key, act: keyToAct(a.key, lg) })).find((x) => x.act && (x.act.m || x.act.gild != null || x.act.freeze != null || x.act.shield != null || x.act.convert != null || x.act.stop));
+      if (!pick) break;
+      const n = pick.act.m ? P.B.play(s, pick.act.m) : pick.act.gild != null ? P.B.gild(s, pick.act.gild) : pick.act.freeze != null ? P.B.freeze(s, pick.act.freeze) : pick.act.shield != null ? P.B.shield(s, pick.act.shield) : pick.act.convert != null ? P.B.convert(s, pick.act.convert) : P.B.timeStop(s);
+      if (!n) break;
+      after.follow.push(pick.key);
+      s = n;
+    }
+    // the idea, from the start of the puzzle: the solution as it was played, then the follow-up
+    try {
+      const start = R.fromFen(pzFen(P.item), P.cfg), keys = P.item.moves.slice(0, P.idx).map((k, i) => (P.sub && P.sub[i]) || k);
+      const sol = [], fol = [];
+      let st = start;
+      for (const k of keys) { const a = pzActOf(P, st, k); if (!a) break; sol.push(a); st = a.m ? P.B.play(st, a.m) : a.gild != null ? P.B.gild(st, a.gild) : a.freeze != null ? P.B.freeze(st, a.freeze) : a.shield != null ? P.B.shield(st, a.shield) : a.convert != null ? P.B.convert(st, a.convert) : P.B.timeStop(st); }
+      for (const k of after.follow) { const a = pzActOf(P, st, k); if (!a) break; fol.push(a); st = a.m ? P.B.play(st, a.m) : a.gild != null ? P.B.gild(st, a.gild) : a.freeze != null ? P.B.freeze(st, a.freeze) : a.shield != null ? P.B.shield(st, a.shield) : a.convert != null ? P.B.convert(st, a.convert) : P.B.timeStop(st); }
+      const mine = P.cfg.pw ? R.powersOf(P.cfg, P.solver) : {};
+      after.idea = Coach.idea(pzKit(P), { s: start, sol: sol, follow: fol, me: P.solver, double: (mine.double || 0) > 1, power: (state, act) => pzPowerOf(P, state, act) });
+    } catch (e) { console.warn('puzzle idea', e); after.idea = []; }
+    renderAll();
+    // the follow-up on the board, one action at a time
+    const next = () => {
+      if (pz.cur !== P || P.after !== after || P.busy) return;
+      const k = after.follow[after.i];
+      if (!k) { renderAll(); return; }
+      let an;
+      if (pzIsFree(k)) { if (!pzPlayFree(k)) return; }
+      else { const m = pzStepMove(P.legal, k); if (!m) return; an = pzPlay(m); }
+      after.i++;
+      renderAll(an);
+      setTimeout(next, 900);
+    };
+    setTimeout(next, 1000);
   }
   // Hint: first the piece, then the move. A hint means the puzzle no longer counts as solved.
   function pzHint() {
@@ -7082,14 +7659,14 @@
     if (!P) return;
     if (P.back) pzBack(P, false); // a wrong move that is still on the board goes back first
     if (P.busy) return;
-    if (P.status === 'play') { P.clean = false; if (P.kind === 'rated' || P.kind === 'daily') pzBook(false); P.status = 'lost'; }
+    if (P.status === 'play') { P.clean = false; if (pzCounts(P)) pzBook(false); P.status = 'lost'; }
     P.msg = 'The solution';
     P.busy = true; P.mark = null;
     const step = () => {
       if (pz.cur !== P) return;
       const u = P.item.moves[P.idx];
       let an;
-      if (!u) { P.busy = false; renderAll(); return; }
+      if (!u) { P.busy = false; renderAll(); pzAfter(P); return; }
       if (pzIsFree(u)) { if (!pzPlayFree(u)) { P.busy = false; renderAll(); return; } }
       else { const m = pzStepMove(P.legal, u); if (!m) { P.busy = false; renderAll(); return; } an = pzPlay(m); }
       P.idx++;
@@ -7104,6 +7681,18 @@
     const P = pz.cur;
     if (P && P.kind === 'rated' && P.status === 'play' && !P.booked) pzBook(false); // skipped
     pzStart(Puzzles.next(pz.list, prof), 'rated');
+  }
+  function pzNextPower() {
+    if (pz.powerNext) return; // asked twice while loading: one puzzle, and the open one is not booked twice
+    pz.powerNext = true;
+    pzPowerReady().then(() => {
+      pz.powerNext = false;
+      if (ui.tab !== 'puzzles' || pz.view !== 'power') return;
+      if (!pz.power.length) { renderAll(); return; }
+      const P = pz.cur;
+      if (P && P.kind === 'power' && P.status === 'play' && !P.booked) pzBook(false); // skipped
+      pzStart(Puzzles.next(pz.power, profP), 'power');
+    });
   }
   function pzRetry() { const P = pz.cur; if (P) pzStart(P.item, 'again', { from: P.kind === 'again' ? P.from : P.kind, day: P.day }); }
   function pzDown(sq, e) {
@@ -7202,17 +7791,28 @@
     const cls = P.status === 'won' && P.clean ? ' ok' : P.status === 'lost' || (P.msg && /Incorrect|Not the move/.test(P.msg)) ? ' bad' : '';
     html += '<div class="pz-msg' + cls + '">' + (P.msg || (P.busy ? '' : 'Find the best move')) +
       (P.delta != null ? '<b class="' + (P.delta >= 0 ? 'up' : 'down') + '">' + (P.delta >= 0 ? '+' : '') + P.delta + '</b>' : '') + '</div>';
-    if (done || opts.open) html += '<div class="pz-meta">Puzzle rating <b>' + Puzzles.ratingOf(P.item, prof) + '</b>' + (done ? '<br>' + themeNames(P.item).join(', ') : '') + '</div>';
+    if (done || opts.open) html += '<div class="pz-meta">Puzzle rating <b>' + Puzzles.ratingOf(P.item, profOf(P)) + '</b>' + (done ? '<br>' + themeNames(P.item).join(', ') : '') + '</div>';
     if (done && !P.busy && P.kind !== 'rush') html += '<div class="pz-line">' + pzLine(P.item) + '</div>';
+    if (done && P.kind !== 'rush' && P.after) {
+      html += '<div class="pz-idea"><h4>The idea</h4>' + (P.after.idea ? P.after.idea.map((t) => '<p>' + t.replace(/</g, '&lt;') + '</p>').join('') : '<p class="dim">Looking at how it goes on</p>') + '</div>';
+    }
     if (P.cfg.pw) {
       const mine = R.powersOf(P.cfg, P.solver), theirs = R.powersOf(P.cfg, R.other(P.solver));
-      html += '<div class="pz-meta">Your power-ups: <b>' + (powerNames(mine).join(', ') || 'none') + '</b>. The other side: <b>' + (powerNames(theirs).join(', ') || 'none') + '</b></div>';
+      const T = P.cfg.traits;
+      if (T && ((T.vests || []).length || (T.helmets || []).length)) {
+        // a vest or a helmet put on single pieces: say which
+        const b0 = R.fromFen(pzFen(P.item), P.cfg).board, nm = (q) => (R.fairyOf(b0[q]) ? R.fairyOf(b0[q]).name : { q: 'queen', r: 'rook', b: 'bishop', n: 'knight', p: 'pawn' }[b0[q].toLowerCase()] || 'piece').toLowerCase();
+        (T.vests || []).forEach((q) => { if (b0[q]) html += '<div class="pz-meta">The ' + nm(q) + ' on ' + (R.use(null), R.sqName(q)) + ' wears an explosive vest.</div>'; });
+        (T.helmets || []).forEach((q) => { if (b0[q]) html += '<div class="pz-meta">The ' + nm(q) + ' on ' + (R.use(null), R.sqName(q)) + ' wears a spiked helmet.</div>'; });
+      }
+      if (powerNames(mine).length || powerNames(theirs).length || !T) html += '<div class="pz-meta">Your power-ups: <b>' + (powerNames(mine).join(', ') || 'none') + '</b>. The other side: <b>' + (powerNames(theirs).join(', ') || 'none') + '</b></div>';
       if (!done && pzCanMove()) {
         const st = P.state, acts = [];
         if (mine.midas && P.B.gildTargets(st, P.legal).length) acts.push(['pzGild', 'gild', ui.mode === 'gild' ? 'Cancel' : '\u2726 Midas Touch']);
         if (mine.freeze && P.B.freezeTargets(st).length) acts.push(['pzFreeze', 'freeze', ui.mode === 'freeze' ? 'Cancel' : '\u2744 Freeze Ray']);
         if (mine.turncoat && P.B.convertTargets(st).length) acts.push(['pzConvert', 'convert', ui.mode === 'convert' ? 'Cancel' : '\u21c4 Turncoat']);
         if (mine.timestop && P.B.stopReady(st)) acts.push(['pzStop', 'stop', '\u29d6 Time Stop']);
+        if (ui.sel && ui.sel.blast) acts.push(['pzBlast', 'blast', '\u2738 Detonate']); // the selected piece wears a vest
         if (acts.length) html += '<div class="pz-actions">' + acts.map((a) => '<button class="btn' + (ui.mode === a[1] ? ' on' : '') + '" id="' + a[0] + '">' + a[2] + '</button>').join('') + '</div>' +
           (ui.mode ? '<div class="pz-meta">' + (ui.mode === 'gild' ? 'Midas Touch: click a glowing piece' : ui.mode === 'freeze' ? 'Freeze Ray: click the piece to freeze' : 'Turncoat: click the piece that should join you') + '</div>' : '');
       }
@@ -7229,6 +7829,7 @@
     const modeBtn = (id, m) => on(id, () => { ui.mode = ui.mode === m ? null : m; ui.sel = null; renderAll(); });
     modeBtn('pzGild', 'gild'); modeBtn('pzFreeze', 'freeze'); modeBtn('pzConvert', 'convert');
     on('pzStop', () => pzAct('t'));
+    on('pzBlast', () => { if (ui.sel && ui.sel.blast) blastAt(ui.sel.sq); });
     on('pzAn', () => { const fen = pzFen(pz.cur.item); analyseFresh(fen, true).then((ok) => { if (ok) setTab('analysis'); }); });
   }
   /* The rating curve: one point per rated puzzle, green when solved, red when missed, with a rating
@@ -7276,23 +7877,24 @@
 
   function renderPuzzles() {
     const body = $('#pzBody');
-    seg($('#pzSeg'), [['rated', 'Rated'], ['rush', 'Rush'], ['daily', 'Daily'], ['custom', 'Practice'], ['mine', 'Mine'], ['stats', 'Stats']], pz.view, (v) => {
+    seg($('#pzSeg'), [['rated', 'Rated'], ['power', 'Power'], ['rush', 'Rush'], ['daily', 'Daily'], ['custom', 'Practice'], ['mine', 'Mine'], ['stats', 'Stats']], pz.view, (v) => {
       if (v === pz.view) return;
       if (pz.rush && pz.rush.on) pzRushEnd();
       // a rated puzzle that is still open waits until you come back to it
       const cur = pz.cur;
-      if (cur && cur.kind === 'rated' && cur.status === 'play') { cur.parkedAt = performance.now(); pz.parked = cur; }
+      if (cur && (cur.kind === 'rated' || cur.kind === 'power') && cur.status === 'play') { cur.parkedAt = performance.now(); pz.parked = pz.parked || {}; pz.parked[cur.kind] = cur; }
       pz.cur = null; ui.sel = null; ui.hintArrow = null; ui.marks = [];
       ui.flipped = false; BW = 0; // the empty board between puzzles stands the usual way round
       pz.view = v;
-      if (v === 'rated') {
-        if (pz.parked) {
-          const q = pz.parked;
-          pz.parked = null;
+      if (v === 'rated' || v === 'power') {
+        const q = pz.parked && pz.parked[v];
+        if (q) {
+          pz.parked[v] = null;
           q.t0 += performance.now() - q.parkedAt;
           pz.cur = q; ui.flipped = q.solver === 'b'; BW = 0;
           renderAll();
-        } else if (pz.list) pzNextRated();
+        } else if (v === 'power') pzNextPower();
+        else if (pz.list) pzNextRated();
         return;
       }
       renderAll();
@@ -7307,6 +7909,15 @@
       html += '<p class="sub" style="margin-top:12px">A wrong move or a hint counts as a miss and costs rating. ' + pz.list.length + ' puzzles from real games, with ratings earned from thousands of solvers (Lichess puzzle database).</p>';
       body.innerHTML = html;
       pzWire(pzNextRated);
+    } else if (pz.view === 'power') {
+      html += '<div class="pz-rating"><div><small>Power-up puzzle rating</small><b>' + profP.rating + '</b></div><div><small>Streak</small><b>' + profP.streak + '</b></div><div><small>Best</small><b>' + profP.best + '</b></div></div>';
+      if (!pz.power) html += '<div class="pz-empty">Loading the puzzles</div>';
+      else if (!pz.power.length) html += '<div class="pz-empty">The power-up puzzles could not be loaded.</div>';
+      else if (P && P.kind === 'power') html += pzCard({ next: true });
+      if (pz.power) html += '<p class="sub" style="margin-top:12px">Every solution uses a power-up: a shot, a freeze, a gild, a leap, an explosion, a second move. A wrong move or a hint counts as a miss and costs rating. ' + pz.power.length + ' puzzles from games the power-up search played against itself.</p>';
+      body.innerHTML = html;
+      pzWire(pzNextPower);
+      if (!P && (!pz.power || pz.power.length)) pzNextPower(); // an empty file: nothing to start, and no loop
     } else if (pz.view === 'rush') {
       const rs = pz.rush;
       if (rs && rs.on) {
@@ -7397,7 +8008,8 @@
       pzWire(() => { const next = mine.find((x) => !x.solved && x !== (P && P.item)); if (next) pzStart(next, 'mine'); });
     } else {
       const st = Puzzles.stats(prof, pz.list);
-      html += '<div class="pz-rating"><div><small>Rating</small><b>' + prof.rating + '</b></div><div><small>Highest</small><b>' + prof.best + '</b></div><div><small>Solved</small><b>' + prof.solved + '</b></div></div>' + pzGraph(pz.graphRange) +
+      html += '<div class="pz-rating"><div><small>Rating</small><b>' + prof.rating + '</b></div><div><small>Highest</small><b>' + prof.best + '</b></div><div><small>Solved</small><b>' + prof.solved + '</b></div></div>' +
+        (profP.history.length ? '<div class="pz-rating"><div><small>Power-up rating</small><b>' + profP.rating + '</b></div><div><small>Highest</small><b>' + profP.best + '</b></div><div><small>Solved</small><b>' + profP.solved + '</b></div></div>' : '') + pzGraph(pz.graphRange) +
         '<table class="pz-table"><tr><td>Attempts</td><td>' + st.total + '</td></tr><tr><td>Solved first try</td><td>' + (st.accuracy == null ? 'n/a' : st.accuracy + ' %') + '</td></tr>' +
         '<tr><td>Average time</td><td>' + (st.avg == null ? 'n/a' : st.avg + ' s') + '</td></tr><tr><td>Longest streak</td><td>' + prof.bestStreak + '</td></tr>' +
         '<tr><td>Rush, 3 minutes</td><td>' + (prof.rush['3'] || 0) + '</td></tr><tr><td>Rush, 5 minutes</td><td>' + (prof.rush['5'] || 0) + '</td></tr><tr><td>Rush, survival</td><td>' + (prof.rush.s || 0) + '</td></tr><tr><td>Streak</td><td>' + (prof.rush.k || 0) + '</td></tr>' +
@@ -7409,7 +8021,7 @@
       html += '<button class="btn" id="pzReset" style="width:100%;margin-top:14px">Reset puzzle rating and statistics</button>';
       body.innerHTML = html;
       body.querySelectorAll('[data-h]').forEach((b) => { b.onclick = () => { const it = pz.list.find((x) => x.id === prof.history[+b.dataset.h].id); if (it) pzStart(it, 'again', { from: 'stats' }); }; });
-      $('#pzReset').onclick = () => { if (!confirm('Reset your puzzle rating, history and records?')) return; prof = Puzzles.fresh(); pzSave(); renderAll(); };
+      $('#pzReset').onclick = () => { if (!confirm('Reset your puzzle rating, history and records?')) return; prof = Puzzles.fresh(); profP = Puzzles.fresh(); pzSave(); pzSaveP(); renderAll(); };
       body.querySelectorAll('.pz-range button').forEach((b) => { b.onclick = () => { pz.graphRange = b.dataset.range === 'all' ? 'all' : +b.dataset.range; renderPuzzles(); }; });
       pzWire(null);
     }
@@ -7417,6 +8029,9 @@
 
   /* ---------- wiring ---------- */
 
+  // the phone's More sheet: copies of the four tabs that do not fit the bar
+  MORE_TABS.forEach((t) => { const b = document.querySelector('#side > .nav[data-tab="' + t + '"]'); if (b) $('#moreSheet').appendChild(b.cloneNode(true)); });
+  document.addEventListener('pointerdown', (e) => { if ($('#moreSheet').classList.contains('on') && !e.target.closest('#moreSheet, .nav.morebtn')) $('#moreSheet').classList.remove('on'); });
   document.querySelectorAll('.nav').forEach((b) => { b.onclick = () => setTab(b.dataset.tab); });
   $('#startBtn').onclick = startGame;
   $('#powersClear').onclick = () => {
@@ -7511,7 +8126,7 @@
     // just the two kings, in the middle of their home ranks, on a board of the same size
     const w = ed.W, h = ed.H, k = Math.floor(w / 2);
     ed.board = new Array(w * h).fill(''); ed.board[k] = 'k'; ed.board[(h - 1) * w + k] = 'K';
-    ed.terrain = { walls: [], water: [], portals: [], holes: [] }; ed.ghosts = []; ed.snipers = []; ed.castling = '';
+    ed.terrain = { walls: [], water: [], portals: [], holes: [] }; ed.ghosts = []; ed.snipers = []; ed.helmets = []; ed.vests = []; ed.castling = '';
     setup.kcPreset = false;
     edSync();
   };
@@ -7562,7 +8177,7 @@
   try { edLoad(setup.fen); } catch (e) { setup.fen = R.START_FEN; edLoad(setup.fen); }
   if (setup.terrain && setup.terrain.walls) ed.terrain = JSON.parse(JSON.stringify(setup.terrain));
   if (!ed.terrain.holes) ed.terrain.holes = [];
-  if (setup.traits) { ed.ghosts = (setup.traits.ghosts || []).slice(); ed.snipers = (setup.traits.snipers || []).slice(); }
+  if (setup.traits) { ed.ghosts = (setup.traits.ghosts || []).slice(); ed.snipers = (setup.traits.snipers || []).slice(); ed.helmets = (setup.traits.helmets || []).slice(); ed.vests = (setup.traits.vests || []).slice(); }
   applySettings();
   revalidate();
   renderSetup(); renderVariants(); renderPowers(); renderSettings(); renderSummary(); renderAppBox();
@@ -7588,14 +8203,16 @@
   { const t0 = new URLSearchParams(location.search).get('tab'); if (t0 && TITLES[t0] && t0 !== 'new') setTab(t0); } // the app icon's shortcuts (New game, Puzzles)
   if (setup.variant === 'custom') loadCustom();
   else if (!stdVariant(setup.variant)) Fairy.rules().catch(() => {});
-  resumeLive(); // the game from the last time the app was open
+  // the game from the last time the app was open; on the very first start, the welcome
+  resumeLive().then((back) => { if (!back && !introDone() && !archive.length && !Object.keys(stats).length) setTimeout(showIntro, 300); });
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && G && !G.over) saveLive(); }); // the clocks as they stand
 
   // Debug handle for the console.
   window.PC = {
     get game() { return G; }, get custom() { return custom; }, ui: ui, setup: setup, settings: settings, engine: engine, rules: R,
+    puzzle: (id) => pzPowerReady().then(() => { const it = (pz.power || []).concat(pz.list || []).find((x) => x.id === id); if (it) { setTab('puzzles'); pzStart(it, 'custom'); } return !!it; }), get pz() { return pz.cur; },
     makeBrain: makeBrain, brains: { bot: botBrain, eval: evalBrain }, importPgn: importPgnText, pgn: (g) => pgn(g || G), exportArchive: exportArchive, get mine() { return mine; }, get puzzles() { return pz; }, get puzzleProfile() { return prof; }, puzzleStart: (item, kind) => pzStart(item, kind || 'custom'), get review() { return rv; }, get skins() { return SKIN; }, get analysis() { return A; }, get archive() { return archive; }, openArchived: openArchived, analyseGame: analyseGame, analyseFresh: analyseFresh, analyseText: analyseText, aMove: (uci) => { const m = A.B.find(A.legal, uci); if (m) analysisMove(m); return !!m; }, aGoto: aGoto, startReview: startReview, start: startGame, canAct: canAct, canPremove: canPremove, refresh: changed, sk: () => skData(), renderModes: () => renderModes(), sanMap: (st) => sanMap(st),
-    play: (m) => { if (canAct()) applyMove(m); }, gild: (sq) => { if (canAct()) doGild(sq); }, freeze: (sq) => { if (canAct()) doFreeze(sq); }, convert: (sq) => { if (canAct()) doConvert(sq); },
+    play: (m) => { if (canAct()) applyMove(m); }, gild: (sq) => { if (canAct()) doGild(sq); }, freeze: (sq) => { if (canAct()) doFreeze(sq); }, shield: (sq) => { if (canAct()) doShield(sq); }, convert: (sq) => { if (canAct()) doConvert(sq); },
     move: (uci) => {
       if (!G || !canAct()) return false;
       const m = G.B.find(G.legal, uci);

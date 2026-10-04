@@ -35,6 +35,7 @@
     if (a.gild != null) return B.gild(s, a.gild);
     if (a.freeze != null) return B.freeze(s, a.freeze);
     if (a.convert != null) return B.convert(s, a.convert);
+    if (a.shield != null) return B.shield(s, a.shield);
     if (a.stop) return B.timeStop(s);
     return null;
   }
@@ -285,7 +286,136 @@
     return { why: why, better: better, soft: !!(prob && prob.soft) };
   }
 
-  var api = { explain: explain, walk: walk, material: material, balance: balance };
+  /* A pin or a skewer by the line piece on sq (8 x 8 boards): along one of its lines the first piece met is the
+     other side's (x), and right behind it stands another of theirs (y). y the more valuable (or the king): a pin.
+     x the more valuable (or the king): a skewer. Returns { pin, x, xs, y, ys } or null. */
+  function rayMotif(s, sq, me) {
+    var b = s.board, p = b[sq], W = s.W || 8, H = s.H || 8;
+    if (!p || W !== 8 || H !== 8) return null;
+    var t = p.toLowerCase(), dirs = [];
+    if (t === 'r' || t === 'q') dirs.push([1, 0], [-1, 0], [0, 1], [0, -1]);
+    if (t === 'b' || t === 'q') dirs.push([1, 1], [1, -1], [-1, 1], [-1, -1]);
+    var c0 = sq % 8, r0 = Math.floor(sq / 8);
+    for (var d = 0; d < dirs.length; d++) {
+      var found = [], c = c0, r = r0;
+      while (found.length < 2) {
+        c += dirs[d][0]; r += dirs[d][1];
+        if (c < 0 || c > 7 || r < 0 || r > 7) break;
+        var q = r * 8 + c;
+        if (b[q]) { if (colorOf(b[q]) === me) break; found.push(q); }
+      }
+      if (found.length < 2) continue;
+      var x = b[found[0]], y = b[found[1]], xk = x.toLowerCase() === 'k', yk = y.toLowerCase() === 'k';
+      if (!xk && (yk || val(y) > val(x)) && val(x) >= 3) return { pin: true, x: x, xs: found[0], y: y, ys: found[1] };
+      if ((xk || val(x) > val(y)) && val(y) >= 3) return { pin: false, x: x, xs: found[0], y: y, ys: found[1] };
+    }
+    return null;
+  }
+
+  /* The idea behind a puzzle's solution, in a few sentences, for the solver ("you"): what the first action does
+     (and, for a power-up, why it works here), where the line ends up, and how the other side defends best.
+     d = { s, sol: [acts], follow: [acts], me, power(state, act) -> the name of the power-up that makes this move
+     possible, or null }. sol is the solution as played, follow the best play after it (the other side's answer and
+     the solver's reply). Returns a list of sentences, each its own text (the German comes sentence by sentence). */
+  function idea(kit, d) {
+    extraName = kit.names || {}; extraVal = kit.values || {};
+    var all = walk(kit, d.s, (d.sol || []).concat(d.follow || []), 14);
+    var solN = Math.min((d.sol || []).length, all.length), sol = all.slice(0, solN), fol = all.slice(solN), me = d.me;
+    var out = [];
+    if (!sol.length) return out;
+    var k0 = sol[0], b0 = k0.before.board, a0 = k0.act, i;
+    // the squares the solver takes on later in the line (the solution and the follow-up)
+    var laterCaps = [];
+    for (i = 1; i < all.length; i++) if (all[i].by === me) all[i].taken.forEach(function (t) { laterCaps.push({ sq: t.sq, p: t.p, step: all[i] }); });
+    var nextMine = null;
+    for (i = 1; i < all.length; i++) if (all[i].by === me) { nextMine = all[i]; break; }
+    var guards = function (sq) { // a later capture square the piece on sq could have taken back on
+      var t = targetsFrom(kit, k0.before, sq);
+      for (var j = 0; j < laterCaps.length; j++) if (t.indexOf(laterCaps[j].sq) >= 0 && laterCaps[j].sq !== sq) return laterCaps[j];
+      return null;
+    };
+    if (a0.freeze != null) {
+      var fp = b0[a0.freeze], fsq = kit.name(a0.freeze), g = guards(a0.freeze), gone = laterCaps.filter(function (c) { return c.sq === a0.freeze; })[0];
+      // what it would have done: take back, run away, or take one of yours
+      var threat = targetsFrom(kit, k0.before, a0.freeze).filter(function (q) { return b0[q] && colorOf(b0[q]) === me && b0[q].toLowerCase() !== 'k' && val(b0[q]) >= 3; })[0];
+      if (g) out.push('Freeze the ' + nm(fp) + ' on ' + fsq + ': it can no longer take back on ' + kit.name(g.sq) + '.');
+      else if (gone) out.push('Freeze the ' + nm(fp) + ' on ' + fsq + ': it cannot get away, and ' + gone.step.label + ' takes it.');
+      else if (threat != null) out.push('Freeze the ' + nm(fp) + ' on ' + fsq + ': it cannot take your ' + nm(b0[threat]) + ' on ' + kit.name(threat) + ' on the next turn.');
+      else out.push('Freeze the ' + nm(fp) + ' on ' + fsq + ': it cannot move on the next turn.');
+    } else if (a0.gild != null) {
+      var gp = b0[a0.gild], gsq = kit.name(a0.gild), gg = guards(a0.gild);
+      var hit = targetsFrom(kit, k0.before, a0.gild).filter(function (q) { return b0[q] && colorOf(b0[q]) === me && b0[q].toLowerCase() !== 'k'; })[0];
+      if (gg) out.push('Midas Touch turns the ' + nm(gp) + ' on ' + gsq + ' into a statue: it no longer guards ' + kit.name(gg.sq) + '.');
+      else if (hit != null) out.push('Midas Touch turns the ' + nm(gp) + ' on ' + gsq + ' into a statue: it no longer attacks your ' + nm(b0[hit]) + ' on ' + kit.name(hit) + '.');
+      else out.push('Midas Touch turns the ' + nm(gp) + ' on ' + gsq + ' into a statue: it never moves again.');
+    } else if (a0.convert != null) {
+      var cp = b0[a0.convert];
+      out.push('Turncoat brings the ' + nm(cp) + ' on ' + kit.name(a0.convert) + ' over to your side' + (nextMine && nextMine.act.m && nextMine.act.m.from === a0.convert ? ', and it plays ' + nextMine.label + ' at once.' : '.'));
+    } else if (a0.shield != null) {
+      out.push('Shield the ' + nm(b0[a0.shield]) + ' on ' + kit.name(a0.shield) + ': it cannot be taken on the next turn.');
+    } else if (a0.stop) {
+      var run = sol.filter(function (x) { return x.by === me && !x.act.stop; }).slice(0, 3);
+      out.push('Time Stop gives you three moves in a row' + (run.length ? ': ' + line(run, run.length) : '') + '.');
+    } else if (a0.m) {
+      var m = a0.m, mover = b0[m.from], pw = d.power ? d.power(k0.before, a0) : null, second = sol[1] && sol[1].by === me ? sol[1] : null;
+      var bounced = k0.after.fx && k0.after.fx.bounce >= 0;
+      if (m.blast) {
+        // the vest: what it takes with it, theirs and (the price) yours
+        var foes = k0.taken.filter(function (t) { return colorOf(t.p) !== me; }), ours = k0.taken.filter(function (t) { return colorOf(t.p) === me && t.sq !== m.from; });
+        var name = function (t) { return 'the ' + nm(t.p) + ' on ' + kit.name(t.sq); };
+        out.push(k0.label + ': the ' + nm(mover) + ' goes up' + (foes.length ? ' and takes ' + list(foes.map(name)) + ' with it' : '') + (ours.length ? ', and your ' + list(ours.map(function (t) { return nm(t.p) + ' on ' + kit.name(t.sq); })) + (ours.length > 1 ? ' go' : ' goes') + ' as well' : '') + '.');
+      } else if (bounced) out.push(k0.label + ' bounces off the helmet: the ' + nm(b0[m.to]) + ' stays, but its helmet is gone.');
+      else if (m.snipe && k0.taken.length) out.push(k0.label + ': the ' + nm(mover) + ' shoots the ' + nm(k0.taken[0].p) + ' on ' + kit.name(k0.taken[0].sq) + ' without leaving its square.');
+      else if (k0.taken.length > 1) out.push(k0.label + ' takes the ' + nm(k0.taken[0].p) + ' and sets off a blast: ' + list(k0.taken.slice(1).map(function (t) { return 'the ' + nm(t.p) + ' on ' + kit.name(t.sq); })) + (k0.taken.length > 2 ? ' go' : ' goes') + ' as well.');
+      else if (second && k0.taken.length && !d.double) out.push(k0.label + ' takes, and the capture earns another move right away: ' + second.label + '.');
+      else if (second && d.double) out.push('Two moves this turn: ' + k0.label + ' and ' + second.label + '.');
+      else if (pw) out.push(k0.label + ' is a move only ' + pw + ' allows.');
+      else {
+        // a fork: the moved piece attacks two valuable pieces at once
+        var to = m.to, hits = targetsFrom(kit, k0.after, to).filter(function (q) { var x = k0.after.board[q]; return x && colorOf(x) !== me && (x.toLowerCase() === 'k' || val(x) >= 3); });
+        var ray = rayMotif(k0.after, to, me), big = hits.filter(function (q) { var x = k0.after.board[q]; return x.toLowerCase() !== 'k' && val(x) > val(m.promo || mover); })[0];
+        if (!k0.taken.length && hits.length >= 2) out.push(k0.label + ' attacks the ' + nm(k0.after.board[hits[0]]) + ' and the ' + nm(k0.after.board[hits[1]]) + ' at once.');
+        else if (!k0.taken.length && k0.check && hits.filter(function (q) { return k0.after.board[q].toLowerCase() !== 'k'; }).length) {
+          var also = hits.filter(function (q) { return k0.after.board[q].toLowerCase() !== 'k'; })[0];
+          out.push(k0.label + ' gives check and attacks the ' + nm(k0.after.board[also]) + ' on ' + kit.name(also) + ' at the same time.');
+        }
+        else if (ray && ray.pin) out.push(k0.label + ' pins the ' + nm(ray.x) + ' on ' + kit.name(ray.xs) + ' to the ' + nm(ray.y) + '.');
+        else if (ray) out.push(k0.label + ' skewers the ' + nm(ray.x) + ' and the ' + nm(ray.y) + ' behind it.');
+        else if (!k0.taken.length && big != null) out.push(k0.label + ' attacks the ' + nm(k0.after.board[big]) + ' on ' + kit.name(big) + '.');
+        else if (k0.taken.length && k0.check) out.push(k0.label + ' takes the ' + nm(k0.taken[0].p) + ' with check.');
+        else if (k0.taken.length) out.push(k0.label + ' takes the ' + nm(k0.taken[0].p) + ' on ' + kit.name(k0.taken[0].sq) + '.');
+        else if (k0.check) out.push(k0.label + ' gives check.');
+        else out.push(k0.label + ' is the key move.');
+      }
+    }
+    // a helmet that makes the move safe: the piece stands where it can be taken, but taking it would only bounce off
+    if (a0.m && !a0.m.blast && k0.after.helmets && k0.after.helmets.indexOf(a0.m.to) >= 0 && attackedBy(kit, k0.after, a0.m.to, other(me))) {
+      out.push('The ' + nm(k0.after.board[a0.m.to]) + ' on ' + kit.name(a0.m.to) + ' wears a helmet: taking it would only bounce off.');
+    } else if (a0.m && !a0.m.blast && k0.after.helmets && k0.after.helmets.length) {
+      // or another piece of yours hangs, and the helmet lets you leave it there
+      var hung = k0.after.helmets.filter(function (q) { var x = k0.after.board[q]; return x && colorOf(x) === me && val(x) >= 3 && attackedBy(kit, k0.after, q, other(me)); })[0];
+      if (hung != null) out.push('The ' + nm(k0.after.board[hung]) + ' on ' + kit.name(hung) + ' is attacked, but its helmet would take the hit.');
+    }
+    // where it ends: a mate, material, or simply the line
+    var mateAt = -1;
+    for (i = 0; i < all.length; i++) if (all[i].mate && all[i].by === me) { mateAt = i; break; }
+    var gain = balance(all[all.length - 1].after, me) - balance(d.s, me);
+    if (mateAt === 0) out.splice(0, out.length, k0.label + ' is checkmate.'); // nothing else to say
+    else if (mateAt > 0) out.push('It ends in checkmate: ' + line(all, mateAt + 1) + '.');
+    else if (gain >= 1 && sol.length > 1) out.push('In the end you are ' + worth(gain) + ' up: ' + line(sol, sol.length) + '.');
+    else if (gain >= 1) out.push('In the end you are ' + worth(gain) + ' up.');
+    else if (sol.some(function (x) { return x.by !== me; })) out.push('The line: ' + line(sol, sol.length) + '.'); // over several turns: worth spelling out
+    // the other side's best defence
+    // a whole turn as one text: a freeze and the move after it, two moves of a double move
+    var turnAt = function (from) { var t = [], j = from; while (j < fol.length && fol[j].by === fol[from].by) { t.push(fol[j].label); j++; } return { text: t.join(' '), end: j }; };
+    if (mateAt < 0 && fol.length && fol[0].by !== me) {
+      var their = turnAt(0), ans = their.end < fol.length ? turnAt(their.end) : null;
+      out.push('The best answer is ' + their.text + (ans ? ', met by ' + ans.text : '') + '.');
+    }
+    return out;
+  }
+
+  var api = { explain: explain, idea: idea, walk: walk, material: material, balance: balance };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Coach = api;
 })(typeof self !== 'undefined' ? self : this);

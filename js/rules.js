@@ -59,7 +59,8 @@
   function inside(r, f) { return r >= 0 && r < H && f >= 0 && f < W; }
   var NONE = {};
   var KEYS = ['double', 'sniper', 'midas', 'dragon', 'amazon', 'explosive', 'drops', 'portals', 'rocket', 'freeze', 'immortal', 'storm',
-    'timestop', 'rampage', 'bodyguard', 'earlypromo', 'ghost', 'archer', 'iron', 'swap', 'turncoat',
+    'timestop', 'rampage', 'bodyguard', 'earlypromo', 'ghost', 'archer', 'iron', 'swap', 'turncoat', 'shield', 'tempo', 'helmet', 'vest', 'sniperNP', 'ghostNP', 'ghostAll',
+    'helmetP', 'helmetN', 'helmetB', 'helmetR', 'helmetQ', 'helmetAll', 'helmetNP', 'vestP', 'vestN', 'vestB', 'vestR', 'vestQ', 'vestAll', 'vestNP',
     'sniperP', 'sniperR', 'sniperQ', 'sniperK', 'ghostB', 'ghostQ', 'sniperAll'];
   /* Snipers and ghosts exist for several piece types. The flags: sniper = bishops, archer = knights,
      sniperP/R/Q/K = pawns, rooks, queens, king, sniperAll = every piece there is (fairy, Ouroboros and checkers too). ghost = rooks, ghostB/ghostQ = bishops, queens. */
@@ -230,6 +231,25 @@
      lists hold squares and follow their pieces from move to move. A gold statue has no upgrade left. */
   function isG(s, sq) { use(s); return !!s.ghosts && s.ghosts.length > 0 && s.ghosts.indexOf(sq) >= 0 && s.gold.indexOf(sq) < 0; }
   function isS(s, sq) { use(s); return !!s.snipers && s.snipers.length > 0 && s.snipers.indexOf(sq) >= 0 && s.gold.indexOf(sq) < 0; }
+  /* Spiked Helmet and Explosive Vest, worn by single pieces like the upgrades above (s.helmets, s.vests). A capture of
+     a helmeted piece fails: the helmet breaks, the piece stays, the attacker stays where it was and its move is used
+     (a shot as well). A blast only breaks a helmet. The vest is a move of its own: the piece goes up and takes every
+     piece in the 3 x 3 square around it with it, its own side's too; kings, statues and what is safe from blasts stay. */
+  function isH(s, sq) { return !!s.helmets && s.helmets.length > 0 && s.helmets.indexOf(sq) >= 0; }
+  function isV(s, sq) { return !!s.vests && s.vests.length > 0 && s.vests.indexOf(sq) >= 0 && s.gold.indexOf(sq) < 0; }
+  /* Which pieces an army-wide upgrade (the power-up) goes on at the start: level 1 the chess pieces (pawn to queen),
+     2 every piece but the pawns, 3 every piece. Kings only where the upgrade lets them (snipers, ghosts). */
+  function armyGets(p, level, kings) {
+    if (!p || (isRoyal(p) && !kings)) return false;
+    var t = typeOf(p), pawnish = t === 'p' || (!!DEF[p] && !!DEF[p].promote);
+    if (level === 1) return 'pnbrqk'.indexOf(t) >= 0 && !DEF[p];
+    if (level === 2) return !pawnish;
+    return true;
+  }
+  function armyUp(list, board, c, level, kings) {
+    for (var q = 0; q < board.length; q++) if (board[q] && colorOf(board[q]) === c && armyGets(board[q], level, kings) && list.indexOf(q) < 0) list.push(q);
+    return list;
+  }
   function isFairy(p) { return !!p && !!DEF[p]; }
   function fairyOf(p) { return p ? DEF[p] || null : null; }
   // A king, or a fairy piece that has to be kept safe like one.
@@ -500,6 +520,7 @@
       gold: [], pocket: [], pocket2: [], portals: cfg.terrain && cfg.terrain.portals && cfg.terrain.portals.length === 2 ? cfg.terrain.portals.slice() : [],
       movesLeft: has(cfg, turn) ? (powersOf(cfg, turn).double || 1) : 0,
       midasUsed: 0, ice: [], freezeUsed: false, stopUsed: '', turned: '', dice: null, roll: 0, fx: null,
+      guard: [], shieldUsed: false, passed: '', // Shield: the pieces shielded and whether this turn's shield is used; Tempo: one letter per pass
       again: -1, lastW: '', lastB: '', rocks: [],
       ghosts: cfg.traits && cfg.traits.ghosts ? cfg.traits.ghosts.filter(function (q) { return !!board[q]; }) : [],
       snipers: cfg.traits && cfg.traits.snipers ? cfg.traits.snipers.filter(function (q) { return !!board[q]; }) : [],
@@ -510,6 +531,25 @@
       sleep: [], fresh: [] // devils that spawned (square * 4 + rounds left), demons spawned this turn (they wait a turn)
     };
     if (cfg.duckChess && !s.ducks.length) s.duckHand = 1; // the duck comes onto the board after White's first move
+    s.helmets = cfg.traits && cfg.traits.helmets ? cfg.traits.helmets.filter(function (q) { return !!board[q] && !isRoyal(board[q]); }) : [];
+    s.vests = cfg.traits && cfg.traits.vests ? cfg.traits.vests.filter(function (q) { return !!board[q] && !isRoyal(board[q]); }) : [];
+    ['w', 'b'].forEach(function (c) { // the army-wide ones: the power-up puts them on at the start
+      var pc = powersOf(cfg, c);
+      if (pc.helmet) armyUp(s.helmets, board, c, +pc.helmet, false); // the old levels (1 chess pieces, 2 all but pawns, 3 all)
+      if (pc.vest) armyUp(s.vests, board, c, +pc.vest, false);
+      // by kind, as the Sniper power-ups: pawns to queens, every piece, every piece but the pawns (never a king)
+      ['helmet', 'vest'].forEach(function (w) {
+        var list = w === 'helmet' ? s.helmets : s.vests;
+        if (pc[w + 'All']) armyUp(list, board, c, 3, false);
+        else if (pc[w + 'NP']) armyUp(list, board, c, 2, false);
+        'PNBRQ'.split('').forEach(function (k) {
+          if (!pc[w + k]) return;
+          for (var q = 0; q < board.length; q++) if (board[q] && colorOf(board[q]) === c && !DEF[board[q]] && typeOf(board[q]) === k.toLowerCase() && list.indexOf(q) < 0) list.push(q);
+        });
+      });
+      if (pc.sniperNP) armyUp(s.snipers, board, c, 2, true);
+      if (pc.ghostAll || pc.ghostNP) armyUp(s.ghosts, board, c, pc.ghostAll ? 3 : 2, true);
+    });
     if (hasFairy(board) & 256) {
       // a Shotgun King: its gun (shells loaded, shells in reserve), the damage pieces have taken, the luck of the shots
       s.sg = {};
@@ -844,6 +884,7 @@
       if (fp.iron && t === 'p' && typeOf(b[from]) !== 'p') return false; // Iron Pawns fall to pawns only
       if (foeKing >= 0 && near(foeKing, sq)) return false;           // Bodyguard
       if (hasGold && gold.indexOf(sq) >= 0) return false;
+      if (s.guard && s.guard.length && s.guard.indexOf(sq) >= 0) return false; // Shield
       if (fairy && FAIRY.hasOwnProperty(t)) {
         var fd = FAIRY[t];
         if (fd.immortal && !isRoyal(b[from])) return false;            // only a king takes an immortal
@@ -1094,6 +1135,13 @@
     // checkers: in a chain of jumps only further jumps of the same piece; in the game of Checkers taking is a must
     if (s.againHop && again >= 0) out = out.filter(function (m) { return m.hop && m.from === again; });
     if (cfg.checkers) { var takes = out.filter(function (m) { return !!m.cap; }); if (takes.length) out = takes; }
+    // Explosive Vest: instead of moving, the piece goes up (not a frozen one, not a statue, not during a bonus move)
+    if (s.vests && s.vests.length && again < 0 && !cfg.checkers) {
+      for (var vi = 0; vi < s.vests.length; vi++) {
+        var vq = s.vests[vi];
+        if (b[vq] && colorOf(b[vq]) === c && isV(s, vq) && !(hasIce && ice.indexOf(vq) >= 0)) out.push({ from: vq, to: vq, piece: b[vq], cap: '', capSq: -1, blast: true });
+      }
+    }
     if (noisy) return out;
     if (again >= 0) {
       // the bonus move is a plain move of that piece, and it may be left out: staying ends the turn (a chain of
@@ -1101,6 +1149,8 @@
       if (!(cfg.checkers && s.againHop)) out.push({ from: again, to: again, piece: b[again], cap: '', capSq: -1, stay: true });
       return out;
     }
+    // Tempo: twice a game, pass (the other side has to move again). Not in check: legalAll sees to that.
+    if (pw.tempo && (s.passed || '').split(c).length - 1 < 2) out.push({ from: -1, to: -1, piece: '', cap: '', capSq: -1, pass: true });
     // Pawn Storm: every pawn that has room steps forward, all in one move.
     if (pw.storm && stormSteps(b, c, hasGold || hasIce ? gold.concat(ice) : null).length) {
       out.push({ from: -1, to: -1, piece: w ? 'P' : 'p', cap: '', capSq: -1, storm: true });
@@ -1218,7 +1268,7 @@
         n.fx.demons = moved; n.fx.demonTook = took;
         var gone = took.map(function (x) { return x.sq; }).concat(moved.map(function (x) { return x.from; }));
         var keep = function (l) { return l && l.length ? l.filter(function (q) { return gone.indexOf(q) < 0; }) : l; };
-        n.ghosts = keep(n.ghosts); n.snipers = keep(n.snipers); n.reborn = keep(n.reborn);
+        n.ghosts = keep(n.ghosts); n.snipers = keep(n.snipers); n.reborn = keep(n.reborn); n.helmets = keep(n.helmets); n.vests = keep(n.vests); n.stun = keep(n.stun);
         if (n.ice.length) n.ice = n.ice.filter(function (q) { return gone.indexOf(q) < 0; });
         n.fairy = hasFairy(b);
       }
@@ -1250,19 +1300,21 @@
       board: b, turn: other(c), castling: s.castling, ep: -1,
       half: s.half + 1, full: s.full + (c === 'b' ? 1 : 0),
       gold: s.gold, pocket: s.pocket, pocket2: s.pocket2, portals: s.portals,
-      movesLeft: s.movesLeft, midasUsed: s.midasUsed, ice: s.ice, freezeUsed: s.freezeUsed, stopUsed: s.stopUsed,
+      movesLeft: s.movesLeft, midasUsed: s.midasUsed, ice: s.ice, freezeUsed: s.freezeUsed, stopUsed: s.stopUsed, guard: s.guard || [], shieldUsed: !!s.shieldUsed, passed: s.passed || '',
       turned: s.turned, dice: s.dice, roll: s.roll, fairy: s.fairy, pool: s.pool, rolled: s.rolled, wasted: null,
       again: -1, againHop: false, checkers: !!s.checkers, kingless: s.kingless || '', lastW: s.lastW, lastB: s.lastB, rocks: s.rocks, lost: s.lost || '', lostBy: s.lostBy || '', W: W, H: H,
-      ghosts: s.ghosts || [], snipers: s.snipers || [], reborn: s.reborn || [],
+      ghosts: s.ghosts || [], snipers: s.snipers || [], reborn: s.reborn || [], helmets: s.helmets || [], vests: s.vests || [], stun: s.stun || [],
       ducks: s.ducks || [], bducks: s.bducks || [], duckHand: s.duckHand || 0, duckPhase: 0, dTodo: [], dBan: [], bMoved: s.bMoved || [], sleep: s.sleep || [], fresh: s.fresh || [],
       sg: s.sg, dmg: s.dmg, seed: s.seed,
       fx: { removed: [], tp: -1, boom: false }
     };
     var touched = [], removed = n.fx.removed, i;
-    n[c === 'w' ? 'lastW' : 'lastB'] = m.storm ? 'p' : m.drop ? m.drop : typeOf(m.piece); // what a fool copies next
+    n[c === 'w' ? 'lastW' : 'lastB'] = m.pass ? (c === 'w' ? s.lastW : s.lastB) : m.storm ? 'p' : m.drop ? m.drop : typeOf(m.piece); // what a fool copies next
     var isMartyr = function (q) { var d = DEF[q]; return !!d && !!d.martyr; };
 
-    if (m.storm) {
+    if (m.pass) {
+      n.passed = (s.passed || '') + c; // nothing on the board changes
+    } else if (m.storm) {
       stormSteps(b, c, s.gold.length || s.ice.length ? s.gold.concat(s.ice) : null).forEach(function (st) { b[st[1]] = b[st[0]]; b[st[0]] = ''; });
       n.half = 0;
     } else if (m.drop) {
@@ -1279,7 +1331,7 @@
       // the royal shotgun: a shot (no step), or a reload turn that fills the gun from the reserve
       var gun = {}, own = s.sg[c] || [0, 0];
       for (var gk in s.sg) gun[gk] = s.sg[gk];
-      if (m.reload) { var fill = Math.min(1, SG.cap - own[0], own[1]); gun[c] = [own[0] + fill, own[1] - fill]; } // one shell per reload
+      if (m.reload) { var fill = Math.min(SG.cap - own[0], own[1]); gun[c] = [own[0] + fill, own[1] - fill]; } // as in the original: the gun is filled from the reserve
       else {
         gun[c] = [own[0] - 1, own[1]];
         var sr = shotResult(s, m, cfg), dm = {};
@@ -1300,6 +1352,29 @@
         if (!cfg.kingCapture && !n.lost && m.inCheck) { n.board = b; if (inCheck(n, c, cfg)) { n.lost = c; n.lostBy = 'survived'; } use(s); }
       }
       n.sg = gun;
+    } else if (m.blast) {
+      // Explosive Vest: the wearer and everything around it, both colours
+      var vr = ROW[m.from], vf = COL[m.from], vguard = [fp.bodyguard ? b.indexOf(c === 'w' ? 'k' : 'K') : -1, pw.bodyguard ? b.indexOf(c === 'w' ? 'K' : 'k') : -1];
+      for (i = 0; i < N; i++) {
+        var vp = b[i];
+        if (!vp || Math.abs(ROW[i] - vr) > 1 || Math.abs(COL[i] - vf) > 1) continue;
+        if (i !== m.from) {
+          var vpw = colorOf(vp) === c ? pw : fp, vg = vguard[colorOf(vp) === c ? 1 : 0];
+          if (isRoyal(vp) || s.gold.indexOf(i) >= 0 || near(vg, i) || (vpw.iron && typeOf(vp) === 'p') || (vpw.immortal && typeOf(vp) === 'q') || (s.fairy && isMartyr(vp)) || (s.guard && s.guard.indexOf(i) >= 0)) continue;
+          if (isH(n, i)) { n.helmets = n.helmets.filter(function (q) { return q !== i; }); continue; } // the helmet takes the blast
+        }
+        removed.push({ sq: i, p: vp }); b[i] = ''; touched.push(i);
+      }
+      n.fx.boom = true; n.fx.blast = m.from; n.half = 0;
+      var vgone = {};
+      for (i = 0; i < removed.length; i++) vgone[removed[i].sq] = 1;
+      var vkeep = function (l) { return l && l.length ? l.filter(function (q) { return !vgone[q]; }) : l; };
+      n.ghosts = vkeep(n.ghosts); n.snipers = vkeep(n.snipers); n.reborn = vkeep(n.reborn); n.helmets = vkeep(n.helmets); n.vests = vkeep(n.vests); n.stun = vkeep(n.stun);
+    } else if (m.cap && isH(s, m.capSq) && !isRoyal(m.cap)) {
+      // Spiked Helmet: the capture bounces off. The helmet breaks, both pieces stay, the move is used.
+      n.helmets = s.helmets.filter(function (q) { return q !== m.capSq; });
+      n.fx.bounce = m.capSq;
+      n.stun = (s.stun || []).concat([m.from]); // the attacker is stunned: frozen on its side's next turn (endOfTurn)
     } else if (m.spawn) {
       // a devil spawns a demon next to it, and sleeps: it may not spawn on its side's next turn
       b[m.to] = c === 'w' ? m.spawn.toUpperCase() : m.spawn;
@@ -1332,7 +1407,8 @@
           var rr = cr + KG[i][0], ff = cf + KG[i][1];
           if (!inside(rr, ff)) continue;
           var a = rr * W + ff, ap = b[a];
-          if (ap && colorOf(ap) !== c && !isRoyal(ap) && s.gold.indexOf(a) < 0 && !near(guard, a) && !(fp.iron && typeOf(ap) === 'p') && !(fp.immortal && typeOf(ap) === 'q') && !(s.fairy && isMartyr(ap))) {
+          if (ap && colorOf(ap) !== c && !isRoyal(ap) && s.gold.indexOf(a) < 0 && !near(guard, a) && !(fp.iron && typeOf(ap) === 'p') && !(fp.immortal && typeOf(ap) === 'q') && !(s.fairy && isMartyr(ap)) && !(s.guard && s.guard.indexOf(a) >= 0)) {
+            if (isH(n, a)) { n.helmets = n.helmets.filter(function (q) { return q !== a; }); n.fx.boom = true; continue; } // the helmet takes the blast
             removed.push({ sq: a, p: ap });
             b[a] = '';
             touched.push(a);
@@ -1385,7 +1461,8 @@
             var mr = ROW[m.capSq], mf = COL[m.capSq];
             for (i = 0; i < N; i++) {
               var q = b[i];
-              if (!q || Math.abs(ROW[i] - mr) > 1 || Math.abs(COL[i] - mf) > 1 || s.gold.indexOf(i) >= 0 || isMartyr(q)) continue;
+              if (!q || Math.abs(ROW[i] - mr) > 1 || Math.abs(COL[i] - mf) > 1 || s.gold.indexOf(i) >= 0 || isMartyr(q) || (s.guard && s.guard.indexOf(i) >= 0)) continue;
+              if (isH(n, i) && !isRoyal(q)) { n.helmets = n.helmets.filter(function (x) { return x !== i; }); n.fx.boom = true; continue; } // the helmet takes the blast
               // kings are not spared: a royal piece caught in the blast loses the game for its side
               if (isRoyal(q)) { n.lost = (n.lost && n.lost !== colorOf(q)) ? 'wb' : colorOf(q); n.lostBy = n.lostBy || 'blast'; }
               removed.push({ sq: i, p: q }); b[i] = ''; touched.push(i); n.fx.boom = true;
@@ -1396,8 +1473,8 @@
     }
     if (s.sg && !m.shot && !m.reload) {
       // a step of a Shotgun King puts one shell into its gun and brings one back to the reserve; damage goes with its piece
-      if (!m.drop && !m.storm && !m.swap && !m.duck && !m.spawn && !m.snipe && DEF[m.piece] && DEF[m.piece].shotgun && s.sg[c]) {
-        var g2 = {}, o2 = s.sg[c], f2 = Math.min(1, SG.cap - o2[0], o2[1]);
+      if (!m.drop && !m.storm && !m.swap && !m.duck && !m.spawn && !m.snipe && !m.blast && n.fx.bounce == null && DEF[m.piece] && DEF[m.piece].shotgun && s.sg[c]) {
+        var g2 = {}, o2 = s.sg[c], f2 = Math.min(SG.cap - o2[0], o2[1]); // a step fills the gun as far as the reserve goes
         for (var g3 in s.sg) g2[g3] = s.sg[g3];
         g2[c] = [o2[0] + f2, Math.min(SG.res, o2[1] - f2 + SG.regen)];
         n.sg = g2;
@@ -1407,7 +1484,7 @@
       for (var dk2 in s.dmg) {
         var dq = +dk2;
         if (m.swap) dq = dq === m.from ? m.to : dq === m.to ? m.from : dq;
-        else if (!m.drop && !m.storm && !m.duck && !m.spawn && !m.snipe && dq === m.from) dq = landTo;
+        else if (!m.drop && !m.storm && !m.duck && !m.spawn && !m.snipe && !m.blast && n.fx.bounce == null && dq === m.from) dq = landTo; // a bounce moves nobody, and no damage with it
         else if (gone2[dq]) continue;
         if (b[dq]) dm2[dq] = s.dmg[dk2];
       }
@@ -1429,7 +1506,7 @@
       n[pkey] = pocket;
     }
     if (s.fairy || (m.drop && FAIRY.hasOwnProperty(m.drop))) n.fairy = hasFairy(b);
-    if ((n.ghosts.length || n.snipers.length || n.reborn.length) && !m.stay) {
+    if ((n.ghosts.length || n.snipers.length || n.reborn.length || n.helmets.length || n.vests.length || n.stun.length || n.guard.length) && !m.stay && !m.blast && n.fx.bounce == null) {
       // the upgrades follow their pieces: the mover to where it landed, a castling rook along, the taken ones gone
       var gone = {}, steps = m.storm ? stormSteps(s.board, c, s.gold.length || s.ice.length ? s.gold.concat(s.ice) : null) : null;
       for (i = 0; i < removed.length; i++) gone[removed[i].sq] = 1;
@@ -1439,7 +1516,7 @@
           var at = list[q];
           if (m.swap) at = at === m.from ? m.to : at === m.to ? m.from : at;
           else if (steps) { for (var st = 0; st < steps.length; st++) if (steps[st][0] === at) { at = steps[st][1]; break; } }
-          else if (!m.drop && !m.snipe && at === m.from) at = land;
+          else if (!m.drop && !m.snipe && !m.shot && !m.reload && at === m.from) at = land;
           else if (gone[at]) continue;
           else if (m.castle === 'K' && at === m.to + 1) at = m.to - 1;
           else if (m.castle === 'Q' && at === m.to - 2) at = m.to + 1;
@@ -1447,7 +1524,7 @@
         }
         return out;
       };
-      n.ghosts = follow(n.ghosts); n.snipers = follow(n.snipers); n.reborn = follow(n.reborn);
+      n.ghosts = follow(n.ghosts); n.snipers = follow(n.snipers); n.reborn = follow(n.reborn); n.helmets = follow(n.helmets); n.vests = follow(n.vests); n.stun = follow(n.stun); n.guard = follow(n.guard);
     }
     // the ones that just came back are spent from now on
     for (i = 0; i < removed.length; i++) if (removed[i].back != null) n.reborn = n.reborn.concat([removed[i].back]);
@@ -1514,7 +1591,8 @@
     n.full = n.full + (mover === 'b' ? 1 : 0);
     n.dice = null; n.rolled = null;
     if (n.ice.length) n.ice = n.ice.filter(function (q) { return n.board[q] && colorOf(n.board[q]) !== mover; });
-    if (has(cfg, n.turn)) { n.movesLeft = powersOf(cfg, n.turn).double || 1; n.midasUsed = 0; n.freezeUsed = false; }
+    if (n.guard && n.guard.length) n.guard = n.guard.filter(function (q) { return n.board[q] && colorOf(n.board[q]) === mover; }); // a shield lasts through the other side's turn
+    if (has(cfg, n.turn)) { n.movesLeft = powersOf(cfg, n.turn).double || 1; n.midasUsed = 0; n.freezeUsed = false; n.shieldUsed = false; }
     return n;
   }
   // The chance that at least one of `a` given kinds comes up, with the game's dice and pool.
@@ -1667,7 +1745,7 @@
       n.dice = null;
     }
     if (pw !== NONE) {
-      n.movesLeft = s.movesLeft - 1 + (pw.rampage && m.cap ? 1 : 0); // Rampage: a capture earns another move
+      n.movesLeft = s.movesLeft - 1 + (pw.rampage && m.cap && !(n.fx && n.fx.bounce >= 0) ? 1 : 0); // Rampage: a capture earns another move (not one that bounced off a helmet)
       if (n.movesLeft > 0 && !inCheck(n, n.turn, cfg)) {
         var t = {};
         for (var k in n) t[k] = n[k];
@@ -1690,7 +1768,10 @@
     if (n.lost) { n.movesLeft = 0; return n; }
     // the ice on the mover's pieces melts once that side has had its turn
     if (n.ice.length) n.ice = n.ice.filter(function (q) { return n.board[q] && colorOf(n.board[q]) !== mover; });
-    if (has(cfg, n.turn)) { n.movesLeft = powersOf(cfg, n.turn).double || 1; n.midasUsed = 0; n.freezeUsed = false; }
+    // an attacker that bounced off a helmet this turn freezes now: it stays frozen through its side's next turn
+    if (n.stun && n.stun.length) { var stunned = n.stun.filter(function (q) { return n.board[q] && n.ice.indexOf(q) < 0 && n.gold.indexOf(q) < 0; }); if (stunned.length) n.ice = n.ice.concat(stunned); n.stun = []; }
+    if (n.guard && n.guard.length) n.guard = n.guard.filter(function (q) { return n.board[q] && colorOf(n.board[q]) === mover; }); // a shield lasts through the other side's turn
+    if (has(cfg, n.turn)) { n.movesLeft = powersOf(cfg, n.turn).double || 1; n.midasUsed = 0; n.freezeUsed = false; n.shieldUsed = false; }
     if (cfg.dice) { rollDice(n, cfg); if (!cfg.legacyDice) { n.dice = null; n.rolled = null; } }
     return n;
   }
@@ -1753,7 +1834,8 @@
     if ((n.fairy & 64) || (n.sleep && n.sleep.length)) turnOver(n, mover, cfg);
     // as after a move: the ice on the mover's pieces melts, the other side's turn starts fresh
     if (n.ice.length) n.ice = n.ice.filter(function (q) { return n.board[q] && colorOf(n.board[q]) !== mover; });
-    if (has(cfg, n.turn)) { n.movesLeft = powersOf(cfg, n.turn).double || 1; n.midasUsed = 0; n.freezeUsed = false; }
+    if (n.guard && n.guard.length) n.guard = n.guard.filter(function (q) { return n.board[q] && colorOf(n.board[q]) === mover; }); // a shield lasts through the other side's turn
+    if (has(cfg, n.turn)) { n.movesLeft = powersOf(cfg, n.turn).double || 1; n.midasUsed = 0; n.freezeUsed = false; n.shieldUsed = false; }
     if (cfg.dice) { rollDice(n, cfg); n.dice = null; n.rolled = null; }
     return n;
   }
@@ -1776,6 +1858,29 @@
     for (var k in s) n[k] = s[k];
     n.ice = s.ice.concat([sq]);
     n.freezeUsed = true;
+    n.fx = null;
+    return n;
+  }
+
+  /* Shield: once a turn, free, one of your pieces (not the king, not a statue) cannot be captured, shot or blown up on
+     the other side's next turn. The shield goes with its piece and ends when that turn is over. */
+  function shieldTargets(s, cfg) {
+    use(s);
+    if (!powersOf(cfg, s.turn).shield || s.shieldUsed) return [];
+    var out = [], g = s.guard || [];
+    for (var i = 0; i < N; i++) {
+      var p = s.board[i];
+      if (p && colorOf(p) === s.turn && !isRoyal(p) && s.gold.indexOf(i) < 0 && g.indexOf(i) < 0) out.push(i);
+    }
+    return out;
+  }
+  function shield(s, sq, cfg) {
+    use(s);
+    if (shieldTargets(s, cfg).indexOf(sq) < 0) return null;
+    var n = {};
+    for (var k in s) n[k] = s[k];
+    n.guard = (s.guard || []).concat([sq]);
+    n.shieldUsed = true;
     n.fx = null;
     return n;
   }
@@ -1896,6 +2001,8 @@
       (s.fairy ? '|' + s.again + s.lastW + s.lastB + (s.rocks && s.rocks.length ? s.rocks.join(',') : '') : '') +
       ((s.ghosts && s.ghosts.length) || (s.snipers && s.snipers.length) ? '|g' + s.ghosts.join(',') + '|s' + s.snipers.join(',') : '') +
       (s.reborn && s.reborn.length ? '|r' + s.reborn.join(',') : '') +
+      ((s.guard && s.guard.length) || s.shieldUsed || s.passed ? '|S' + (s.guard || []).join(',') + (s.shieldUsed ? '!' : '') + '|T' + (s.passed || '') : '') +
+      ((s.helmets && s.helmets.length) || (s.vests && s.vests.length) || (s.stun && s.stun.length) ? '|h' + (s.helmets || []).join(',') + '|v' + (s.vests || []).join(',') + '|u' + (s.stun || []).join(',') : '') +
       ((s.ducks && s.ducks.length) || (s.bducks && s.bducks.length) || s.duckHand ? '|d' + s.ducks.join(',') + '/' + s.bducks.join(',') + '/' + (s.duckHand || 0) + '/' + (s.duckPhase ? s.dTodo.join(',') : '-') + '/' + (s.bMoved || []).join(',') : '') +
       (s.sleep && s.sleep.length ? '|z' + s.sleep.join(',') : '') + (s.fresh && s.fresh.length ? '|f' + s.fresh.join(',') : '') +
       (s.sg ? '|g' + JSON.stringify(s.sg) + JSON.stringify(s.dmg) : '');
@@ -1921,8 +2028,10 @@
     if (m.duck) return (m.duck === 'b' ? 'Blue duck ' : 'Duck ') + (m.from >= 0 ? sqName(m.from) + '-' : '@') + dest; // Duck d5-e3, Duck @e3 from the hand
     if (m.spawn) return FAIRY[typeOf(m.piece)].san + '&' + dest; // a devil spawns a demon: Dv&e4
     if (m.shot) return 'SK*' + dest; // the Shotgun King shoots at e5
+    if (m.blast) { var bt = typeOf(m.piece); return (FAIRY.hasOwnProperty(bt) ? FAIRY[bt].san : bt === 'p' ? '' : bt.toUpperCase()) + '\u2738' + dest; } // the vest goes up: N✸d4
     if (m.reload) return 'SK reload';
-    if (m.storm) out = 'Storm';
+    if (m.pass) out = '--';
+    else if (m.storm) out = 'Storm';
     else if (m.swap) out = (FAIRY.hasOwnProperty(t) ? FAIRY[t].san : 'K') + '~' + dest;
     else if (m.stay) out = (FAIRY.hasOwnProperty(t) ? FAIRY[t].san : t.toUpperCase()) + ' stays';
     else if (m.castle) out = m.castle === 'K' ? 'O-O' : 'O-O-O';
@@ -1945,7 +2054,8 @@
       else if (t === 'p') out = (m.cap ? sqName(m.from)[0] + 'x' : '') + dest + (m.promo ? '=' + m.promo.toUpperCase() : '');
       else out = letter + dis + (m.cap ? 'x' : '') + dest;
     }
-    if (after.fx && after.fx.boom) out += '^';
+    if (after.fx && after.fx.boom && !m.blast) out += '^';
+    if (after.fx && after.fx.bounce >= 0) out += '\u26d1'; // bounced off a helmet: Bxe5⛑
     if (after.fx && after.fx.tp >= 0) out += '>' + sqName(after.fx.tp);
     if (m.rock) out += '!';
     var enemy = other(s.turn);
@@ -2012,7 +2122,7 @@
     START_FEN: START_FEN, MAXW: MAXW, use: use, size: function () { return { W: W, H: H }; }, sqName: sqName, sqIndex: sqIndex, colorOf: colorOf, typeOf: typeOf, other: other,
     fromFen: fromFen, toFen: toFen, boardFen: boardFen, cleanCastling: cleanCastling,
     attacked: attacked, inCheck: inCheck, kingSq: kingSq, royalAlive: royalAlive, wiped: wiped, pellets: pellets, mulberry: mulberry, hpOf: hpOf, SG: SG, shotResult: shotResult, hasRoyal: hasRoyal, duckAt: duckAt, duckDue: duckDue, duckSquares: duckSquares, demonNext: demonNext, demonHits: demonHits, asleep: asleep, isGhostAt: isG, isSniperAt: isS, royalSquares: royalSquares, checkedSquares: checkedSquares, isRoyal: isRoyal, ability: ability, stiff: stiff, guarded: guarded, atomsFor: atomsFor,
-    legalMoves: legalMoves, anyLegal: anyLegal, noisyMoves: noisyMoves, FAIRY: FAIRY, FAIRY_LETTERS: FAIRY_LETTERS, isFairy: isFairy, fairyOf: fairyOf, hasFairy: hasFairy, fairyAttacks: fairyAttacks, isWall: isWall, isWater: isWater, play: play, gildTargets: gildTargets, gild: gild, midasTurn: midasTurn, freezeTargets: freezeTargets, freeze: freeze, stopReady: stopReady, timeStop: timeStop, has: has, pocketKey: pocketKey, powersOf: powersOf, anyPower: anyPower, KEYS: KEYS,
+    legalMoves: legalMoves, anyLegal: anyLegal, noisyMoves: noisyMoves, FAIRY: FAIRY, FAIRY_LETTERS: FAIRY_LETTERS, isFairy: isFairy, fairyOf: fairyOf, hasFairy: hasFairy, fairyAttacks: fairyAttacks, isWall: isWall, isWater: isWater, play: play, gildTargets: gildTargets, gild: gild, midasTurn: midasTurn, freezeTargets: freezeTargets, freeze: freeze, shieldTargets: shieldTargets, shield: shield, stopReady: stopReady, timeStop: timeStop, has: has, pocketKey: pocketKey, powersOf: powersOf, anyPower: anyPower, KEYS: KEYS,
     isRock: isRock, isHole: isHole, convertTargets: convertTargets, convert: convert, legalAll: legalAll, dieOf: dieOf, diceMost: diceMost, dicePool: dicePool, rollFaces: rollFaces, roll: roll, diceChance: diceChance, diceCount: diceCount, pseudoMoves: pseudoMoves,
     status: status, hasPowers: hasPowers, posKey: posKey, uci: uci, findUci: findUci, san: san,
     validate: validate, perft: perft, armyRoom: armyRoom, canDrop: canDrop

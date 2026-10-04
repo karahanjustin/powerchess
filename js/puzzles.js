@@ -24,7 +24,9 @@
     killBoxMate: 'Kill box mate', vukovicMate: 'Vukovic mate', operaMate: 'Opera mate', pillsburysMate: 'Pillsbury\'s mate', morphysMate: 'Morphy\'s mate', epauletteMate: 'Epaulette mate',
     swallowstailMate: 'Swallow\'s tail mate', blindSwineMate: 'Blind swine mate', balestraMate: 'Balestra mate', cornerMate: 'Corner mate', triangleMate: 'Triangle mate',
     master: 'From a master game', masterVsMaster: 'Master against master', superGM: 'From a super GM game', yourGame: 'From your own game',
-    powerUp: 'Power-up puzzle', freeze: 'Freeze Ray', midas: 'Midas Touch', sniper: 'Sniper Bishops', dragon: 'Dragon Knights', rocket: 'Rocket Pawns', amazon: 'Amazon Queen', timestop: 'Time Stop', archer: 'Sniper Knights', ghost: 'Ghost Rooks', sniperR: 'Sniper Rooks'
+    powerUp: 'Power-up puzzle', freeze: 'Freeze Ray', midas: 'Midas Touch', sniper: 'Sniper Bishops', dragon: 'Dragon Knights', rocket: 'Rocket Pawns', amazon: 'Amazon Queen', timestop: 'Time Stop', archer: 'Sniper Knights', ghost: 'Ghost Rooks', sniperR: 'Sniper Rooks',
+    explosive: 'Explosive Captures', rampage: 'Rampage', double: 'Double Move', turncoat: 'Turncoat', ghostB: 'Ghost Bishops', ghostQ: 'Ghost Queens',
+    sniperQ: 'Sniper Queens', sniperP: 'Sniper Pawns', sniperK: 'Sniper King', sniperAll: 'Snipers everywhere', earlypromo: 'Fast Promotion', helmet: 'Spiked Helmet', vest: 'Explosive Vest'
   };
   // the ones offered as filters, in this order
   var FILTERS = ['mate', 'mateIn1', 'mateIn2', 'mateIn3', 'mateIn4', 'fork', 'pin', 'skewer', 'hangingPiece', 'sacrifice', 'deflection', 'attraction', 'discoveredAttack', 'doubleCheck',

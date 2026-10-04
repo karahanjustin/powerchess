@@ -89,13 +89,13 @@
   var MOB = [0, 4, 4, 2, 1], MOB_E = [0, 4, 4, 4, 2], MOB_BASE = [0, 4, 6, 7, 13];
 
   function moveKey(m) {
-    return (m.duck ? 'Q' + m.duck : m.spawn ? 'P' : m.shot ? 'G' : m.reload ? 'L' : m.storm ? 'S' : m.drop ? 'D' + m.drop : m.snipe ? 'X' : 'n') + ':' + m.from + ':' + m.to + ':' + (m.promo || '');
+    return (m.duck ? 'Q' + m.duck : m.spawn ? 'P' : m.shot ? 'G' : m.reload ? 'L' : m.storm ? 'S' : m.drop ? 'D' + m.drop : m.snipe ? 'X' : m.blast ? 'V' : m.pass ? 'Z' : 'n') + ':' + m.from + ':' + m.to + ':' + (m.promo || '');
   }
   // The same identity as a number, for the hash table and the killer slots.
-  var C_GILD = 1000000000, C_FREEZE = 1100000000, C_CONVERT = 1200000000, C_STOP = 1300000000;
+  var C_GILD = 1000000000, C_FREEZE = 1100000000, C_CONVERT = 1200000000, C_STOP = 1300000000, C_SHIELD = 1400000000;
   function codeOf(m) {
     var kind = m.snipe ? 1 : m.drop ? 2 : m.storm ? 3 : m.swap ? 4 : m.duck === 'y' ? 5 : m.duck === 'b' ? 6 : m.spawn ? 7 : m.shot ? 8 : m.reload ? 9 : 0;
-    var extra = m.promo ? 'qnrb'.indexOf(m.promo) + 1 : m.drop ? 'pnbrq'.indexOf(m.drop) + 1 : 0;
+    var extra = m.promo ? 'qnrb'.indexOf(m.promo) + 1 : m.drop ? 'pnbrq'.indexOf(m.drop) + 1 : m.blast ? 9 : m.pass ? 8 : 0; // a vest going up: from = to, extra 9; a pass (Tempo): extra 8
     // room for 676 squares: kind * 1e8 + (from + 1) * 1e5 + (to + 1) * 100 + extra; free actions sit above 1e9
     return kind * 100000000 + (m.from + 1) * 100000 + (m.to + 1) * 100 + extra;
   }
@@ -246,8 +246,18 @@
 
   function evaluate(s, cfg) {
     if (s.checkers) return checkersEval(s);
-    if (s.sg) return evaluateCore(s, cfg) + shotgunTerms(s);
-    return evaluateCore(s, cfg);
+    var v = evaluateCore(s, cfg);
+    if (s.sg) v += shotgunTerms(s);
+    if ((s.helmets && s.helmets.length) || (s.vests && s.vests.length)) v += wearTerms(s);
+    return v;
+  }
+  /* Spiked Helmet and Explosive Vest: a helmet is a second life, worth a good part of the piece that wears it (the
+     search sees the bounce itself, this is what it is worth beyond the horizon); a vest is a threat that waits. */
+  function wearTerms(s) {
+    var v = 0, i, p, w;
+    if (s.helmets) for (i = 0; i < s.helmets.length; i++) { p = s.board[s.helmets[i]]; if (!p) continue; w = 0.35 * (VAL[R.typeOf(p)] || VAL[p.toLowerCase()] || 300) + 15; v += R.colorOf(p) === 'w' ? w : -w; }
+    if (s.vests) for (i = 0; i < s.vests.length; i++) { p = s.board[s.vests[i]]; if (!p || s.gold.indexOf(s.vests[i]) >= 0) continue; v += R.colorOf(p) === 'w' ? 35 : -35; }
+    return v;
   }
   /* With a Shotgun King on the board pieces have hit points: a hurt piece is worth less (it falls to fewer pellets),
      and shells in the gun and in reserve are worth something to the side that has the gun. */
@@ -525,7 +535,7 @@
     TT_SIZE = tLock.length; TT_MASK = TT_SIZE - 1;
   }
   function mix(v, code, info) { return (Math.imul(v, 0x9E3779B1) ^ Math.imul(code, 0x85EBCA6B) ^ (info << 13)) | 0; }
-  var Z1 = new Int32Array(NCODES * MAXN + 6000), Z2 = new Int32Array(NCODES * MAXN + 6000);
+  var Z1 = new Int32Array(NCODES * MAXN + 8000), Z2 = new Int32Array(NCODES * MAXN + 8000);
   (function () {
     var x = 0x9E3779B9 | 0;
     function rnd() { x ^= x << 13; x ^= x >>> 17; x ^= x << 5; return x | 0; }
@@ -567,6 +577,12 @@
     if (s.ghosts) for (i = 0; i < s.ghosts.length; i++) { k = Z_UP + s.ghosts[i]; a ^= Z1[k]; c ^= Z2[k]; }
     if (s.snipers) for (i = 0; i < s.snipers.length; i++) { k = Z_UP + MAXN + s.snipers[i]; a ^= Z1[k]; c ^= Z2[k]; }
     if (s.reborn) for (i = 0; i < s.reborn.length; i++) { k = Z_UP + s.reborn[i]; a ^= Math.imul(Z1[k], 31); c ^= Math.imul(Z2[k], 17); } // spent second lives
+    if (s.helmets) for (i = 0; i < s.helmets.length; i++) { k = Z_UP + 2 * MAXN + s.helmets[i]; a ^= Z1[k]; c ^= Z2[k]; } // Spiked Helmets
+    if (s.vests) for (i = 0; i < s.vests.length; i++) { k = Z_UP + 3 * MAXN + s.vests[i]; a ^= Z1[k]; c ^= Z2[k]; } // Explosive Vests
+    if (s.guard) for (i = 0; i < s.guard.length; i++) { k = Z_UP + 3 * MAXN + s.guard[i]; a ^= Math.imul(Z1[k], 37); c ^= Math.imul(Z2[k], 41); } // shields
+    if (s.shieldUsed) { a ^= Math.imul(Z1[Z_FREEZE], 43); c ^= Math.imul(Z2[Z_FREEZE], 47); }
+    if (s.passed) for (i = 0; i < s.passed.length; i++) { k = Z_TURNED + (s.passed[i] === 'w' ? 0 : 1); a ^= Math.imul(Z1[k], 53 + i); c ^= Math.imul(Z2[k], 59 + i); } // passes used (Tempo)
+    if (s.stun) for (i = 0; i < s.stun.length; i++) { k = Z_UP + 2 * MAXN + s.stun[i]; a ^= Math.imul(Z1[k], 29); c ^= Math.imul(Z2[k], 23); } // stunned by a helmet: frozen next turn
     // ducks and the duck part of a turn, devils asleep, demons spawned this turn (the same keys, mixed apart)
     if (s.ducks) for (i = 0; i < s.ducks.length; i++) { k = Z_GOLD + s.ducks[i]; a ^= Math.imul(Z1[k], 7); c ^= Math.imul(Z2[k], 11); }
     if (s.bducks) for (i = 0; i < s.bducks.length; i++) { k = Z_GOLD + s.bducks[i]; a ^= Math.imul(Z1[k], 13); c ^= Math.imul(Z2[k], 19); }
@@ -754,7 +770,7 @@
     if (!tLock) useTable(makeTable(TT_BITS, false));
     // what kind of game this is, for the pruning: free actions and wild power-ups call for more care
     var pa = R.powersOf(cfg, 'w'), pb2 = R.powersOf(cfg, 'b');
-    this.hasFree = !!(pa.midas || pa.freeze || pa.turncoat || pa.timestop || pb2.midas || pb2.freeze || pb2.turncoat || pb2.timestop);
+    this.hasFree = !!(pa.midas || pa.freeze || pa.turncoat || pa.timestop || pa.shield || pb2.midas || pb2.freeze || pb2.turncoat || pb2.timestop || pb2.shield);
     this.wild = !!(pa.double || pa.rampage || pa.explosive || pa.drops || pa.rocket || pb2.double || pb2.rampage || pb2.explosive || pb2.drops || pb2.rocket);
   }
 
@@ -782,6 +798,12 @@
         var cv = R.convertTargets(s, cfg).sort(byValue).slice(0, atRoot ? 3 : 1);
         for (i = 0; i < cv.length; i++) out.push({ convert: cv[i], key: 'c' + cv[i], code: C_CONVERT + cv[i] });
       }
+    }
+    // Shield: on the own turn, the pieces that stand attacked, the most valuable first
+    if (tp === 0 && pt.shield && !s.shieldUsed) {
+      var foe0 = s.turn === 'w' ? 'b' : 'w';
+      var sh = R.shieldTargets(s, cfg).filter(function (q) { return R.attacked(s, q, foe0, cfg); }).sort(byValue).slice(0, atRoot ? 3 : 1);
+      for (i = 0; i < sh.length; i++) out.push({ shield: sh[i], key: 'h' + sh[i], code: C_SHIELD + sh[i] });
     }
     // Time Stop: on the own turn, and on the reply turn so that three moves in a row do not come as a surprise
     if (tp <= 1 && pt.timestop && R.stopReady(s, cfg)) out.push({ stop: true, key: 't', code: C_STOP });
@@ -817,6 +839,7 @@
     if (a.gild != null) return R.gild(s, a.gild, this.cfg);
     if (a.freeze != null) return R.freeze(s, a.freeze, this.cfg);
     if (a.convert != null) return R.convert(s, a.convert, this.cfg);
+    if (a.shield != null) return R.shield(s, a.shield, this.cfg);
     return R.timeStop(s, this.cfg);
   };
 
@@ -826,7 +849,8 @@
     for (var k in s) n[k] = s[k];
     n.turn = foe; n.ep = -1; n.fx = null; n.again = -1; n.dice = null;
     if (n.ice.length) n.ice = n.ice.filter(function (q) { return n.board[q] && R.colorOf(n.board[q]) !== me; });
-    if (R.has(cfg, foe)) { n.movesLeft = R.powersOf(cfg, foe).double || 1; n.midasUsed = 0; n.freezeUsed = false; }
+    if (n.guard && n.guard.length) n.guard = n.guard.filter(function (q) { return n.board[q] && R.colorOf(n.board[q]) === me; });
+    if (R.has(cfg, foe)) { n.movesLeft = R.powersOf(cfg, foe).double || 1; n.midasUsed = 0; n.freezeUsed = false; n.shieldUsed = false; }
     else n.movesLeft = 0;
     return n;
   }
