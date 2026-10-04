@@ -776,6 +776,31 @@
     src.connect(f); f.connect(g); g.connect(AC.destination); src.start(t);
     burst(t + 0.12, 0.06, 3, 'bandpass', 2600, 1, 0.28);
   }
+  /* Pawnbarian's cards, all made here: the card itself (a paper flick), how the piece goes (a slide, a jump, a step,
+     the Ghost's shimmer, the Nomad's bow) and what the card's upgrades add (a Shield's ring, a Splash's sweep,
+     Purify's chime). */
+  function sweep(t, dur, f0, f1, q, vol, type) {
+    const len = Math.ceil(AC.sampleRate * dur), buf = AC.createBuffer(1, len, AC.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.sin(Math.PI * i / len);
+    const src = AC.createBufferSource(), f = AC.createBiquadFilter(), g = AC.createGain();
+    src.buffer = buf; f.type = type || 'bandpass'; f.Q.value = q;
+    f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    g.gain.value = vol;
+    src.connect(f); f.connect(g); g.connect(AC.destination); src.start(t);
+  }
+  const PB_SFX = {
+    flick: (t) => { sweep(t, 0.07, 6000, 2600, 1.4, 0.16, 'highpass'); burst(t + 0.05, 0.02, 3, 'bandpass', 3400, 1.5, 0.12); }, // a card picked
+    card: (t) => { sweep(t, 0.09, 4200, 1800, 1.2, 0.2); burst(t + 0.07, 0.03, 3, 'bandpass', 1900, 1.2, 0.22); }, // a card slapped down
+    slide: (t) => { sweep(t, 0.22, 1800, 600, 1.1, 0.22); tone(t + 0.19, 0.06, 190, 0.18); },              // along a line
+    jump: (t) => { tone(t, 0.16, 260, 0.11, 'triangle', 620); tone(t + 0.16, 0.08, 150, 0.24, 'sine', 70); burst(t + 0.16, 0.05, 3, 'lowpass', 900, 0.7, 0.3); }, // up and down
+    step: (t) => { burst(t, 0.05, 3, 'lowpass', 1100, 0.8, 0.32); tone(t, 0.06, 160, 0.2); },             // one square
+    ghost: (t) => { tone(t, 0.42, 520, 0.07, 'sine', 1040); tone(t + 0.05, 0.38, 780, 0.05, 'sine', 1560); sweep(t, 0.35, 3000, 900, 2, 0.05); }, // a shimmer
+    bow: (t) => { tone(t, 0.18, 196, 0.16, 'sawtooth', 160); tone(t, 0.12, 392, 0.06, 'triangle'); sweep(t + 0.03, 0.16, 5000, 1600, 1.6, 0.14); }, // the string, the arrow
+    shield: (t) => { tone(t, 0.5, 1760, 0.07, 'triangle'); tone(t, 0.6, 2640, 0.04, 'sine'); tone(t + 0.01, 0.35, 1175, 0.05, 'triangle'); }, // a ring of metal
+    splash: (t) => { sweep(t, 0.18, 900, 4200, 1.8, 0.2); },                                              // the sweep around
+    purify: (t) => { [1319, 1760, 2349].forEach((f, i) => tone(t + i * 0.06, 0.4, f, 0.05, 'sine')); },  // a chime
+    deal: (t) => { [0, 0.09, 0.18].forEach((dt) => sweep(t + dt, 0.06, 5200, 2400, 1.3, 0.12, 'highpass')); } // three cards dealt
+  };
   // a shell goes in: the pump, back and forth (chk-chk)
   function pumpSound(t) {
     [0, 0.09].forEach((dt, i) => burst(t + dt, 0.025, 3, 'bandpass', i ? 1800 : 2500, 1.2, 0.22)); // a soft click-clack
@@ -821,6 +846,7 @@
     if (kind === 'zap') { zapSound(AC.currentTime + 0.005 + (delay || 0)); return; }
     if (kind === 'hurt') { hurtSound(AC.currentTime + 0.005 + (delay || 0)); return; }
     if (kind === 'slash') { slashSound(AC.currentTime + 0.005 + (delay || 0)); return; }
+    if (kind.indexOf('pb:') === 0) { const f = PB_SFX[kind.slice(3)]; if (f) f(AC.currentTime + 0.005 + (delay || 0)); return; }
     const key = SAMPLE_FOR[kind];
     if (key && sampleBuf[key]) {
       sample(key, SAMPLE_VOL[kind] || 0.8, delay || 0);
@@ -7529,7 +7555,7 @@
   const pbMonPic = (kind) => PB_ART + 'm_' + kind + '.svg';
   // the damage the hero takes if the turn ends now (attacks and Blight, less the Shields)
   function pbPending(run, F) { return Math.max(0, PBM.threat(run, F, F.hero) + F.blight[F.hero] - F.shield); }
-  function pbFx(ev, run) {
+  function pbFx(ev, run, carded) {
     let killed = 0, delay = 0;
     (ev || []).forEach((x) => {
       if (x.e === 'hit' || x.e === 'splash') {
@@ -7544,7 +7570,8 @@
       if (x.e === 'grasp') { if (x.hurt) pbHit(x.hurt, 0.15); else snd('portal', 0.12); }
       if (x.e === 'cleared') snd('win', 0.35);
     });
-    if (killed) { snd('slash'); snd('capture', 0.06); } else if ((ev || []).some((x) => x.e === 'hit' || x.e === 'splash')) snd('move');
+    const at = carded ? 0.12 : 0;
+    if (killed) { snd('slash', at); snd('capture', at + 0.06); } else if (!carded && (ev || []).some((x) => x.e === 'hit' || x.e === 'splash')) snd('move');
   }
   // the shards of skShatter are sized for 8 x 8: on the 5 x 5 board they take a square of its own size
   function pbShardSize() { L.fx.querySelectorAll('.skshard:not(.pbw),.skdust:not(.pbw)').forEach((d) => d.classList.add('pbw')); }
@@ -7607,15 +7634,31 @@
     MS.rev = (MS.rev || 0) + 1;
     saveModes(); renderModes(); renderAll(anims);
   }
+  // the pieces that jump, and how a card goes: a jump, a slide along a line, a step of one square, the Ghost
+  const PB_JUMPERS = { N: 1, H: 1, E: 1, sN: 1 };
+  function pbCardSound(run, card, from, to, ev, promosBefore) {
+    const piece = PBM.pieceOf(card), F = run.F;
+    snd('pb:card');
+    const shot = PBM.HERO[run.hero].ranged && ev.some((x) => x.e === 'hit');
+    const dist = Math.max(Math.abs(PBM.rowOf(to) - PBM.rowOf(from)), Math.abs(PBM.colOf(to) - PBM.colOf(from)));
+    snd(shot ? 'pb:bow' : piece === 'G' ? 'pb:ghost' : PB_JUMPERS[piece] ? 'pb:jump' : dist > 1 ? 'pb:slide' : 'pb:step', 0.05);
+    if (card.up.dsplash || card.up.csplash) snd('pb:splash', 0.14);
+    if (card.up.shield) snd('pb:shield', 0.2);
+    if (card.up.purify) snd('pb:purify', 0.24);
+    // a card in hand promoted by this play (the Pawnbarian's Queen, the Shogun's promotion)
+    if (F && F.hand.filter((c) => c.promo).length > promosBefore) snd('promo', 0.3);
+  }
   function pbPlay(i, to) {
     const run = pbRun();
     if (!pbLive() || pbUi.busy) return;
-    const F = run.F, before = pbSnap(F), ev = PBM.play(run, i, to);
+    const F = run.F, before = pbSnap(F), card = F.hand[i], from = F.hero, promos = F.hand.filter((c, k) => k !== i && c.promo).length;
+    const ev = PBM.play(run, i, to);
     if (!ev) return;
     pbUi.card = -1;
     pbPops(before, run.F);
     pbAfter(pbAnims(before, run.F === F ? F : null));
-    pbFx(ev, run);
+    pbCardSound(run, card, from, to, ev, promos);
+    pbFx(ev, run, true);
   }
   function pbEnd() {
     const run = pbRun();
@@ -7647,6 +7690,7 @@
       pbPops(before, run.F);
       pbAfter(pbAnims(before, run.F));
       snd('move');
+      snd('pb:deal', 0.2);
       if (run.F && pbPending(run, run.F) > 0) snd('check', 0.25); // in danger at the start of the turn, as a check
       setTimeout(() => { pbUi.deal = false; }, 600);
     }, attackers.length || blight ? t + 260 : 0);
@@ -7678,7 +7722,7 @@
     if (c && PBM.cardTargets(run, F, c).some((x) => x.to === sq)) { pbPlay(pbUi.card, sq); return; }
     // a click on a square some card in hand reaches: that card, if only one does
     const cards = F.hand.map((x, i) => i).filter((i) => PBM.cardTargets(run, F, F.hand[i]).some((x) => x.to === sq));
-    if (!c && cards.length === 1 && F.actions > 0) { pbUi.card = cards[0]; renderModes(); renderAll(); return; }
+    if (!c && cards.length === 1 && F.actions > 0) { pbUi.card = cards[0]; snd('pb:flick'); renderModes(); renderAll(); return; }
     pbUi.card = -1;
     renderModes(); renderAll();
   }
@@ -7794,13 +7838,13 @@
     box.querySelectorAll('[data-pbhero]').forEach((b) => { b.onclick = () => { pbUi.hero = b.dataset.pbhero; pbSaveSet(); renderModes(); renderAll(); }; });
     box.querySelectorAll('[data-pbdun]').forEach((b) => { b.onclick = () => { pbUi.dungeon = b.dataset.pbdun; pbSaveSet(); renderModes(); }; });
     box.querySelectorAll('[data-pbchain]').forEach((b) => { b.onclick = () => { pbUi.chain = +b.dataset.pbchain; pbSaveSet(); renderModes(); }; });
-    box.querySelectorAll('[data-pbcard]').forEach((b) => { b.onclick = () => { const i = +b.dataset.pbcard; pbUi.card = pbUi.card === i ? -1 : i; renderModes(); renderAll(); }; });
+    box.querySelectorAll('[data-pbcard]').forEach((b) => { b.onclick = () => { const i = +b.dataset.pbcard; pbUi.card = pbUi.card === i ? -1 : i; if (pbUi.card >= 0) snd('pb:flick'); renderModes(); renderAll(); }; });
   }
   function pbKey(e) {
     if (ui.tab !== 'modes' || gmTab !== 'pb' || !pbLive()) return false;
     const F = pbRun().F;
     if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); pbEnd(); return true; }
-    if (/^[1-4]$/.test(e.key) && F.hand[+e.key - 1]) { pbUi.card = pbUi.card === +e.key - 1 ? -1 : +e.key - 1; renderModes(); renderAll(); return true; }
+    if (/^[1-4]$/.test(e.key) && F.hand[+e.key - 1]) { pbUi.card = pbUi.card === +e.key - 1 ? -1 : +e.key - 1; if (pbUi.card >= 0) snd('pb:flick'); renderModes(); renderAll(); return true; }
     if ((e.key === 'd' || e.key === 'D') && PBM.HERO[pbRun().hero].dragon) { pbDrop(); return true; }
     if (e.key === 'Escape' && pbUi.card >= 0) { pbUi.card = -1; renderModes(); renderAll(); return true; }
     return false;
