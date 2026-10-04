@@ -287,9 +287,9 @@
     kinds.forEach(function (k, i) { if (spots[i] != null) newEnemy(F, k, spots[i], i === champAt); });
     /* the loot track: a heal, then the gold. The floor's difficulty sets its length: a guide's numbers (before 1.2.0)
        are 11 gold for 4 monsters cleared in 2 turns and 11 for 5 in 4 turns, so about 2 gold a monster on 12 for 4,
-       one more for a Nimble one, and 1.2.0 added 1 to every floor */
+       one more for a Nimble one, and 1.2.0 added 1 to every floor. Set a little lower here (user's wish): 2 less a floor */
     var nimble = F.enemies.filter(function (e) { return hasT(e, 'nimble'); }).length, n = F.enemies.length;
-    var len = D.tutorial ? 4 : 5 + 2 * n + nimble + (champ ? 2 : 0) + (kinds.indexOf(bossKind) >= 0 ? 4 : 0);
+    var len = D.tutorial ? 4 : 3 + 2 * n + nimble + (champ ? 2 : 0) + (kinds.indexOf(bossKind) >= 0 ? 4 : 0);
     F.loot = ['heal'];
     for (var i = 1; i <= len; i++) F.loot.push(run.hero === 'capyzerker' && i % 3 === 0 ? 'blood' : 'gold');
     F.draw = r.shuffle(run.deck.map(function (c) { return { id: c.id, p: c.p, up: c.up, promo: null }; }));
