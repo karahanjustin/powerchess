@@ -193,7 +193,10 @@
     blightimp: { name: 'Blight Imp', atk: 'ring', traits: ['blast', 'wake'], text: 'Small, fast and leaking.' },
     blightheart: { name: 'Blight Heart', atk: 'none', traits: ['artery'], text: 'It beats, and Blightsacks come out.' },
     kraken: { name: 'Blightvoid Kraken', atk: 'kraken', traits: ['champion', 'wake', 'terror'], text: 'The biggest thing that ever came through the rift.', boss: true },
-    tentacle: { name: 'Kraken Tentacle', atk: 'adj', traits: ['wake', 'grasp'], text: 'There is always another one.' }
+    tentacle: { name: 'Kraken Tentacle', atk: 'adj', traits: ['wake', 'grasp'], text: 'There is always another one.' },
+    // the victory floor: four pillars in the corners, the gate to the Gauntlet at the top (it opens when they are broken)
+    pillar: { name: 'Pillar', atk: 'none', traits: [], still: true, text: 'Break all four to open the gate.' },
+    gate: { name: 'Gauntlet Gate', atk: 'none', traits: ['champion'], still: true, text: 'Break through it to enter the Gauntlet: endless floors, a boss every third.' }
   };
   function hasT(e, t) { return e.traits.indexOf(t) >= 0; }
 
@@ -323,6 +326,7 @@
   var edge = function (q) { return rowOf(q) === 0 || rowOf(q) === N - 1 || colOf(q) === 0 || colOf(q) === N - 1; };
   // one step of a monster: always moving if it can, keeping the hero in its attack range
   function moveEnemy(run, F, e) {
+    if (MONSTERS[e.kind].still) return false;
     var r0 = rowOf(e.sq), c0 = colOf(e.sq), cands = [];
     ALL8.forEach(function (d, k) { var q = at(r0 + d[0], c0 + d[1]); if (q >= 0 && q !== F.hero && !enemyAt(F, q) && !wardAt(F, q)) cands.push({ q: q, k: k }); });
     if (!cands.length) return false;
@@ -470,18 +474,19 @@
       if (run.hero === 'pawnbarian' && rowOf(q) === 0) promote(run, F);
       return { e: 'grasp', sq: q };
     }
-    damage(run, F, g.length);
+    damage(run, F, g.length, ['grasp']);
     return { e: 'grasp', hurt: g.length };
   }
   // damage to the hero, the shields first; the Capyzerker's Rage from what gets through
-  function damage(run, F, n) {
+  // by: what dealt it (monster kinds, 'blight', 'grasp'), kept with the run's end to show where runs are lost
+  function damage(run, F, n, by) {
     var through = Math.max(0, n - F.shield);
     F.shield = Math.max(0, F.shield - n);
     if (!through) return 0;
     if (DUNGEONS[run.dungeon].tutorial) return 0; // nobody dies on Tutorial Island
     run.hearts -= through;
     if (run.hero === 'capyzerker') F.rage += through;
-    if (run.hearts <= 0) { run.hearts = 0; F.over = 'dead'; run.over = { won: false, floor: run.floor, gauntlet: run.gauntlet }; }
+    if (run.hearts <= 0) { run.hearts = 0; F.over = 'dead'; run.over = { won: false, floor: run.floor, gauntlet: run.gauntlet, by: by || [] }; }
     return through;
   }
   // after a Cantrip: every monster's Spark traits
@@ -489,7 +494,7 @@
     F.enemies.slice().forEach(function (e) {
       if (F.enemies.indexOf(e) < 0 || F.over) return;
       if (hasT(e, 'aegis')) e.aegis = F.turn;
-      if (hasT(e, 'surge') && targets(e).indexOf(F.hero) >= 0) damage(run, F, isFinalBoss(run, e) ? 2 : 1);
+      if (hasT(e, 'surge') && targets(e).indexOf(F.hero) >= 0) damage(run, F, isFinalBoss(run, e) ? 2 : 1, [e.kind]);
       if (hasT(e, 'swalk')) moveEnemy(run, F, e);
       if (hasT(e, 'sblast')) ALL8.forEach(function (o) { var q = at(rowOf(e.sq) + o[0], colOf(e.sq) + o[1]); if (q >= 0) F.blight[q]++; });
       if (hasT(e, 'dominion')) { spawnNear(run, F, run.dominion % 2 ? 'kgolem' : 'ggolem', e.sq); run.dominion++; }
@@ -504,6 +509,11 @@
   }
   /* Playing card i of the hand to square `to`. Returns an event list for the page, or null if it cannot be played. */
   function play(run, i, to) {
+    var ev = playCard(run, i, to);
+    if (ev) victoryCheck(run, ev);
+    return ev;
+  }
+  function playCard(run, i, to) {
     var F = run.F;
     if (!F || F.over || F.actions <= 0) return null;
     var c = F.hand[i];
@@ -560,6 +570,11 @@
   }
   // The Shogun's Dragon Drop: an action, its effects stacking with the charges, which it uses up
   function dragonDrop(run) {
+    var ev = drop(run);
+    if (ev) victoryCheck(run, ev);
+    return ev;
+  }
+  function drop(run) {
     var F = run.F;
     if (!F || F.over || F.actions <= 0 || !HEROES[run.hero].dragon) return null;
     var n = F.charges, ev = [{ e: 'dragon', n: n }];
@@ -583,7 +598,8 @@
   function endTurn(run) {
     var F = run.F;
     if (!F || F.over) return null;
-    var hits = threat(run, F, F.hero), bl = F.blight[F.hero], took = damage(run, F, hits + bl);
+    var by = F.enemies.filter(function (e) { return targets(e).indexOf(F.hero) >= 0; }).map(function (e) { return e.kind; });
+    var hits = threat(run, F, F.hero), bl = F.blight[F.hero], took = damage(run, F, hits + bl, by.concat(bl ? ['blight'] : []));
     var ev = [{ e: 'attack', hits: hits, blight: bl, took: took }];
     if (F.over) return ev;
     if (F.loot.length) F.loot.pop();
@@ -609,9 +625,15 @@
     openShop(run);
     return true;
   }
+  /* The victory: the dungeon counts as conquered the moment the last boss falls (as in the original, where progress
+     is given on entering the victory floor). Then the victory floor: break the four pillars and the gate at the top
+     for the Gauntlet, or step into the portal in the middle to rest on your laurels. Tutorial Island just ends. */
+  var PORTAL = 12, GATE = 2, PILLARS = [0, 4, 20, 24];
   function win(P) {
     var run = P.run;
     run.victory = true; run.F = null;
+    if (DUNGEONS[run.dungeon].tutorial) { run.over = { won: true, floor: run.floor, gauntlet: 0 }; P.tutorial = true; }
+    else startVictory(run);
     if (!DUNGEONS[run.dungeon].tutorial) {
       var C = P.conquered[run.hero] = P.conquered[run.hero] || {};
       C[run.dungeon] = Math.max(C[run.dungeon] == null ? -1 : C[run.dungeon], run.chain);
@@ -621,8 +643,27 @@
       if (ok && P.chain < 10) P.chain++;
     }
   }
-  // After the victory: rest (the run ends) or the Gauntlet (endless floors, a boss every third, no shops)
-  function gauntlet(P) { var run = P.run; if (!run || !run.victory) return false; run.victory = false; run.gauntlet = 1; startFloor(run); return true; }
+  function startVictory(run) {
+    var F = { enemies: [], nextId: 0, hero: START, blight: new Array(SQ).fill(0), wards: [], hand: [], draw: [], discard: [], actions: 0, shield: 0, turn: 0,
+      rage: 0, charges: 0, webbed: false, played: 0, knights: 0, moved: false, terrorTurn: -1, log: [], over: null, loot: [], victory: true, portal: PORTAL };
+    PILLARS.forEach(function (q) { newEnemy(F, 'pillar', q, false); });
+    newEnemy(F, 'gate', GATE, false);
+    var r = rng(run.rng);
+    F.draw = r.shuffle(run.deck.map(function (c) { return { id: c.id, p: c.p, up: c.up, promo: null }; }));
+    run.rng = r.s;
+    run.F = F; run.shop = null;
+    newRound(run, true);
+  }
+  // after a card on the victory floor: the gate broken leads into the Gauntlet, the portal ends the run
+  function victoryCheck(run, ev) {
+    var F = run.F;
+    if (!F || !F.victory || run.over) return;
+    if (F.over === 'cleared' || !F.enemies.some(function (e) { return e.kind === 'gate'; })) { ev.push({ e: 'gate' }); startGauntlet(run); return; }
+    if (F.hero === PORTAL) { ev.push({ e: 'portal' }); run.over = { won: true, floor: run.floor, gauntlet: 0 }; }
+  }
+  function startGauntlet(run) { run.victory = false; run.gauntlet = 1; run.hearts = run.maxHearts; startFloor(run); }
+  // After the victory, without the floor: rest (the run ends) or the Gauntlet (endless floors, a boss every third, no shops)
+  function gauntlet(P) { var run = P.run; if (!run || !run.victory) return false; startGauntlet(run); return true; }
   function rest(P) { var run = P.run; if (!run) return false; run.over = { won: true, floor: run.floor, gauntlet: run.gauntlet }; return true; }
   function giveUp(P) { var run = P.run; if (!run) return false; run.over = { won: false, floor: run.floor, gauntlet: run.gauntlet, gaveUp: true }; return true; }
   function close(P) { P.run = null; }
@@ -671,7 +712,7 @@
     DUNGEONS: DUNGEON_IDS, DUNGEON: DUNGEONS, CHAINS: CHAINS, UPGRADES: UPGRADES, FLOORS: FLOORS,
     rng: rng, fresh: fresh, unlocked: unlocked, newRun: newRun, makeDeck: makeDeck, reach: reach, cardTargets: cardTargets, targets: targets, threat: threat, immune: immune, enemyAt: enemyAt,
     play: play, dragonDrop: dragonDrop, endTurn: endTurn, next: next, gauntlet: gauntlet, rest: rest, giveUp: giveUp, close: close, shopMoves: shopMoves, shopMove: shopMove,
-    pieceOf: pieceOf, floorsOf: floorsOf, allowed: allowed, name: name, rowOf: rowOf, colOf: colOf, hasT: hasT, isFinalBoss: isFinalBoss
+    PORTAL: PORTAL, GATE: GATE, pieceOf: pieceOf, floorsOf: floorsOf, allowed: allowed, name: name, rowOf: rowOf, colOf: colOf, hasT: hasT, isFinalBoss: isFinalBoss
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Pawnbarian = api;

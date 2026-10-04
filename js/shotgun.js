@@ -91,7 +91,7 @@
     { id: 'barrel', name: 'Extra Barrel', max: 3, fx: [S('cap', 1)], text: 'Charge 1 additional shell in your shotgun' },
     { id: 'steed', name: 'Faithful Steed', max: 1, needs: ['warhorse'], fx: [RULE('steed')], text: 'The king swaps positions with a knight whenever he\'s about to take damage; knights move the king if he is adjacent' },
     { id: 'fearsome', name: 'Fearsome', max: 2, fx: [S('res', 1), S('fright', 1), RULE('fearsome')], text: '+1 ammo max; +1 fright radius; when you kill a non-pawn piece, pieces around the black king are scared: they can\'t attack you and flee on their next move' },
-    { id: 'foolcompanion', name: 'Fool Companion', max: 1, needs: ['jester'], later: LATER, text: 'Jesters can move in all directions and always follow the king; earn an extra turn when you kill a jester' },
+    { id: 'foolcompanion', name: 'Fool Companion', max: 1, needs: ['jester'], fx: [RULE('fool'), RULE('foolTurn')], text: 'The jester steps in any direction and stays at its king\'s side; killing a jester gives you an extra turn' },
     { id: 'force', name: 'Force-Feeding', max: 1, fx: [RULE('forceFp'), RULE('force')], text: '+1 firepower while your gun is full; reloading without moving lets you squeeze one more shell into the shotgun when it\'s full' },
     { id: 'golden', name: 'Golden Aging', max: 1, fx: [HP('leader', -1), HP('q', -1), EVERY(10, SP('leader', 1)), EVERY(10, SP('q', 1))], text: 'Leader and queen: -1 HP; every 10 turns: leader and queen: -1 speed' },
     { id: 'absolution', name: 'Gradual Absolution', max: 2, fx: [RULE('absolution')], text: '+1 firepower for each empty soul slot' },
@@ -235,7 +235,7 @@
     { id: 'succubus', name: 'Succubus', max: 1, fx: [A('q', 1), S('souls', 1)], text: 'Add 1 queen; add 1 extra soul slot' },
     { id: 'tagteam', name: 'Tag Team', max: 1, later: LATER, text: 'Rook and bishop: +1 HP; bishops can swap positions with a rook; rooks can swap positions with a bishop' },
     { id: 'bridge', name: 'The Bridge', max: 1, needs: ['moat'], later: LATER, text: 'Add 1 knight after 10 turns; open a path in the moat' },
-    { id: 'jester', name: 'The Jester', max: 1, needs: ['throne'], later: LATER, text: 'Add 1 pawn; jesters can move diagonally and have +2 speed; jesters pass the hat when they die' },
+    { id: 'jester', name: 'The Jester', max: 1, needs: ['throne'], pawns: 1, fx: [A('p', 1), RULE('jester'), RULE('hat')], text: 'Add 1 pawn; one pawn wears the jester\'s hat: it may also step diagonally and moves 2 turns sooner; when the jester dies or promotes, the nearest pawn takes the hat' },
     { id: 'redbook', name: 'The Red Book', max: 1, fx: [A('b', 1), RULE('redbook')], text: 'Add 1 bishop; bishops can move (not attack) orthogonally' },
     { id: 'royalhunt', name: 'The Royal Hunt', max: 2, later: LATER, text: 'Leaders shoot arrows at you; +1 leader shooting speed' },
     { id: 'heir', name: 'The Secret Heir', max: 1, tags: ['leader'], fx: [A('p', 1), RULE('heir')], text: 'Add 1 pawn; heir: +1 (the secret heir replaces the king if he dies)' },
@@ -464,6 +464,11 @@
     // Plumed Knight: one knight with 3 more HP that also attacks diagonally
     if (rule(run, null, 'plumed')) { var kn = F.pieces.find(function (p) { return p.t === 'n'; }); if (kn) { kn.hp += 3; kn.max += 3; kn.plumed = true; } }
     if (rule(run, null, 'kite')) F.pieces.forEach(function (p) { if (p.t === 'n') p.shield = 1; });
+    // The Jester: the hat goes to the card's own pawn (any pawn if that one was promoted by Anarchy)
+    if (rule(run, null, 'jester')) {
+      var fools = F.pieces.filter(function (p) { return p.t === 'p' && !p.leader; }), own = fools.filter(function (p) { return p.src === 'jester'; });
+      if (fools.length) hatOn(own.length ? own[0] : pick(fools, rnd));
+    }
     F.pieces.sort(function (a, b) { return a.sq - b.sq; });
     // a card switched off from the start (Highest Dungeon without a rook): its HP and speed do not count
     offAdjust(run, F, null);
@@ -504,6 +509,22 @@
     n = rule(run, null, 'mole');
     var pawns = F.pieces.filter(function (p) { return p.t === 'p' && !p.leader; });
     for (i = 0; i < n && pawns.length; i++) pawns.splice(Math.floor(rnd() * pawns.length), 1)[0].spy = 1;
+  }
+  /* The Jester: one pawn wears the hat. It also steps diagonally and its clock is 2 turns shorter. When it dies, is
+     promoted or changes sides, the hat goes to the pawn nearest to it (none left: the hat is gone for the floor). */
+  var JESTER_SPD = 2;
+  function hatOn(p) { p.jester = 1; p.spd = Math.max(1, p.spd - JESTER_SPD); p.tm = Math.min(p.tm, p.spd); }
+  function passHat(run, F, from, ev) {
+    if (!rule(run, F, 'hat')) return;
+    var next = F.pieces.filter(function (x) { return x.t === 'p' && !x.jester && !x.leader && !x.dying; }).sort(function (a, b) { return cheb(a.sq, from) - cheb(b.sq, from) || a.id - b.id; })[0];
+    if (!next) { ev.push({ e: 'hat', from: from, sq: -1 }); return; }
+    hatOn(next);
+    ev.push({ e: 'hat', id: next.id, from: from, sq: next.sq });
+  }
+  // Fool Companion: the king the jester stays with (none: the leader is gone, or the jester is the leader itself)
+  function companionOf(run, F, p) {
+    if (!p.jester || p.t !== 'p' || p.leader || !has(run, 'fool')) return null;
+    return F.pieces.find(function (x) { return x.leader; }) || null;
   }
   // a black piece that fights for the king: it moves on the White army's clock, at its own kind's speed
   function allyOf(F, t, sq) { return { id: F.nextId++, t: t, sq: sq, spd: BASE_SPD[t] || 3, tm: BASE_SPD[t] || 3, ally: true }; }
@@ -576,6 +597,11 @@
             out.push(q);
             if (p.first && has(run, 'assault') && dirs[i][0] === 1) { var q2 = at(r + 2, f); if (q2 >= 0 && !occupied(F, q2) && !(moat && crossesMoat(p.sq, q2))) out.push(q2); }
           }
+          // The Jester: the jester steps diagonally too (Fool Companion: one square any way)
+          if (p.jester && has(run, 'jester')) (has(run, 'fool') ? KG : DIAG).forEach(function (dd) {
+            var q1 = at(r + dd[0], f + dd[1]);
+            if (q1 >= 0 && !occupied(F, q1) && out.indexOf(q1) < 0) out.push(q1);
+          });
           if (has(run, 'lightfoot')) KG.forEach(function (dd) { // Lightfoot: over a piece next to it, any way
             var q1 = at(r + dd[0], f + dd[1]), q3 = at(r + 2 * dd[0], f + 2 * dd[1]);
             if (q1 >= 0 && q3 >= 0 && occupied(F, q1) && !occupied(F, q3) && out.indexOf(q3) < 0 && !(moat && crossesMoat(p.sq, q3))) out.push(q3);
@@ -815,11 +841,16 @@
         F.heirs--;
         var heir = heirs.sort(function (a, b) { return a.sq - b.sq; })[0];
         heir.leader = true;
-        if (has(run, 'heirKing')) { heir.t = 'k'; heir.max = hpFor(run, 'k', true); heir.hp = heir.max; heir.spd = spdFor(run, 'k', true); }
+        if (has(run, 'heirKing')) { heir.t = 'k'; heir.max = hpFor(run, 'k', true); heir.hp = heir.max; heir.spd = spdFor(run, 'k', true); if (heir.jester) { heir.jester = 0; passHat(run, F, heir.sq, ev); } }
         ev.push({ e: 'heir', id: heir.id, sq: heir.sq, t: heir.t });
       } else { F.over = 'won'; F.leaderSq = p.sq; ev.push({ e: 'cleared' }); }
     } else goalCheck(run, F, p.sq, ev);
     if (F.over) return;
+    // the jester: Fool Companion gives an extra turn for it, and the hat goes on to the nearest pawn
+    if (p.jester) {
+      if (has(run, 'foolTurn')) { F.extra = true; ev.push({ e: 'fool', sq: p.sq }); }
+      passHat(run, F, p.sq, ev);
+    }
     if (F.orb === p.id) F.orb = -1;
     if (F.strafe === p.id) F.strafe = -1;
     // Low-Cost Disguise: a dead pawn, and the king goes unseen for 2 turns (4 with the card twice)
@@ -1095,6 +1126,7 @@
     var a = allyOf(F, p.t, p.sq);
     F.allies = F.allies || []; F.allies.push(a);
     ev.push({ e: 'convert', id: p.id, ally: a.id, t: p.t, sq: p.sq });
+    if (p.jester) { p.jester = 0; passHat(run, F, p.sq, ev); }
     goalCheck(run, F, p.sq, ev);
     offAdjust(run, F, ev);
   }
@@ -1377,6 +1409,7 @@
     var hp = hpFor(run, t, p.leader);
     p.hp = Math.max(1, Math.min(p.hp + hp - p.max, hp)); p.max = hp; p.t = t; p.spd = spdFor(run, t, p.leader); p.tm = Math.min(p.tm, p.spd);
     ev.push({ e: 'promote', id: p.id, t: t });
+    if (p.jester) { p.jester = 0; passHat(run, F, p.sq, ev); } // a promoted jester passes the hat (its speed is its new kind's)
     if (p.spy && has(run, 'mole') && !p.leader) convert(run, F, p, ev); // The Mole: a spy turns black when it promotes
     flipOn(run, F, 'promote', ev);
     if (has(run, 'onboarding')) unflip(run, F, 'welcome', ev);
@@ -1403,6 +1436,18 @@
   function choose(run, F, p, strat, rnd) {
     var food = prey(run, F, p), to = reach(run, F, p, true).concat(food);
     if (!to.length) return -1;
+    // Fool Companion: the jester keeps to its king's side; next to him already, it moves only to give check
+    var lord = !p.scared && companionOf(run, F, p);
+    if (lord) {
+      var save0 = p.sq, near = function (q0) { return -10 * Math.max(0, cheb(q0, lord.sq) - 1); }, stay = near(p.sq) + 1, pickQ = -1;
+      for (var k0 = 0; k0 < to.length; k0++) {
+        p.sq = to[k0];
+        var v0 = near(to[k0]) + (reach(run, F, p, false).indexOf(F.king) >= 0 ? 4 : 0) + (food.indexOf(to[k0]) >= 0 ? 3 : 0) + rnd() * 0.5;
+        if (v0 > stay) { stay = v0; pickQ = to[k0]; }
+      }
+      p.sq = save0;
+      return pickQ;
+    }
     // the squares the king could flee to, and his flagstones (the army keeps them covered)
     var st = stats(run, F), kq = F.king, flight = KG.map(function (d) { return at(row(kq) + d[0], col(kq) + d[1]); }).concat(F.stones || []).filter(function (q) { return q >= 0 && !occupied(F, q); });
     var best = -1, bestV = -1e9, save = p.sq, scared = p.scared;

@@ -16,7 +16,17 @@
    ranks changes from battle to battle. Pieces lost in a battle are back for the next one, the Glass Queen (and the
    Mirror Queen) excepted. The King taken ends the run. A draw gives nothing (a boss is fought again).
 
-   Everything random comes from the run's own generator, whose state is saved, so a reload cannot reroll anything. */
+   Everything random comes from the run's own generator, whose state is saved, so a reload cannot reroll anything.
+
+   The Ouroboros Boons (open after the Coven has been beaten once): the game's difficulty, 0 to 30 points. Each boon
+   the player gives up makes the run harder by its points (the wiki's table): a starting relic turned off (the sigil 2,
+   the bell 1, the Finisher 4, the angel 2; the Carnival mask may be turned on for 0), less starting gold (200: 1, none:
+   2), fewer starting Rewinds (2: 1, none: 2), higher prices (+25%: 2, +50%: 4), more enemy units (+25%: 3, +50%: 7)
+   and relics for the enemy (one: 3, two: 6). All of them together are 30.
+
+   Infinity: after the Coven, the run may go on, battle after battle, until the King falls. Every second battle is at
+   a place with a reward (recruits, upgrades, relics up to eight, the obelisks, shops); the enemy armies grow and get
+   better units, and every ten battles the enemy has one more relic (up to eight). The deepest level is kept. */
 (function (root) {
   'use strict';
   var R = root.Rules || (typeof require !== 'undefined' ? require('./rules.js') : null);
@@ -96,15 +106,18 @@
     { name: 'Kingdom of Thessalonia', boss: 'The Capital', witch: ['ё'], witchName: 'Edea, the Witch Queen' },
     { name: 'Marsh of Madness', boss: 'Tower of Trickery', witch: ['я'], witchName: 'Tabitha the Deceptive' },
     { name: 'Ridge of Ruin', boss: 'Castle of the Coven', witch: ['ь'], witchName: 'Andromeda of the Stars' },
-    { name: 'Castle of the Coven', boss: 'The Coven', witch: ['ё', 'я', 'ь'], witchName: 'the Coven' }
+    { name: 'Castle of the Coven', boss: 'The Coven', witch: ['ё', 'я', 'ь'], witchName: 'the Coven' },
+    { name: 'Infinity', boss: '', witch: [], witchName: '', inf: true } // after the Coven: on and on (act 4)
   ];
+  var INF_ACT = 4;
   var PLACES = {
     recruit: { name: 'Training grounds', text: 'Win the battle, then recruit a unit: two for free and one for gold' },
     upgrade: { name: 'Armory', text: 'Win the battle, then upgrade one of your units' },
     ruins: { name: 'Ruins', text: 'Win the battle, then take a relic' },
     shop: { name: 'Shop', text: 'Win the battle, then buy items' },
     obelisk: { name: 'Sacrificial obelisks', text: 'Win the battle, then give something up for something better' },
-    boss: { name: 'Boss', text: 'A witch and her army. Pays gold only' }
+    boss: { name: 'Boss', text: 'A witch and her army. Pays gold only' },
+    fight: { name: 'Battlefield', text: 'Win the battle for its gold, then pick the next place' } // Infinity: the battle between two rewards
   };
   var PLACE_WEIGHTS = [['recruit', 30], ['upgrade', 20], ['ruins', 17], ['shop', 18], ['obelisk', 15]];
   /* Relics: kept for the whole run. premium ones cost gold in the Ruins or come from the obelisks. Those that change
@@ -184,6 +197,51 @@
   };
   var ITEM_IDS = Object.keys(ITEMS);
   function has(run, id) { return run.relics.indexOf(id) >= 0; }
+
+  /* ---------- the Ouroboros Boons ---------- */
+  // the starting relics and what turning each off adds (the Carnival mask is off at the start and adds nothing)
+  var START_RELICS = ['sigil', 'bell', 'finisher', 'angel'];
+  var BOON_RELICS = { sigil: 2, bell: 1, finisher: 4, angel: 2, carnival: 0 };
+  // the others: what each level is and what it adds; level 0 is the game without boons given up
+  var BOONS = [
+    { id: 'gold', name: 'Starting gold', levels: [500, 200, 0], cost: [0, 1, 2] },
+    { id: 'rewinds', name: 'Starting Rewinds', levels: [5, 2, 0], cost: [0, 1, 2] },
+    { id: 'prices', name: 'Prices', levels: [0, 25, 50], cost: [0, 2, 4] },  // percent more for units, items and relics
+    { id: 'units', name: 'Enemy units', levels: [0, 25, 50], cost: [0, 3, 7] }, // percent more points in an enemy army
+    { id: 'erelics', name: 'Enemy relics', levels: [0, 1, 2], cost: [0, 3, 6] } // relics the enemy has in every battle
+  ];
+  var MAX_DIFF = 30;
+  function boonDef(id) { for (var i = 0; i < BOONS.length; i++) if (BOONS[i].id === id) return BOONS[i]; return null; }
+  // A boons setting, checked and filled up: { relics: { sigil: true, ... carnival: false }, gold: 0..2, ... }
+  function normBoons(b) {
+    b = b && typeof b === 'object' ? b : {};
+    var out = { relics: {} }, rl = b.relics && typeof b.relics === 'object' ? b.relics : {};
+    Object.keys(BOON_RELICS).forEach(function (id) { out.relics[id] = id === 'carnival' ? rl[id] === true : rl[id] !== false; });
+    BOONS.forEach(function (d) { var v = +b[d.id]; out[d.id] = v === 1 || v === 2 ? v : 0; });
+    return out;
+  }
+  function difficulty(b) {
+    b = normBoons(b);
+    var d = 0;
+    START_RELICS.forEach(function (id) { if (!b.relics[id]) d += BOON_RELICS[id]; });
+    BOONS.forEach(function (x) { d += x.cost[b[x.id]]; });
+    return d;
+  }
+  // the boons of a run (a run from before the boons has none given up)
+  function boonsOf(run) { return run && run.boons ? run.boons : normBoons(null); }
+  function boonLevel(run, id) { return boonDef(id).levels[boonsOf(run)[id]]; }
+  function boonsOpen(M) { return !!(M && M.runs && (M.runs.wins || 0) > 0); }
+  // what a price is with the Prices boon
+  function priced(run, p) { var up = boonLevel(run, 'prices'); return up ? Math.round(p * (100 + up) / 100) : p; }
+  // A run won against the Coven: its boons count as beaten (the hardest level of each, the highest difficulty)
+  function boonsBeaten(M, run) {
+    var R0 = M.runs, b = boonsOf(run), d = difficulty(b);
+    if (!R0.beaten || typeof R0.beaten !== 'object') R0.beaten = {};
+    START_RELICS.forEach(function (id) { if (!b.relics[id]) R0.beaten[id] = 1; });
+    BOONS.forEach(function (x) { if (b[x.id] > (R0.beaten[x.id] || 0)) R0.beaten[x.id] = b[x.id]; });
+    if (d > (R0.boonBest || 0)) R0.boonBest = d;
+    if (d >= MAX_DIFF) R0.hunter = true;
+  }
   function addItem(run, id, n) { run.items[id] = (run.items[id] || 0) + (n || 1); if (id === 'rewind') { run.rewinds += run.items.rewind; delete run.items.rewind; } }
 
   /* ---------- the map ---------- */
@@ -286,12 +344,15 @@
   }
 
   /* ---------- a run ---------- */
-  function newRun(M, seed, units) {
-    var r = rng((seed ^ 0x51ed27) >>> 0);
+  function newRun(M, seed, units, boons) {
+    var r = rng((seed ^ 0x51ed27) >>> 0), b = normBoons(boons);
+    var relics = START_RELICS.filter(function (id) { return b.relics[id]; });
+    if (b.relics.carnival) relics.push('carnival');
     var run = {
       v: VERSION, seed: seed >>> 0, rng: 0, act: 0, map: null, at: null, done: [], won: 0,
-      gold: 500, rewinds: 5, relics: ['sigil', 'bell', 'finisher', 'angel'], items: {},
-      army: startArmy(units), battle: null, reward: null, edit: null, over: null, ticket: false, started: Date.now()
+      gold: boonDef('gold').levels[b.gold], rewinds: boonDef('rewinds').levels[b.rewinds], relics: relics, items: {},
+      army: startArmy(units), battle: null, reward: null, edit: null, over: null, ticket: false, started: Date.now(),
+      boons: b, diff: difficulty(b), inf: null
     };
     run.map = genMap(r, 0);
     run.rng = r.s;
@@ -319,6 +380,25 @@
     if (act === 3) return 36 + 14; // the Coven: the three witches and an escort
     var base = [6, 16, 25][act];
     return boss ? base + 2 * 4 + 4 : base + 2 * row;
+  }
+  // Infinity: the points of an enemy army at level n (battles won there), from a little over the Coven's escort up
+  function infLimit(n) { return 34 + 2 * n; }
+  // how many relics the enemy has: the boon's, and in Infinity one more every ten battles; at most eight
+  function enemyRelicCount(run) { return Math.min(8, boonLevel(run, 'erelics') + (run.inf ? Math.floor(run.inf.level / 10) : 0)); }
+  /* The relics an enemy can have: those the rules play for either side. Not the ones that count turns (the Marching
+     boots, the Cursed staff), nor those that only matter for gold, the map or the player's own items. A unit's relic
+     only when the army has such a unit, a terrain's relic only on such a terrain. */
+  var ENEMY_RELICS = ['axe', 'wheel', 'heavyarmor', 'grail', 'vestments', 'sceptre', 'carrots', 'stiletto', 'tabi', 'horseshoes', 'daggers', 'terraform', 'whiteflag', 'medal', 'fence', 'wrecking', 'feather', 'helmet', 'totem'];
+  function enemyRelicPool(units, terrain) {
+    var t = terrain || {};
+    return ENEMY_RELICS.filter(function (id) {
+      var u = RELICS[id].units;
+      if (u) return units.some(function (l) { return u.indexOf(String(l).toLowerCase()) >= 0; });
+      if (id === 'fence') return !!(t.portals && t.portals.length === 2);
+      if (id === 'wrecking') return !!(t.walls && t.walls.length);
+      if (id === 'helmet') return !!(t.bombs && t.bombs.length);
+      return true;
+    });
   }
   function botFor(run, r) { var lv = Math.round(0.33 * run.won + 0.5 + (r.next() - 0.5)); return 'b' + Math.max(0, Math.min(9, lv)); }
   function terrainFor(act, row, r) {
@@ -352,11 +432,14 @@
     return { side: 'w', pw: { w: null, b: null }, freeArmy: true, kingCapture: true, terrain: { walls: (t.walls || []).map(sq), water: (t.water || []).map(sq), portals: (t.portals || []).map(sq), bombs: (t.bombs || []).map(sq) } };
   }
   // the relics the rules play with, for the player's side (powers .ou); null when none
-  function battleFlags(run) {
-    var ou = {}, any = false;
-    RULE_RELICS.forEach(function (id) { if (has(run, id)) { ou[id] = true; any = true; } });
-    if (has(run, 'medal')) { ou.medal = {}; Object.keys(UPGRADE).forEach(function (k) { if (k !== 'k') ou.medal[k] = UPGRADE[k]; }); any = true; }
-    if (has(run, 'carnival')) { ou.carnival = RECRUITS.map(function (x) { return x[0]; }).filter(function (l) { return TIER3.indexOf(l) < 0; }); any = true; }
+  function battleFlags(run) { return flagsOf(run.relics); }
+  // the enemy's relics in the battle, for its side (powers .ou of the bot); null when it has none
+  function enemyFlags(run) { return run.battle && run.battle.erelics ? flagsOf(run.battle.erelics) : null; }
+  function flagsOf(list) {
+    var ou = {}, any = false, on = function (id) { return list.indexOf(id) >= 0; };
+    RULE_RELICS.forEach(function (id) { if (on(id)) { ou[id] = true; any = true; } });
+    if (on('medal')) { ou.medal = {}; Object.keys(UPGRADE).forEach(function (k) { if (k !== 'k') ou.medal[k] = UPGRADE[k]; }); any = true; }
+    if (on('carnival')) { ou.carnival = RECRUITS.map(function (x) { return x[0]; }).filter(function (l) { return TIER3.indexOf(l) < 0; }); any = true; }
     return any ? ou : null;
   }
   // the player's formation moved along the first two ranks by dx files
@@ -381,24 +464,39 @@
     return res && isFinite(res.score) ? res.score : 0;
   }
   function dealBattle(run, id) {
-    var p = place(run, id), r = rng(run.rng), boss = p.type === 'boss', act = run.act, A = ACTS[act];
-    var stage = stageOf(act, p.row), limit = limitOf(act, p.row, boss), units = boss ? A.witch.slice() : [];
+    var p = place(run, id), r = rng(run.rng), boss = p.type === 'boss', act = run.act, A = ACTS[act], inf = !!run.inf;
+    var stage = inf ? 3 : stageOf(act, p.row), limit = inf ? infLimit(run.inf.level) : limitOf(act, p.row, boss), units = boss ? A.witch.slice() : [];
     var pool = POOLS[stage], left = limit - units.reduce(function (a, l) { return a + points(l); }, 0); // the witches count
-    for (var tries = 0; tries < 60 && units.length < 7; tries++) {
+    // the Enemy units boon: more points for the army besides the witches (and room for more units)
+    var more = boonLevel(run, 'units'), most = 7 + (more ? 2 * boonsOf(run).units : 0);
+    if (more) { var plus = Math.round(left * more / 100); limit += plus; left += plus; }
+    // Infinity: the deeper, the better the units (the weakest are drawn again)
+    var least = inf ? Math.min(9, 1 + Math.floor(run.inf.level / 6)) : 0;
+    for (var tries = 0; tries < 60 && units.length < most; tries++) {
       var l = r.weighted(pool), v = points(l);
+      if (least && v < least && tries < 45) continue;
       if (v > left + 1) { if (left <= 1) break; continue; }
       units.push(l); left -= v;
       if (left <= 0) break;
     }
     if (!units.length) units.push('s');
     var terrain = boss && act === 3 ? null : terrainFor(act, p.row, r), cfg = cfgFor(terrain, run);
+    // the enemy's relics (the Enemy relics boon, Infinity), dealt from those that fit its army and the terrain
+    var erelics = [], nRel = enemyRelicCount(run);
+    if (nRel) {
+      var epool = enemyRelicPool(units, terrain);
+      while (erelics.length < nRel && epool.length) { var er = r.pick(epool); epool.splice(epool.indexOf(er), 1); erelics.push(er); }
+      if (erelics.length) cfg.pw.b = { ou: flagsOf(erelics) };
+    }
+    // the enemy's formation: four files wide, more when the army is bigger (the Enemy units boon)
+    var width = Math.max(4, Math.min(8, Math.ceil((units.length + 1) / 2)));
     // both formations: the player's on the first two ranks, the enemy's (the General and its units) on the last two,
     // each somewhere along its ranks. Dealt again until no King can be taken on the first move; up to eight layouts are
     // rated and the most even one kept (the search's eye, so a stage is never lost or won before it starts).
     var best = null, bestScore = Infinity;
     for (var k = 0, rated = 0; k < 60 && rated < 6; k++) {
-      var dx = r.int(5), ex = r.int(5), cells = [];
-      for (var c = 0; c < 8; c++) cells.push(FILES[ex + (c % 4)] + (c < 4 ? '8' : '7'));
+      var dx = r.int(5), ex = r.int(9 - width), cells = [];
+      for (var c = 0; c < 2 * width; c++) cells.push(FILES[ex + (c % width)] + (c < width ? '8' : '7'));
       var black = [], order = ['k'].concat(units.slice().sort(function (a, b) { return (PAWNISH[a] ? 1 : 0) - (PAWNISH[b] ? 1 : 0); }));
       var freeC = cells.filter(function (q) { return !terrain || (terrain.walls.indexOf(q) < 0 && (terrain.bombs || []).indexOf(q) < 0); });
       for (var i = 0; i < order.length && freeC.length; i++) {
@@ -425,6 +523,7 @@
       title: boss ? (act === 3 ? 'The Coven' : A.witchName) : (lead ? 'Led by ' + (/^[AEIO]/.test(title(lead)) ? 'an ' : 'a ') + title(lead) : 'A small band'),
       reward: boss ? 400 : 200
     };
+    if (erelics.length) b.erelics = erelics;
     // relics that act at the start of a battle
     if (has(run, 'shovel')) {
       var spots = [];
@@ -460,7 +559,16 @@
     consume(run, info.used);
     if (res === 'l') {
       run.over = { won: false, act: run.act, battles: run.won, date: Date.now() };
-      M.runs.history.unshift({ cleared: run.won, act: run.act, date: Date.now(), army: run.army.map(function (x) { return x.slice(); }) });
+      if (run.inf) {
+        // the end of Infinity: the run's line (written when the Coven fell) gets the level reached
+        var line = M.runs.history.filter(function (x) { return x.id === run.started && x.won; })[0];
+        if (line) { M.runs.history.splice(M.runs.history.indexOf(line), 1); line.cleared = run.won; line.inf = run.inf.level; line.army = run.army.map(function (x) { return x.slice(); }); M.runs.history.unshift(line); }
+        else M.runs.history.unshift({ id: run.started, cleared: run.won, act: 4, won: true, inf: run.inf.level, diff: run.diff || 0, date: Date.now(), army: run.army.map(function (x) { return x.slice(); }) });
+        if (M.runs.history.length > 30) M.runs.history.length = 30;
+        M.run = null;
+        return { outcome: 'over', inf: run.inf.level };
+      }
+      M.runs.history.unshift({ id: run.started, cleared: run.won, act: run.act, diff: run.diff || 0, date: Date.now(), army: run.army.map(function (x) { return x.slice(); }) });
       if (M.runs.history.length > 30) M.runs.history.length = 30;
       M.run = null;
       return { outcome: 'over' };
@@ -472,11 +580,12 @@
       var i = run.army.findIndex(function (x) { return x[1].toLowerCase() === lo; });
       if (i >= 0) run.army.splice(i, 1);
     });
-    if (res === 'f') { run.done.push(b.id); run.at = b.id; run.battle = null; return { outcome: 'fled' }; } // a Smoke bomb: on, with nothing
+    if (res === 'f') { run.done.push(b.id); run.at = b.id; run.battle = null; infOn(run); return { outcome: 'fled' }; } // a Smoke bomb: on, with nothing
     if (res === 'd') {
       if (b.boss) { run.battle = null; run.battle = dealBattle(run, b.id); return { outcome: 'again' }; } // a boss is fought again
       run.done.push(b.id); run.at = b.id; run.battle = null;
-      if (has(run, 'secretkey')) { run.reward = dealReward(run, b); return { outcome: 'draw-reward' }; }
+      if (has(run, 'secretkey') && b.type !== 'fight') { run.reward = dealReward(run, b); infOn(run); return { outcome: 'draw-reward' }; }
+      infOn(run);
       return { outcome: 'draw' };
     }
     // a win: the gold, then the place's reward
@@ -492,11 +601,21 @@
     run.won++;
     if (run.won > M.runs.best) { M.runs.best = run.won; M.runs.bestDate = Date.now(); M.runs.bestArmy = run.army.map(function (x) { return x.slice(); }); }
     run.done.push(b.id); run.at = b.id; run.battle = null;
+    if (run.inf) {
+      // Infinity: one level deeper; the deepest is kept (with the difficulty it was played at)
+      run.inf.level++;
+      if (run.inf.level > (M.runs.infBest || 0)) { M.runs.infBest = run.inf.level; M.runs.infDiff = run.diff || 0; M.runs.infDate = Date.now(); }
+      run.reward = b.type === 'fight' ? { kind: 'gold', gold: gold } : dealReward(run, b);
+      run.reward.gold = gold;
+      infOn(run);
+      return { outcome: 'cleared', gold: gold, inf: run.inf.level };
+    }
     if (b.boss) {
       if (run.act === 3) {
         run.over = { won: true, act: 3, battles: run.won, date: Date.now() };
         M.runs.wins = (M.runs.wins || 0) + 1;
-        M.runs.history.unshift({ cleared: run.won, act: 4, won: true, date: Date.now(), army: run.army.map(function (x) { return x.slice(); }) });
+        boonsBeaten(M, run);
+        M.runs.history.unshift({ id: run.started, cleared: run.won, act: 4, won: true, diff: run.diff || 0, date: Date.now(), army: run.army.map(function (x) { return x.slice(); }) });
         run.reward = { kind: 'gold', gold: gold, boss: true, last: true };
         return { outcome: 'won', gold: gold };
       }
@@ -516,9 +635,43 @@
     run.rng = r.s;
   }
 
+  /* ---------- Infinity ---------- */
+  /* A stretch of Infinity: a battlefield (gold only), then two or three places with a reward to pick from. When the
+     last of them is behind, the next stretch is dealt. Ruins only while the run has fewer than eight relics. */
+  function genInf(r, run) {
+    var types = PLACE_WEIGHTS.filter(function (x) { return x[0] !== 'ruins' || run.relics.length < 8; }), n = 2 + (r.next() < 0.5 ? 1 : 0), picks = [];
+    for (var t = 0; picks.length < n && t < 40; t++) { var ty = r.weighted(types); if (picks.indexOf(ty) < 0) picks.push(ty); }
+    var hi = picks.map(function (ty, k) { return { id: 'n' + (k + 1), row: 1, x: (k + 0.5) / picks.length, type: ty, next: [] }; });
+    var lo = [{ id: 'n0', row: 0, x: 0.5, type: 'fight', next: hi.map(function (p) { return p.id; }) }];
+    return { rows: [lo, hi], boss: null, inf: true };
+  }
+  // after a battle in Infinity: the next stretch once the place won was the last of this one
+  function infOn(run) {
+    if (!run.inf) return;
+    var p = place(run, run.at);
+    if (p && p.next.length) return;
+    var r = rng(run.rng);
+    run.map = genInf(r, run);
+    run.at = null; run.done = [];
+    run.rng = r.s;
+  }
+  // Into Infinity, once the Coven has fallen (the run's win is already counted)
+  function startInfinity(M) {
+    var run = M.run;
+    if (!run || !run.over || !run.over.won || run.inf) return false;
+    run.over = null; run.reward = null; run.battle = null; run.edit = null;
+    run.act = INF_ACT;
+    run.inf = { level: 0, started: Date.now() };
+    var r = rng(run.rng);
+    run.map = genInf(r, run);
+    run.at = null; run.done = [];
+    run.rng = r.s;
+    return true;
+  }
+
   /* ---------- rewards ---------- */
-  function unitPrice(run, l) { var p = PRICE[String(l).toLowerCase()] || 0; return has(run, 'cake') ? Math.round(p / 2) : p; }
-  function itemPrice(run, id, r) { var p = Math.round(ITEMS[id].price * (0.9 + 0.2 * r.next())); return has(run, 'discount') ? Math.round(p / 2) : p; }
+  function unitPrice(run, l) { var p = priced(run, PRICE[String(l).toLowerCase()] || 0); return has(run, 'cake') ? Math.round(p / 2) : p; }
+  function itemPrice(run, id, r) { var p = priced(run, Math.round(ITEMS[id].price * (0.9 + 0.2 * r.next()))); return has(run, 'discount') ? Math.round(p / 2) : p; }
   function dealReward(run, b) {
     var r = rng(run.rng), out;
     if (b.type === 'recruit') {
@@ -544,7 +697,7 @@
         run.ticket = false;
       } else {
         while (rel.length < Math.min(2, normal.length)) { var u = r.pick(normal); if (rel.every(function (x) { return x.id !== u; })) rel.push({ id: u, price: 0 }); }
-        if (prem.length) { var pr = r.pick(prem); rel.push({ id: pr, price: PREMIUM_PRICE[pr] }); }
+        if (prem.length) { var pr = r.pick(prem); rel.push({ id: pr, price: priced(run, PREMIUM_PRICE[pr]) }); }
       }
       out = rel.length ? { kind: 'ruins', offers: rel } : { kind: 'gold', gold350: true };
     } else if (b.type === 'shop') {
@@ -661,7 +814,9 @@
     rng: rng, genMap: genMap, place: place, options: options, newRun: newRun, fromOld: fromOld, startOk: startOk, startOffer: startOffer, startArmy: startArmy,
     travel: travel, dealBattle: dealBattle, battleFlags: battleFlags, RULE_RELICS: RULE_RELICS, battleFen: battleFen, battleCfg: battleCfg, rewardAfter: rewardAfter, settle: settle, nextAct: nextAct,
     take: take, leave: leave, restart: restart, placeRecruit: placeRecruit, cancelPlace: cancelPlace, freeCells: freeCells, movePiece: movePiece, fits: fits, useRewind: useRewind,
-    has: has, addItem: addItem, upgradeOf: upgradeOf, downgradeOf: downgradeOf, points: points, title: title, tierOf: tierOf, unitPrice: unitPrice, sq: sq, sqName: sqName, shifted: shifted, GLASS: GLASS
+    has: has, addItem: addItem, upgradeOf: upgradeOf, downgradeOf: downgradeOf, points: points, title: title, tierOf: tierOf, unitPrice: unitPrice, sq: sq, sqName: sqName, shifted: shifted, GLASS: GLASS,
+    BOONS: BOONS, BOON_RELICS: BOON_RELICS, START_RELICS: START_RELICS, MAX_DIFF: MAX_DIFF, normBoons: normBoons, difficulty: difficulty, boonsOf: boonsOf, boonLevel: boonLevel, boonsOpen: boonsOpen,
+    ENEMY_RELICS: ENEMY_RELICS, enemyFlags: enemyFlags, flagsOf: flagsOf, enemyRelicCount: enemyRelicCount, INF_ACT: INF_ACT, infLimit: infLimit, startInfinity: startInfinity, genInf: genInf, limitOf: limitOf
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Ouro = api;

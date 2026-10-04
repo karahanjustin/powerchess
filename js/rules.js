@@ -599,7 +599,7 @@
     s.bombs = cfg.terrain && cfg.terrain.bombs ? cfg.terrain.bombs.filter(function (q) { return !board[q]; }) : [];
     s.boulders = []; s.ouTurns = 0; s.ouLock = -1; s.bottle = ''; s.knife = false; s.boomer = false; s.glide = false;
     var ou0 = powersOf(cfg, turn).ou;
-    if (ou0) { s.ouTurns = 1; if (ou0.boots) s.movesLeft = Math.max(s.movesLeft, 2); }
+    if (ou0) { if (ou0.cursed) s.ouTurns = 1; if (ou0.boots) s.movesLeft = Math.max(s.movesLeft, 2); } // the turns of the side with the staff only (the enemy may have relics too)
     s.helmets = cfg.traits && cfg.traits.helmets ? cfg.traits.helmets.filter(function (q) { return !!board[q] && !isRoyal(board[q]); }) : [];
     s.vests = cfg.traits && cfg.traits.vests ? cfg.traits.vests.filter(function (q) { return !!board[q] && !isRoyal(board[q]); }) : [];
     ['w', 'b'].forEach(function (c) { // the army-wide ones: the power-up puts them on at the start
@@ -1710,7 +1710,7 @@
   function ouTurnStart(n, cfg) {
     n.ouLock = -1; n.bottle = ''; n.knife = false;
     var nou = powersOf(cfg, n.turn).ou;
-    if (nou) { n.ouTurns = (n.ouTurns || 0) + 1; if (nou.cursed && n.ouTurns % 3 === 0) n.movesLeft = Math.max(n.movesLeft, 2); }
+    if (nou && nou.cursed) { n.ouTurns = (n.ouTurns || 0) + 1; if (n.ouTurns % 3 === 0) n.movesLeft = Math.max(n.movesLeft, 2); }
   }
   function passTurn(n, mover, cfg) {
     n.turn = other(mover); n.ep = -1; n.again = -1; n.movesLeft = 0;

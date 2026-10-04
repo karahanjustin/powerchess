@@ -540,7 +540,7 @@
   const KEY = 'powerchess_v1';
   let saved = {};
   try { saved = JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { saved = {}; }
-  const settings = Object.assign({ haptics: true, theme: 'green', pieces: 'cburnett', evalBar: true, legal: true, coords: true, sound: true, anim: true, premove: true, multiPremove: false, autoQueen: false, thinkMs: 3000, reviewMs: 700 }, saved.settings);
+  const settings = Object.assign({ music: true, haptics: true, theme: 'green', pieces: 'cburnett', evalBar: true, legal: true, coords: true, sound: true, anim: true, premove: true, multiPremove: false, autoQueen: false, thinkMs: 3000, reviewMs: 700 }, saved.settings);
   const setup = Object.assign({ bot: 'max', color: 'w', clock: 0, fen: R.START_FEN, engine: 'auto', mode: 'human', flipEach: true, kingCapture: false, variant: 'chess', customIni: Fairy.TEMPLATES[0].ini }, saved.setup);
   const noPowers = () => { const o = { double: 0, midasPerTurn: 1 }; POWER_KEYS.forEach((k) => { o[k] = false; }); return o; };
   setup.powers = Object.assign(noPowers(), saved.setup && saved.setup.powers);   // yours, or White's in a bot match
@@ -1533,7 +1533,33 @@
     if (tab !== from && !navFromPop) { try { history.pushState({ pc: tab }, ''); } catch (e) { /* no history */ } }
   }
 
+  /* the music of the moment (js/music.js): a run being played in Pawnbarian or Shotgun King, an Ouroboros King
+     battle; the boss version while a boss is on the board */
+  function musicMood() {
+    if (document.hidden) return null;
+    if (ui.tab === 'modes' && gmTab === 'pb' && PBM) {
+      const r = pbRun();
+      if (!r || r.over || (!r.F && !r.shop)) return null;
+      return r.F && r.F.enemies.some((e) => PBM.MONSTERS[e.kind].boss) ? 'pbboss' : 'pb';
+    }
+    if (ui.tab === 'modes' && gmTab === 'sk' && SKM) {
+      const r = skRun();
+      if (!r || !r.F || r.phase !== 'play') return null;
+      return r.floor >= SKM.BOSS_FLOOR || r.F.pieces.some((p) => p.boss) ? 'skboss' : 'sk';
+    }
+    if (ui.tab === 'play' && G && !G.over && runGame()) { const r = ouroRun(); return r && r.battle && r.battle.boss ? 'ouroboss' : 'ouro'; }
+    return null;
+  }
+  function updateMusic() {
+    if (!window.Music) return;
+    const mood = settings.music && settings.sound ? musicMood() : null;
+    if (!mood && !Music.mood) return;
+    const c = mood ? ac() : AC;
+    if (c) Music.play(c, mood);
+  }
+  document.addEventListener('visibilitychange', () => { try { updateMusic(); } catch (e) { /* no audio */ } });
   function renderAll(anims) {
+    try { updateMusic(); } catch (e) { /* no audio here */ }
     renderBoard(anims);
     renderBars();
     renderGame();
@@ -2303,7 +2329,7 @@
     const setPw = () => {
       pw.w = pw.b = null;
       if (R.anyPower(mine) || mine.ou || mine.firegem) pw[me] = mine; // The Ouroboros King's relics count too
-      if (theirs && R.anyPower(theirs)) pw[R.other(me)] = theirs;
+      if (theirs && (R.anyPower(theirs) || theirs.ou)) pw[R.other(me)] = theirs; // the enemy's relics in a run too
     };
     setPw();
     cfg.pw = pw;
@@ -2457,6 +2483,15 @@
     while (b === a) b = DAILY_POOL[Math.floor(rnd() * DAILY_POOL.length)];
     const day = new Date(key + 'T12:00:00').getDay();
     return { key: key, powers: [a, b], bot: DAILY_BOT[day], side: rnd() < 0.5 ? 'w' : 'b', day: day, seed: (h % 0x7ffffffe) + 1 };
+  }
+  // the same numbers for everyone on a day: a random source from the date and a word for the mode
+  function dayRandom(key, salt) {
+    let h = 2166136261;
+    const t = key + ':' + salt;
+    for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); }
+    const rnd = () => { h = (Math.imul(h, 1664525) + 1013904223) >>> 0; return h / 4294967296; };
+    rnd.seed = () => ((h >>> 0) % 0x7ffffffe) + 1;
+    return rnd;
   }
   function dailySpec(d) {
     const pw = noPowers();
@@ -3170,6 +3205,7 @@
   function ouroBar(bar, s, act) {
     const run = ouroRun(), b = run.battle, left = Ouro.rewardAfter(b, ouroMoves());
     bar.appendChild(h('div', 'prow ou-reward', '<b>Reward</b><span>' + num(left) + ' gold, 4 less a move' + (Ouro.has(run, 'bounty') ? ' (doubled)' : '') + '</span>'));
+    if (b.erelics) bar.appendChild(h('div', 'ou-chips ou-foe', '<span class="gm-lab">Enemy relics</span>' + b.erelics.map(relicChip).join('')));
     const btn = (label, on, enabled, click, text) => {
       const row = h('div', 'prow'), x = h('button', 'btn' + (on ? ' on' : ''), label);
       x.disabled = !enabled; x.onclick = click; x.title = text;
@@ -5087,7 +5123,7 @@
     const sq = evSq(e);
     if (sq < 0) return;
     if (e.pointerType === 'touch' && e.button === 0) {
-      if (ui.tab === 'modes' && gmTab === 'pb') { pbUi.hover = sq; pbHoverInfo(); modesDown(sq); return; }
+      if (ui.tab === 'modes' && gmTab === 'pb') { pbTouch(sq); return; }
       if (ui.tab === 'modes' && gmTab === 'sk') { touch.aim = 'sk'; skUi.hover = sq; renderArrows(); skHoverInfo(); return; }
       if (ui.tab === 'editor') { touch.lp = null; touch.last = { sq: -1, t: 0 }; editorDown(sq, e); return; } // no marks or double taps here: a held piece is a drag
       const now = performance.now();
@@ -5920,6 +5956,7 @@
       ['multiPremove', 'Multi-premoves', 'Queue several moves in a row. They are played one per turn, and if one is no longer possible the rest is dropped. A right click or a click on an empty square cancels them'],
       ['coords', 'Coordinates', ''],
       ['sound', 'Sounds', ''],
+      ['music', 'Music in the runs', 'A quiet tune in Pawnbarian, Shotgun King and the Ouroboros King battles, with its own for the bosses. Off when the sounds are off'],
       ['anim', 'Piece animation', ''],
       ['autoQueen', 'Always promote to a queen', 'Skips the promotion menu']
     ].concat(window.PWA && PWA.touch ? [['haptics', 'Vibration', 'A short buzz for moves, captures, checks and shots']] : []);
@@ -6029,7 +6066,7 @@
   const MODES_KEY = 'powerchess_modes';
   let MS = Modes.fresh(), msTimer = null, msSel = null, gmTab = 'home';
   let msPeek = null; // a piece kind whose card is open, picked from the army list or the reward offers
-  try { const t0 = localStorage.getItem('powerchess_gmtab'); gmTab = ['run', 'sk', 'pb', 'daily', 'dice', 'drawback', 'hex', 'shogi'].indexOf(t0) >= 0 ? t0 : 'home'; } catch (e) { /* first visit */ }
+  try { const t0 = localStorage.getItem('powerchess_gmtab'); gmTab = ['run', 'sk', 'pb', 'records', 'daily', 'dice', 'drawback', 'hex', 'shogi'].indexOf(t0) >= 0 ? t0 : 'home'; } catch (e) { /* first visit */ }
   // Hexagonal Chess settings, like Drawback Chess
   let hexSet = { bot: 'b3', side: 'w', match: null };
   try { hexSet = Object.assign(hexSet, JSON.parse(localStorage.getItem('powerchess_hexset')) || {}); } catch (e) { /* first visit */ }
@@ -6057,6 +6094,7 @@
   const saveDbSet = () => { try { localStorage.setItem('powerchess_dbset', JSON.stringify(dbSet)); } catch (e) { /* private mode */ } };
   try { MS = Modes.migrate(JSON.parse(localStorage.getItem(MODES_KEY))); } catch (e) { MS = Modes.fresh(); }
   function saveModes() {
+    try { checkAch(); } catch (e) { /* never in the way of saving */ }
     MS.rev = (MS.rev || 0) + 1;
     MS.updated = Date.now();
     try { localStorage.setItem(MODES_KEY, JSON.stringify(MS)); } catch (e) { /* private mode: the server copy still keeps it */ }
@@ -6168,6 +6206,9 @@
       if (Ouro.has(run, 'firegem')) pw.firegem = true;
       const ou = Ouro.battleFlags(run);
       if (ou) pw.ou = ou;
+      // the enemy's relics (the Enemy relics boon, Infinity): its own set of powers, which the bot plays with
+      const eo = Ouro.enemyFlags(run);
+      if (eo) { spec.powers2 = Object.assign(noPowers(), { ou: eo }); spec.ai = { anticipate: false, use: 'own' }; }
     }
     if (!leaveRunning('A game is still running. Starting this one counts as a resignation. Resign it?')) return;
     let g;
@@ -6270,7 +6311,8 @@
             : out === 'again' ? 'A draw: the boss battle is fought again.'
               : out === 'fled' ? 'You slip away in the smoke: no reward.'
                 : out === 'draw' || out === 'draw-reward' ? 'A draw: no gold' + (out === 'draw-reward' ? ', but the Secret key keeps the reward.' : ' and no reward.')
-                  : 'Your King has fallen. The run ends after ' + MS.runs.history[0].cleared + (MS.runs.history[0].cleared === 1 ? ' battle' : ' battles') + ' won.';
+                  : r && r.inf != null ? 'Your King has fallen at Infinity level ' + r.inf + '. The run ends after ' + MS.runs.history[0].cleared + ' battles won.'
+                    : 'Your King has fallen. The run ends after ' + MS.runs.history[0].cleared + (MS.runs.history[0].cleared === 1 ? ' battle' : ' battles') + ' won.';
       G.modeEnd = { kind: 'run', outcome: out === 'boss' || out === 'won' || out === 'draw-reward' || out === 'draw' || out === 'fled' ? 'cleared' : out };
     }
     saveModes();
@@ -6309,7 +6351,7 @@
   function modesView() {
     const run = MS.run;
     if (gmTab === 'hex') return { s: Hex.initial(), W: 11, H: 11, glyphs: {}, cfg: null, hex: true };
-    if (gmTab === 'daily' || gmTab === 'home') return { s: R.fromFen(R.START_FEN), W: 8, H: 8, glyphs: {}, cfg: null };
+    if (gmTab === 'daily' || gmTab === 'home' || gmTab === 'records') return { s: R.fromFen(R.START_FEN), W: 8, H: 8, glyphs: {}, cfg: null };
     if (gmTab === 'sk') return skView();
     if (gmTab === 'pb') return pbView();
     if (gmTab === 'shogi') return { s: R.fromFen(SHOGI_START, { side: 'w', freeArmy: true }), W: 9, H: 9, glyphs: Fairy.byId('shogi').glyphs, cfg: null };
@@ -6357,7 +6399,7 @@
   function modesBar(color) {
     const run = MS.run;
     if (gmTab === 'shogi') return color === 'w' ? { you: true, name: 'You', tag: 'Shogi' } : { you: false, name: sgSet.twoP ? 'Second player' : botLabel(botById(sgSet.bot), true).name, tag: sgSet.twoP ? '' : botLabel(botById(sgSet.bot), true).elo };
-    if (gmTab === 'home') return color === 'w' ? { you: true, name: 'You', tag: '' } : { you: false, name: 'Game Modes', tag: '' };
+    if (gmTab === 'home' || gmTab === 'records') return color === 'w' ? { you: true, name: 'You', tag: '' } : { you: false, name: 'Game Modes', tag: '' };
     if (gmTab === 'pb') { const r = pbRun(); return color === 'w' ? { you: true, name: PBM.HERO[r ? r.hero : pbUi.hero].name, tag: r ? r.hearts + ' of ' + r.maxHearts + ' Hearts' : '' } : { you: false, name: PBM.DUNGEON[r ? r.dungeon : pbUi.dungeon].name, tag: r ? pbFloorName(r) : '' }; }
     if (gmTab === 'dice') return color === 'w' ? { you: true, name: 'You', tag: num(MS.dice.credits) + ' credits' } : { you: false, name: 'Dice Arena', tag: 'pick a table' };
     // Shotgun King: the White army at the top, the Black King at the bottom (the bars go by colour, so it is turned round here)
@@ -6385,6 +6427,7 @@
   /* The Game Modes page: the two roguelike runs as big cards, the four other modes as tiles. A mode opens on its own
      page with a way back here. */
   const GM_ICON = {
+    records: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4h8v5a4 4 0 0 1-8 0zM8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M8.5 20h7M10 17h4v3h-4z"/></svg>',
     daily: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/><path d="M8.5 14.5l2.2 2.2 4.8-4.7"/></svg>',
     dice: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="3.5"/><g fill="currentColor" stroke="none"><circle cx="8.5" cy="8.5" r="1.5"/><circle cx="15.5" cy="15.5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="15.5" cy="8.5" r="1.5"/><circle cx="8.5" cy="15.5" r="1.5"/></g></svg>',
     drawback: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v5.5"/><circle cx="12" cy="16.5" r=".6" fill="currentColor"/></svg>',
@@ -6434,12 +6477,87 @@
     if (b) b.onchange = () => { sgSet.bot = b.value; saveSgSet(); renderAll(); };
     box.querySelectorAll('[data-sgside]').forEach((x) => { x.onclick = () => { sgSet.side = x.dataset.sgside; saveSgSet(); renderModes(); renderAll(); }; });
   }
+  /* ---------- Records: achievements, where the runs end, the runs one by one ----------
+     The roguelike modes log every finished run (MS.log; the Ouroboros King keeps its own MS.runs.history). The
+     achievements are read from the saved numbers, so progress made before they existed counts: the first look
+     grants those quietly, later ones are announced. */
+  function runLog(e) {
+    e.t = Date.now();
+    MS.log = MS.log || [];
+    MS.log.unshift(e);
+    if (MS.log.length > 200) MS.log.length = 200;
+  }
+  const pbConq = () => { const c = pbData().conquered || {}, out = []; Object.keys(c).forEach((h0) => Object.keys(c[h0]).forEach((dn) => out.push({ hero: h0, dungeon: dn, chain: c[h0][dn] }))); return out; };
+  const ACH = [
+    ['pb_tut', 'Lesson learned', 'Clear Tutorial Island in Pawnbarian', () => !!pbData().tutorial],
+    ['pb_first', 'Barbarian at the gates', 'Conquer a Pawnbarian dungeon', () => pbConq().length > 0],
+    ['pb_three', 'Three for three', 'Conquer all three Pawnbarian dungeons', () => ['goblin', 'golem', 'shrine'].every((dn) => pbConq().some((x) => x.dungeon === dn))],
+    ['pb_party', 'Full party', 'Conquer a dungeon with each of the six heroes', () => PBM && PBM.HEROES.every((h0) => pbConq().some((x) => x.hero === h0))],
+    ['pb_chain5', 'Heavy chains', 'Conquer a Pawnbarian dungeon on Chain V', () => pbConq().some((x) => x.chain >= 5)],
+    ['pb_chain10', 'Unchained', 'Conquer a Pawnbarian dungeon on Chain X', () => pbConq().some((x) => x.chain >= 10)],
+    ['pb_gaunt', 'Gauntlet runner', 'Reach floor 10 of the Gauntlet', () => (pbData().bestGauntlet || 0) >= 10],
+    ['pb_daily', 'Daily barbarian', 'Win a Pawnbarian daily run', () => !!pbData().dailyWon],
+    ['sk_first', 'Regicide', 'Win a Shotgun King run', () => skData().won > 0],
+    ['sk_rank5', 'Rank V', 'Win Shotgun King on rank 5', () => Object.keys(skData().wins || {}).some((r) => +r >= 5)],
+    ['sk_rank10', 'Rank X', 'Win Shotgun King on rank 10', () => Object.keys(skData().wins || {}).some((r) => +r >= 10)],
+    ['sk_rank20', 'The last rank', 'Win Shotgun King on rank 20', () => Object.keys(skData().wins || {}).some((r) => +r >= 20)],
+    ['sk_kills', 'Pellet storm', 'Break 500 pieces with the shotgun', () => (skData().kills || 0) >= 500],
+    ['sk_daily', 'Daily shells', 'Win a Shotgun King daily run', () => !!skData().dailyWon],
+    ['ou_first', 'First blood', 'Win a battle in an Ouroboros King run', () => (MS.runs.best || 0) >= 1],
+    ['ou_act', 'Act one', 'Get through the first act of the Ouroboros King', () => MS.runs.history.some((x) => x.won || x.act >= 1) || (ouroRun() && ouroRun().act >= 1)],
+    ['ou_win', 'The serpent bites', 'Win an Ouroboros King run', () => MS.runs.history.some((x) => x.won)],
+    ['dc_100', 'High roller', 'Hold 100 credits in the Dice Arena', () => (MS.dice.best || 0) >= 100],
+    ['dc_1000', 'The house', 'Hold 1000 credits in the Dice Arena', () => (MS.dice.best || 0) >= 1000],
+    ['dy_win', 'Daily duty', 'Win a Daily Challenge', () => Object.keys(daily).some((k) => daily[k].r === 'w')],
+    ['dy_week', 'A whole week', 'Win the Daily Challenge 7 days in a row', () => dailyStreak() >= 7],
+    ['hx_win', 'Six sides', 'Win a game of Hexagonal Chess', () => (MS.hex.won || 0) >= 1],
+    ['db_ten', 'Weakness is strength', 'Win 10 games of Drawback Chess', () => (MS.drawback.won || 0) >= 10]
+  ];
+  function checkAch() {
+    if (!PBM || !SKM) return;
+    const first = !MS.ach, got = MS.ach || (MS.ach = {}), fresh = [];
+    ACH.forEach((a) => { if (got[a[0]]) return; let ok = false; try { ok = a[3](); } catch (e) { ok = false; } if (ok) { got[a[0]] = Date.now(); if (!first) fresh.push(a); } });
+    fresh.forEach((a, i) => setTimeout(() => { toast('Achievement: ' + a[1]); snd('gold'); }, 400 + i * 1600));
+  }
+  const fmtDate = (t) => { const d = new Date(t); return d.getDate() + '.' + (d.getMonth() + 1) + '.' + d.getFullYear(); };
+  function recordsCard() {
+    checkAch();
+    const got = MS.ach || {};
+    let html = '<section class="gm-card rec"><div class="gm-head"><h2>Records</h2><div class="gm-credits"><b>' + ACH.filter((a) => got[a[0]]).length + '/' + ACH.length + '</b><span>achievements</span></div></div>';
+    html += '<h3 class="sk-h">Achievements</h3><div class="rec-ach">' + ACH.map((a) => '<div class="rec-a' + (got[a[0]] ? ' on' : '') + '"><i></i><b>' + a[1] + '</b><span>' + a[2] + '</span>' + (got[a[0]] ? '<em>' + fmtDate(got[a[0]]) + '</em>' : '') + '</div>').join('') + '</div>';
+    // where the runs end: per mode the floors (acts) the lost runs ended on, and what struck the last blow
+    const log = MS.log || [], bars = (title, counts, labels, extra) => {
+      const max = Math.max(1, ...counts);
+      return '<div class="rec-bars"><b>' + title + '</b><div class="rec-cols">' + counts.map((n, i) => '<div class="rec-col" title="' + labels[i] + ': ' + n + '"><u style="height:' + Math.round(n / max * 100) + '%"></u><em>' + n + '</em><span>' + labels[i] + '</span></div>').join('') + '</div>' + (extra || '') + '</div>';
+    };
+    const pbLost = log.filter((e) => e.m === 'pb' && !e.won && !e.quit && e.dungeon !== 'tutorial'), pbWon = log.filter((e) => e.m === 'pb' && e.won && e.dungeon !== 'tutorial').length;
+    const killers = {};
+    pbLost.forEach((e) => (e.by || []).forEach((k) => { killers[k] = (killers[k] || 0) + 1; }));
+    const top = Object.keys(killers).sort((a, b) => killers[b] - killers[a]).slice(0, 4).map((k) => (k === 'blight' ? 'Blight' : k === 'grasp' ? 'Void Grasp' : PBM.MONSTERS[k] ? PBM.MONSTERS[k].name : k) + ' ' + killers[k]);
+    const skLost = log.filter((e) => e.m === 'sk' && !e.won), skWon = log.filter((e) => e.m === 'sk' && e.won).length;
+    const ou = MS.runs.history || [];
+    html += '<h3 class="sk-h">Where your runs end</h3><p class="gm-fixed">Lost runs by the floor or act they ended on. Play a few runs and the balance can be tuned from these.</p><div class="rec-where">' +
+      bars('Pawnbarian', [1, 2, 3, 4, 5, 6, 7].map((f) => pbLost.filter((e) => !e.gauntlet && e.floor === f).length).concat([pbWon]), ['1', '2', '3', '4', '5', '6', '7', 'won'], top.length ? '<span class="rec-kill">Last blows: ' + top.join(', ') + '</span>' : '') +
+      bars('Shotgun King', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((f) => skLost.filter((e) => e.floor === f).length).concat([skWon]), ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', 'won']) +
+      bars('Ouroboros King', [0, 1, 2, 3].map((a) => ou.filter((x) => !x.won && x.act === a).length).concat([ou.filter((x) => x.won).length]), ['Act 1', 'Act 2', 'Act 3', 'Coven', 'won']) + '</div>';
+    // the runs, newest first
+    const rows = log.map((e) => ({ t: e.t, e: e })).concat(ou.map((x) => ({ t: x.date, o: x }))).sort((a, b) => b.t - a.t).slice(0, 40);
+    html += '<h3 class="sk-h">Recent runs</h3>' + (rows.length ? '<div class="rec-runs">' + rows.map((r) => {
+      let mode, what, res;
+      if (r.o) { mode = 'Ouroboros King'; what = r.o.cleared + (r.o.cleared === 1 ? ' battle won' : ' battles won'); res = r.o.won ? 'won' : (['Act 1', 'Act 2', 'Act 3', 'Coven'][r.o.act] || 'Act ' + (r.o.act + 1)); }
+      else if (r.e.m === 'pb') { const e = r.e; mode = 'Pawnbarian'; what = PBM.HERO[e.hero].name + ', ' + PBM.DUNGEON[e.dungeon].name + (e.dungeon === 'tutorial' ? '' : ', chain ' + ROMAN[e.chain]) + (e.daily ? ', daily' : ''); res = e.won ? (e.gauntlet ? 'won, Gauntlet ' + e.gauntlet : 'won') : e.quit ? 'left on floor ' + e.floor : e.gauntlet ? 'Gauntlet ' + e.gauntlet : 'floor ' + e.floor; }
+      else { const e = r.e; mode = 'Shotgun King'; what = SKM.GUN[e.gun] ? SKM.GUN[e.gun].name + ', rank ' + e.rank + (e.daily ? ', daily' : '') : 'rank ' + e.rank; res = e.won ? 'won' : 'floor ' + e.floor; }
+      const won = r.o ? r.o.won : r.e.won;
+      return '<div class="rec-run' + (won ? ' won' : '') + '"><em>' + fmtDate(r.t) + '</em><b>' + mode + '</b><span>' + what + '</span><i>' + res + '</i></div>';
+    }).join('') + '</div>' : '<p class="gm-fixed">No finished runs yet.</p>');
+    return html + '</section>';
+  }
   function gmHome() {
     const run = MS.run, sk = skData(), skr = sk.run, dkey = dayKeyOf(new Date()), drec = daily[dkey], streak = dailyStreak();
     const big = (tab, img, name, line, stat) => '<button class="gm-big" data-gmtab="' + tab + '"><i class="gm-art" style="background-image:' + img + '"></i><span class="gm-txt"><b>' + name + '</b><span>' + line + '</span></span><em>' + stat + '</em></button>';
     const tile = (tab, name, stat) => '<button class="gm-tile" data-gmtab="' + tab + '"><i class="gm-ic">' + GM_ICON[tab] + '</i><b>' + name + '</b><span>' + stat + '</span></button>';
     let html = '<div class="gm-home"><h3 class="gm-cat">Runs</h3>';
-    html += big('run', 'url(pieces/fairy/w_wyrm.svg)', 'Ouroboros King', 'Grow an army, stage by stage', ouroRun() ? 'Act ' + Math.min(4, ouroRun().act + 1) : MS.runs.best ? 'Best ' + MS.runs.best : '');
+    html += big('run', 'url(pieces/fairy/w_wyrm.svg)', 'Ouroboros King', 'Grow an army, stage by stage', ouroRun() ? (ouroRun().inf ? 'Infinity ' + ouroRun().inf.level : 'Act ' + Math.min(4, ouroRun().act + 1)) : MS.runs.best ? 'Best ' + MS.runs.best : '');
     html += big('sk', 'url(pieces/fairy/b_shotgunking.svg)', 'Shotgun King', 'One king, one shotgun', skr && skr.phase !== 'lost' && skr.phase !== 'won' ? 'Floor ' + Math.min(skr.floor, 12) : 'Rank ' + Math.min(skUi.rank, sk.maxRank));
     const pbr = pbRun();
     if (PBM) html += big('pb', 'url(' + PB_ART + 'h_pawnbarian.svg)', 'Pawnbarian', 'Chess cards against monsters', pbr && !pbr.over ? (pbr.gauntlet ? 'Gauntlet ' + pbr.gauntlet : 'Floor ' + pbr.floor) : pbData().won ? pbData().won + ' won' : '');
@@ -6450,6 +6568,7 @@
     html += tile('dice', 'Dice Arena', num(MS.dice.credits) + ' credits');
     html += tile('drawback', 'Drawback', 'A secret weakness');
     html += tile('hex', 'Hexagon', '91 hexagons');
+    html += tile('records', 'Records', ACH.filter((a) => (MS.ach || {})[a[0]]).length + ' of ' + ACH.length + ' achievements');
     return html + '</div></div>';
   }
   function renderModes() {
@@ -6481,6 +6600,7 @@
     if (gmTab === 'daily') html += dailyModeCard();
     if (gmTab === 'sk') html += skCard();
     if (gmTab === 'pb') html += pbCard();
+    if (gmTab === 'records') html += recordsCard();
     if (gmTab === 'shogi') html += shogiModeCard();
     box.innerHTML = html;
     // the card of the piece last clicked on the board, as in a game
@@ -6493,6 +6613,8 @@
      items, and whatever the run waits for: a reward to pick, a recruit to place, a battle to fight. The board shows the
      formation (files a to d of the first two ranks), to arrange before travelling, and the battle once it is dealt. */
   let ouSel = null, ouStart = [], obGet = null; // the place picked on the map, the units picked for a start, the obelisk's offer picked
+  let ouBoons = null; // the Ouroboros Boons picked for the next run (from the ones picked last)
+  const boonSel = () => ouBoons || (ouBoons = Ouro.normBoons(MS.runs.boonLast));
   const ouroRun = () => (MS.run && MS.run.v === 2 ? MS.run : null);
   const OU_ICON = {
     recruit: '<path d="M7 21V4M7 5h10l-2.5 3.5L17 12H7"/>',
@@ -6501,15 +6623,16 @@
     shop: '<path d="M9 4h6l-1.5 3h-3zM12 7c-3.5 0-6 2.5-6 6.5S8.5 20 12 20s6-2.5 6-6.5S15.5 7 12 7zM12 10.5v6M10.3 12.2c.4-.9 3-.9 3.4 0 .4 1-3.4 1.2-3 2.3.4 1 3 .9 3.4 0"/>',
     obelisk: '<path d="M10 20l1-13 1-3 1 3 1 13zM7 20h10"/>',
     boss: '<path d="M4 20V9h3v3h2.5V9h5v3H17V9h3v11zM10 20v-4h4v4M12 4v3"/>',
-    manor: '<path d="M4 11l8-7 8 7v9H4zM10 20v-6h4v6"/>'
+    manor: '<path d="M4 11l8-7 8 7v9H4zM10 20v-6h4v6"/>',
+    fight: '<path d="M5 4l9 9M4 8V4h4M19 4l-9 9M20 8V4h-4M8 15l-3 3 1 1 3-3M16 15l3 3-1 1-3-3"/>'
   };
-  const OU_COLOR = { recruit: '#5c8f3a', upgrade: '#9a6a2c', ruins: '#6a5f8f', shop: '#b08a2a', obelisk: '#4f7688', boss: '#9c3030', manor: '#555' };
+  const OU_COLOR = { recruit: '#5c8f3a', upgrade: '#9a6a2c', ruins: '#6a5f8f', shop: '#b08a2a', obelisk: '#4f7688', boss: '#9c3030', manor: '#555', fight: '#7a4a3a' };
   const ouIcon = (type, size) => '<svg class="ou-ic" viewBox="0 0 24 24" width="' + (size || 18) + '" height="' + (size || 18) + '" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + OU_ICON[type] + '</svg>';
   const relicChip = (id) => { const r = Ouro.RELICS[id]; return '<span class="ou-chip relic' + (r.premium ? ' prem' : '') + '" title="' + r.text + '">' + r.name + '</span>'; };
   const itemChip = (id, n) => { const it = Ouro.ITEMS[id]; return '<span class="ou-chip item" title="' + it.text + '">' + it.name + (n > 1 ? ' x' + n : '') + '</span>'; };
   // the act's map, as an SVG: Ouroboros Manor at the bottom, the rows above it, the boss on top
   function ouroMap(run) {
-    const m = run.map, rows = m.rows, W = 300, gap = 54, H = gap * (rows.length + 1) + 44, opts = Ouro.options(run);
+    const m = run.map, rows = m.rows, W = 300, gap = 54, H = gap * (rows.length + (m.boss ? 1 : 0)) + 44, opts = Ouro.options(run); // Infinity has no boss
     const yOf = (row) => H - 22 - gap * (row + 1), xOf = (p) => 30 + p.x * (W - 60);
     const pos = {}; rows.forEach((row) => row.forEach((p) => { pos[p.id] = [xOf(p), yOf(p.row)]; }));
     pos.boss = [W / 2, rows.length ? yOf(rows.length) : H / 2]; const manor = [W / 2, H - 22];
@@ -6519,16 +6642,16 @@
     if (rows.length) {
       rows[0].forEach((p) => line(manor, pos[p.id], done.indexOf(p.id) >= 0));
       rows.forEach((row) => row.forEach((p) => p.next.forEach((id) => line(pos[p.id], pos[id], done.indexOf(p.id) >= 0 && done.indexOf(id) >= 0))));
-    } else line(manor, pos.boss, false);
+    } else if (m.boss) line(manor, pos.boss, false);
     const node = (id, type, xy, r) => {
       const can = opts.indexOf(id) >= 0, was = done.indexOf(id) >= 0, at = here === id, sel = ouSel === id;
       g += '<g class="ou-node' + (can ? ' can' : '') + (was ? ' done' : '') + (at ? ' here' : '') + (sel ? ' sel' : '') + '"' + (can ? ' data-onode="' + id + '"' : '') + ' transform="translate(' + xy[0] + ',' + xy[1] + ')">' +
-        '<title>' + (type === 'manor' ? 'Ouroboros Manor' : type === 'boss' ? Ouro.ACTS[run.act].boss + ': ' + Ouro.ACTS[run.act].witchName : Ouro.PLACES[type].name) + '</title>' +
+        '<title>' + (type === 'manor' ? (run.inf ? 'Infinity' : 'Ouroboros Manor') : type === 'boss' ? Ouro.ACTS[run.act].boss + ': ' + Ouro.ACTS[run.act].witchName : Ouro.PLACES[type].name) + '</title>' +
         '<circle r="' + r + '" fill="' + OU_COLOR[type] + '"/><g transform="translate(' + (-r * 0.62) + ',' + (-r * 0.62) + ') scale(' + (r * 1.24 / 24) + ')" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' + OU_ICON[type] + '</g></g>';
     };
     node('manor', 'manor', manor, 13);
     rows.forEach((row) => row.forEach((p) => node(p.id, p.type, pos[p.id], 16)));
-    node('boss', 'boss', pos.boss, 20);
+    if (m.boss) node('boss', 'boss', pos.boss, 20);
     return g + '</svg>';
   }
   function ouroCard(run, p) {
@@ -6542,17 +6665,22 @@
         html += '<p class="gm-fixed">Pick three units to start with, at most one of tier 2.</p><div class="ou-picks">' + offer.map((l) => {
           const on = ouStart.indexOf(l) >= 0, t2 = Ouro.tierOf(l) === 2;
           return '<button class="ou-pick' + (on ? ' on' : '') + '" data-ostart="' + l + '" title="' + Ouro.title(l) + ': ' + unitHow(l) + '">' + unitImg(l.toUpperCase()) + '<b>' + Ouro.title(l) + '</b>' + (t2 ? '<em>tier 2</em>' : '') + '</button>';
-        }).join('') + '</div><button class="btn green gm-wide" data-gm="ourostart"' + (okNow ? '' : ' disabled') + '>Start a run</button>';
+        }).join('') + '</div>' + ouroBoons() + '<button class="btn green gm-wide" data-gm="ourostart"' + (okNow ? '' : ' disabled') + '>Start a run</button>';
       }
-      if (MS.runs.history.length) html += '<div class="gm-stats">Runs: ' + MS.runs.count + (MS.runs.wins ? ', ' + MS.runs.wins + ' won' : '') + '. Battles won in the last ones: ' + MS.runs.history.slice(0, 8).map((x) => x.won ? x.cleared + ' (won)' : x.cleared).join(', ') + '.</div>';
+      if (MS.runs.history.length) html += '<div class="gm-stats">Runs: ' + MS.runs.count + (MS.runs.wins ? ', ' + MS.runs.wins + ' won' : '') + '. Battles won in the last ones: ' + MS.runs.history.slice(0, 8).map((x) => x.inf != null ? x.cleared + ' (Infinity ' + x.inf + ')' : x.won ? x.cleared + ' (won)' : x.cleared).join(', ') + '.</div>';
+      if (MS.runs.infBest) html += '<div class="gm-stats">Deepest Infinity level: ' + MS.runs.infBest + (MS.runs.infDiff ? ', at difficulty ' + MS.runs.infDiff : '') + '.</div>';
       return html + '</section>';
     }
     const A = Ouro.ACTS[run.act];
-    html += '<div class="ou-top"><b>' + (run.act < 3 ? 'Act ' + (run.act + 1) + ': ' : 'The end: ') + A.name + '</b><span class="ou-gold">' + num(run.gold) + ' gold</span><span class="ou-rw" title="Rewinds take back a move and the answer to it">' + run.rewinds + ' Rewinds</span></div>';
+    html += '<div class="ou-top"><b>' + (run.inf ? 'Infinity, level ' + run.inf.level : (run.act < 3 ? 'Act ' + (run.act + 1) + ': ' : 'The end: ') + A.name) + '</b><span class="ou-gold">' + num(run.gold) + ' gold</span><span class="ou-rw" title="Rewinds take back a move and the answer to it">' + run.rewinds + ' Rewinds</span>' +
+      (run.diff ? '<span class="ou-diff" title="The Ouroboros Boons given up for this run">Difficulty ' + run.diff + '</span>' : '') + '</div>';
     const items = Object.keys(run.items).filter((k) => run.items[k] > 0);
     html += '<div class="ou-chips">' + run.relics.map(relicChip).join('') + items.map((k) => itemChip(k, run.items[k])).join('') + '</div>';
     if (run.over && run.over.won) {
-      html += '<div class="sk-end won"><b>The Coven is beaten. Thessalonia is free.</b><span>' + run.won + ' battles won.</span></div><button class="btn green gm-wide" data-gm="ouroclose">New run</button>';
+      html += '<div class="sk-end won"><b>The Coven is beaten. Thessalonia is free.</b><span>' + run.won + ' battles won' + (run.diff ? ', at difficulty ' + run.diff : '') + '.</span></div>' +
+        (Ouro.boonsOpen(MS) && MS.runs.wins === 1 && !run.diff ? '<p class="gm-fixed">The Ouroboros Boons are open now: for the next run you can give up some of what you start with, and make the enemy stronger, up to difficulty 30.</p>' : '') +
+        '<p class="gm-fixed">Or keep going into Infinity: army after army, each a little stronger, until your King falls. Every second battle has a reward, and every ten battles the enemy has one more relic.</p>' +
+        '<button class="btn green gm-wide" data-gm="ouroinf">Into Infinity</button><button class="btn gm-wide" data-gm="ouroclose">New run</button>';
       return html + '</section>';
     }
     const rw = run.reward;
@@ -6564,6 +6692,7 @@
       html += '<div class="ou-battle"><div class="ou-place">' + ouIcon(b.boss ? 'boss' : b.type, 22) + '<b>' + (b.boss ? Ouro.ACTS[b.act].boss : pl.name) + '</b></div>' +
         '<h3>' + b.title + '</h3><p>' + (b.black.length - 1) + ' enemy units and the General. The bot plays at ' + lab.elo + (b.terrain ? '. With boulders' + (b.terrain.portals.length ? ' and portals' : '') : '') + '.</p>' +
         '<p>' + (pl ? pl.text + '. ' : '') + 'The battle pays ' + b.reward + ' gold, 4 less with every move.</p>' +
+        (b.erelics ? '<div class="ou-chips ou-foe"><span class="gm-lab">Enemy relics</span>' + b.erelics.map(relicChip).join('') + '</div>' : '') +
         (p ? '<p class="gm-block">Finish or give up the unfinished game first.</p>' : '<button class="btn green gm-wide" data-gm="fight">Fight</button>') + '</div>';
     } else {
       const opts = Ouro.options(run), sel = ouSel && opts.indexOf(ouSel) >= 0 ? Ouro.place(run, ouSel) : null;
@@ -6576,6 +6705,26 @@
     html += '<div class="gm-army"><span class="gm-lab">Your army, ' + run.army.length + ' of 8</span><div class="gm-units">' + run.army.map((x) => '<button class="gm-unit" data-peek="' + x[1] + '" title="' + Ouro.title(x[1]) + ': ' + unitHow(x[1]) + '">' + unitImg(x[1]) + '</button>').join('') + '</div></div>';
     html += '<div id="gmCard"></div><button class="gm-link" data-gm="abandon">Abandon this run</button>';
     return html + '</section>';
+  }
+  /* The Ouroboros Boons on the start card (open once the Coven has fallen): the starting relics to keep, and four
+     boons of three levels each; every one given up adds its points to the difficulty. A tick marks what was beaten. */
+  const BOON_LABELS = { gold: ['500 gold', '200 gold', 'No gold'], rewinds: ['5 Rewinds', '2 Rewinds', 'No Rewinds'], prices: ['Normal', '+25%', '+50%'], units: ['Normal', '+25%', '+50%'], erelics: ['None', 'One', 'Two'] };
+  const BOON_TEXT = { gold: 'The gold you start with', rewinds: 'The Rewinds you start with', prices: 'What units, items and premium relics cost', units: 'How many points an enemy army has', erelics: 'Relics the enemy has in every battle' };
+  function ouroBoons() {
+    if (!Ouro.boonsOpen(MS)) return '<p class="gm-fixed">Beat the Coven once to open the Ouroboros Boons: harder runs, up to difficulty 30.</p>';
+    const b = boonSel(), d = Ouro.difficulty(b), beat = MS.runs.beaten || {};
+    let html = '<div class="ou-boons"><div class="ou-bhead"><b>Ouroboros Boons</b><span class="ou-diff">Difficulty ' + d + ' of ' + Ouro.MAX_DIFF + '</span></div>';
+    html += '<div class="gm-lab">Starting relics</div><div class="ou-bopts">' + Object.keys(Ouro.BOON_RELICS).map((id) => {
+      const on = b.relics[id], cost = Ouro.BOON_RELICS[id], r = Ouro.RELICS[id];
+      return '<button class="ou-bopt' + (on ? ' on' : ' off') + (cost && beat[id] ? ' beat' : '') + '" data-oboon="relic:' + id + '" title="' + r.text + (cost ? '. Without it: +' + cost : '. It adds nothing either way') + '">' + r.name + (cost ? '<i>+' + cost + '</i>' : '') + '</button>';
+    }).join('') + '</div>';
+    Ouro.BOONS.forEach((x) => {
+      html += '<div class="gm-lab" title="' + BOON_TEXT[x.id] + '">' + x.name + '</div><div class="ou-bopts">' + BOON_LABELS[x.id].map((lab, i) =>
+        '<button class="ou-bopt' + (b[x.id] === i ? ' on' : '') + (i && (beat[x.id] || 0) >= i ? ' beat' : '') + '" data-oboon="' + x.id + ':' + i + '" title="' + BOON_TEXT[x.id] + '">' + lab + (x.cost[i] ? '<i>+' + x.cost[i] + '</i>' : '') + '</button>').join('') + '</div>';
+    });
+    html += '<div class="ou-blinks"><button class="gm-link" data-oboon="reset">Give up nothing</button><button class="gm-link" data-oboon="max">All of them (30)</button></div>';
+    if (MS.runs.boonBest || MS.runs.hunter) html += '<div class="gm-stats">Highest difficulty beaten: ' + (MS.runs.boonBest || 0) + '.' + (MS.runs.hunter ? ' Witch Hunter: the Coven beaten at 30.' : '') + '</div>';
+    return html + '</div>';
   }
   // what the run waits for after a battle: the place's reward (any can be left), or a boss's gold
   function ouroReward(run, rw) {
@@ -6614,6 +6763,16 @@
   function wireOuro(box) {
     const done = () => { saveModes(); renderModes(); renderAll(); };
     box.querySelectorAll('[data-onode]').forEach((n) => { n.onclick = () => { ouSel = n.dataset.onode; renderModes(); }; });
+    box.querySelectorAll('[data-oboon]').forEach((x) => {
+      x.onclick = () => {
+        const k = x.dataset.oboon, b = boonSel();
+        if (k === 'reset') ouBoons = Ouro.normBoons(null);
+        else if (k === 'max') { ouBoons = Ouro.normBoons({ gold: 2, rewinds: 2, prices: 2, units: 2, erelics: 2 }); Ouro.START_RELICS.forEach((id) => { ouBoons.relics[id] = false; }); }
+        else if (k.indexOf('relic:') === 0) { const id = k.slice(6); b.relics[id] = !b.relics[id]; }
+        else { const p = k.split(':'); b[p[0]] = +p[1]; }
+        renderModes();
+      };
+    });
     box.querySelectorAll('[data-ostart]').forEach((b) => { b.onclick = () => { const l = b.dataset.ostart, i = ouStart.indexOf(l); if (i >= 0) ouStart.splice(i, 1); else if (ouStart.length < 3) ouStart.push(l); renderModes(); renderAll(); }; });
     box.querySelectorAll('[data-otake]').forEach((b) => { b.onclick = () => { syncModes(); const run = ouroRun(), k = run && run.reward && run.reward.kind; if (run && Ouro.take(run, +b.dataset.otake)) { snd(k === 'upgrade' || k === 'shop' || k === 'ruins' ? 'gold' : 'move'); done(); } }; });
     box.querySelectorAll('[data-obget]').forEach((b) => { b.onclick = () => { obGet = obGet === b.dataset.obget ? null : b.dataset.obget; renderModes(); }; });
@@ -6742,6 +6901,7 @@
       if (p.mark) el.appendChild(h('i', 'skmark', '☠'));
       if (p.leader) el.classList.add('skleader');
       if (p.spy) el.classList.add('skspy'); // The Mole: a spy wears a mask
+      if (p.jester) el.appendChild(h('i', 'skhat')); // The Jester: the jester wears the hat
       if (p.id === run.F.orb) el.classList.add('skorbed');
       if (p.id === run.F.strafe) el.classList.add('sktarget');
     });
@@ -6902,6 +7062,8 @@
       else if (e.e === 'flip' || e.e === 'unflip') { const cd = SKM.CARD[e.card]; if (cd) toast(cd.name + (e.e === 'flip' ? ' is face down for this floor' : ' is back')); }
       else if (e.e === 'mist') { toast('Black Mist: death passes you by'); fxRing(skRun().F.king, 'boom'); }
       else if (e.e === 'heir') { toast('An heir takes the throne'); fxRing(e.sq, 'boom'); }
+      else if (e.e === 'hat') { if (e.sq >= 0) { fxTracer(e.from, e.sq); fxRing(e.sq, 'boom'); toast('The jester\'s hat passes on'); } else toast('The jester\'s hat is gone'); }
+      else if (e.e === 'fool') toast('Fool Companion: an extra turn');
       else if (e.e === 'countdown') toast('Final Countdown: ' + e.n + ' turns to finish the floor');
       else if (e.e === 'scare' || e.e === 'stun' || e.e === 'shield' || e.e === 'immune' || e.e === 'heal' || e.e === 'bleed') fxRing(e.sq, 'boom');
       else if (e.e === 'leave') skDamage(e.sq, 0, 'fall');
@@ -6991,6 +7153,12 @@
     d.runs++; d.kills += run.kills;
     d.best[run.rank] = Math.max(d.best[run.rank] || 0, run.phase === 'won' ? 13 : run.floor);
     if (run.phase === 'won') { d.won++; d.wins[run.rank] = (d.wins[run.rank] || 0) + 1; d.maxRank = Math.max(d.maxRank, Math.min(20, run.rank + 1)); }
+    runLog({ m: 'sk', won: run.phase === 'won', gun: run.gun, rank: run.rank, floor: run.floor, daily: run.daily || null, kills: run.kills });
+    if (run.daily && run.phase === 'won') d.dailyWon = true;
+    if (run.daily) {
+      const all = d.daily = d.daily || {}, b = all[run.daily], fl = run.phase === 'won' ? 13 : run.floor;
+      all[run.daily] = { floor: Math.max(fl, b ? b.floor : 0), tries: (b ? b.tries : 0) + 1, gun: run.gun };
+    }
     MS.rev = (MS.rev || 0) + 1;
   }
   function skDown(sq) {
@@ -7050,7 +7218,22 @@
     if (SKM.inCheck(run, run.F) && skUi.folly !== -2) { skUi.folly = -2; toast('Folly Shield: the king is in check, standing still is death. Press again to do it anyway.'); return; }
     skDo(r);
   }
+  /* Shotgun King's daily run: today's shotgun and seed on rank 1, the same for everyone; the best floor of the day is
+     kept (MS.sk.daily[day]). */
+  function skDailyOf(key) {
+    const rnd = dayRandom(key, 'shotgun');
+    return { key: key, gun: SKM.SHOTGUNS[Math.floor(rnd() * SKM.SHOTGUNS.length)].id, seed: rnd.seed() };
+  }
+  function skDailyStart() {
+    const d = skData(), day = skDailyOf(dayKeyOf(new Date()));
+    d.run = SKM.newRun({ gun: day.gun, rank: 1, seed: day.seed });
+    d.run.daily = day.key;
+    skUi.soul = -1; skUi.grenade = false; skUi.blade = false; skUi.busy = false; skUi.pick = null;
+    MS.rev = (MS.rev || 0) + 1;
+    saveModes(); snd('start'); renderModes(); renderAll();
+  }
   function skStart(again) {
+    if (again && skData().run && skData().run.daily === dayKeyOf(new Date())) { skDailyStart(); return; } // the daily again, same seed
     const d = skData(), last = d.run;
     const gun = again && last ? last.gun : skUi.gun, rank = again && last ? last.rank : Math.min(skUi.rank, d.maxRank);
     d.run = SKM.newRun({ gun: gun, rank: rank, seed: (Date.now() ^ Math.floor(Math.random() * 1e9)) >>> 0 });
@@ -7088,7 +7271,8 @@
     swap: '<path d="M2 5h10M9 2l3 3-3 3M14 11H4M7 8l-3 3 3 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>',
     edge: '<rect x="1.5" y="1.5" width="13" height="13" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><rect x="1.5" y="1.5" width="3.5" height="13" fill-opacity=".6"/>',
     eye: '<path d="M1 8s2.6-4.5 7-4.5S15 8 15 8s-2.6 4.5-7 4.5S1 8 1 8z" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="8" r="2"/>',
-    jump: '<path d="M2 13c1.5-7 10.5-7 12 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2 1.6"/><path d="M11.5 11l2.5 2 1-3" fill="none" stroke="currentColor" stroke-width="1.5"/>'
+    jump: '<path d="M2 13c1.5-7 10.5-7 12 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2 1.6"/><path d="M11.5 11l2.5 2 1-3" fill="none" stroke="currentColor" stroke-width="1.5"/>',
+    hat: '<path d="M3.5 12.5C3.6 8.5 2.8 6 1.4 5.2 4.6 4.6 6.6 6.8 8 9.6 9.4 6.8 11.4 4.6 14.6 5.2 13.2 6 12.4 8.5 12.5 12.5z" fill="#c23a6a"/><path d="M8 9.6C7.6 6 8 3.6 9.8 2.2" fill="none" stroke="#c23a6a" stroke-width="1.6" stroke-linecap="round"/><rect x="3.2" y="12" width="9.6" height="2.6" rx=".8" fill="#e8c34a"/><circle cx="1.6" cy="5.3" r="1.3" fill="#e8c34a"/><circle cx="14.4" cy="5.3" r="1.3" fill="#e8c34a"/><circle cx="10" cy="2.1" r="1.2" fill="#e8c34a"/>'
   };
   // a shotgun's numbers, one per line with its icon: what the selection cards show instead of a text
   function skGunStats(g, cls, now) { // now: the run's gun as it stands (shells loaded, reserve left)
@@ -7156,7 +7340,8 @@
     mausoleum: ['hp', 'Rook dies: kings take 2'], militia: ['all', 'Pawns: 4 directions'], nomad: ['leader', 'Knights promote too'], pikemen: ['range', 'Pawns hit 2 ahead'],
     plumed: ['hp', 'A knight: +3 HP, diagonals'], prison: ['shield', 'Near rooks: jailed'], mother: ['eye', 'Queen dies: all scared'], saboteur: ['arc', '1 pellet: double spread'],
     sanctity: ['souls', 'No bishop souls'], redbook: ['move', 'Bishops move straight too'], heir: ['leader', 'An heir takes the throne'], heirKing: ['leader', 'The heir becomes a king'],
-    undead: ['all', 'Dead pieces rise as pawns'], vampire: ['hp', 'Leader, queens drink blood'], vendetta: ['spd', 'Kills rouse their kind']
+    undead: ['all', 'Dead pieces rise as pawns'], vampire: ['hp', 'Leader, queens drink blood'], vendetta: ['spd', 'Kills rouse their kind'],
+    jester: ['hat', 'A jester pawn: diagonals, +2 Speed'], hat: ['hat', 'The hat passes to the next pawn'], fool: ['hat', 'Jesters move any way, stay by their king'], foolTurn: ['turn', 'Extra turn per jester kill']
   };
   const SK_FLIP_TEXT = { pawnKilled: 'Flips when a pawn dies', reload: 'Flips when you reload', promote: 'Flips when a pawn promotes', queenKilled: 'Flips when a queen dies', bishopAt15: 'Flips: bishop alive at turn 15' };
   const SK_OFF_TEXT = { notEdge: 'Only on the edge', adjacent: 'Off with a piece next to you', noRook: 'Off without rooks', noPawn: 'Off without pawns', noBishop: 'Off without bishops', onlyQueens: 'Off with only queens left', notStealth: 'Only while stealthy' };
@@ -7211,6 +7396,10 @@
     let html = '<section class="gm-card sk">';
     if (!run || (run.settled && run.closed)) {
       html += '<div class="gm-head"><h2>Shotgun King</h2></div><p class="gm-fixed">You are the Black King with a shotgun. Kill the leader on each of 12 floors.</p>';
+      const sday = skDailyOf(dayKeyOf(new Date())), sbest = (d.daily || {})[sday.key];
+      html += '<div class="pb-daily"><div><b>Daily run</b><span>' + SKM.GUN[sday.gun].name + ' on rank 1. The same for everyone today.</span>' +
+        (sbest ? '<span class="ok">Best today: ' + (sbest.floor >= 13 ? 'won' : 'floor ' + sbest.floor) + ' (' + sbest.tries + (sbest.tries === 1 ? ' try' : ' tries') + ').</span>' : '') +
+        '</div><button class="btn green" data-gm="skdaily">' + (sbest ? 'Try again' : 'Play') + '</button></div>';
       html += '<h3 class="sk-h">Shotgun</h3><div class="sk-guns">' + SKM.SHOTGUNS.map((g) => '<button class="sk-gun' + (skUi.gun === g.id ? ' on' : '') + '" data-skgun="' + g.id + '" title="' + g.text + '"><i class="sk-gunpic" style="background-image:' + skGunKing('b', g.id) + '"></i><b>' + g.name + '</b></button>').join('') + '</div>';
       const sel = SKM.GUN[skUi.gun] || SKM.SHOTGUNS[0];
       html += '<div class="sk-gunsel">' + skGunStats(sel, 'two') + '</div>'; // the stats of the gun picked, once
@@ -7325,6 +7514,7 @@
     const F = run.F, q = skUi.hover, p = SKM.pieceAt(F, q), al = SKM.allyAt(F, q), when = (t) => (t <= 1 ? 'after your next turn' : 'in ' + t + ' turns');
     let tx = p ? (p.boss ? 'The crowned Boss Pawn' : SKM.NAMES[p.t]) + (p.leader ? ' (leader)' : '') + ': ' + p.hp + ' of ' + p.max + ' HP, moves ' + when(p.tm) + ' (every ' + p.spd + ')' + (p.bleed ? ', bleeding' : '') + (p.mark ? ', marked' : '') + '.' : '';
     if (p && p.spy === 1) tx += ' A spy: step next to it.';
+    if (p && p.jester) tx += SKM.rule(run, F, 'fool') ? ' The jester: steps one square any way and stays by its king. Kill it for an extra turn.' : ' The jester: steps diagonally too. The nearest pawn takes the hat when it falls.';
     else if (al) tx = 'Ally: ' + SKM.NAMES[al.t] + ', moves ' + when(al.tm) + ' (every ' + al.spd + ').';
     else if (!p && q === F.holo) tx = 'Your hologram: a piece that takes it is stunned for 2 turns.';
     else if (!p && (F.balls || []).indexOf(q) >= 0) tx = 'A cannonball: lift it, then throw it.';
@@ -7352,8 +7542,8 @@
      Wards; in the shop the items and the stairs. The panel holds the loot track, the hearts and the hand: a card
      picked shows its squares on the board, a click there plays it. */
   const PBM = typeof Pawnbarian !== 'undefined' ? Pawnbarian : null;
-  const pbUi = { card: -1, hover: -1, hero: 'pawnbarian', dungeon: 'goblin', chain: 0, busy: false, flash: 0 };
-  try { const o = JSON.parse(localStorage.getItem('powerchess_pbset') || 'null'); if (o && PBM) { if (PBM.HERO[o.hero]) pbUi.hero = o.hero; if (PBM.DUNGEON[o.dungeon]) pbUi.dungeon = o.dungeon; pbUi.chain = +o.chain || 0; } } catch (e) { /* first visit */ }
+  const pbUi = { card: -1, hover: -1, armed: -1, hero: 'pawnbarian', dungeon: 'goblin', chain: 0, busy: false, flash: 0 };
+  try { const o = JSON.parse(localStorage.getItem('powerchess_pbset') || 'null'); if (!o) pbUi.dungeon = 'tutorial'; /* a first visit starts on Tutorial Island */ if (o && PBM) { if (PBM.HERO[o.hero]) pbUi.hero = o.hero; if (PBM.DUNGEON[o.dungeon]) pbUi.dungeon = o.dungeon; pbUi.chain = +o.chain || 0; } } catch (e) { /* first visit */ }
   const pbSaveSet = () => { try { localStorage.setItem('powerchess_pbset', JSON.stringify({ hero: pbUi.hero, dungeon: pbUi.dungeon, chain: pbUi.chain })); } catch (e) { /* private mode */ } };
   const pbData = () => MS.pb || (MS.pb = Modes.fresh().pb);
   const pbRun = () => { const r = pbData().run; return r && !r.closed ? r : null; };
@@ -7441,6 +7631,7 @@
     if (!F) return;
     F.blight.forEach((n, q) => { if (n > 0) { const m = mark(q, 'pbblight'); m.innerHTML = '<i>' + '<u></u>'.repeat(Math.min(n, 8)) + '</i>' + (n > 8 ? '<b>' + n + '</b>' : ''); } });
     F.wards.forEach((q) => mark(q, 'pbward'));
+    if (F.victory) mark(F.portal, 'pbportal');
     if (F.over) return;
     if (pbPending(run, F) > 0) mark(F.hero, 'check');
     const hov = pbUi.hover;
@@ -7489,6 +7680,7 @@
       else if (p && p.hits.some((o) => o.res === 'dodged')) hint(x.to, 'pbkills dodge').innerHTML = '<b>↻</b>';
       if (p && p.pend > 0 && p.hero === x.to && x.to !== pbUi.hover) hint(x.to, 'pbrisk').innerHTML = '<b>-' + p.pend + '</b>';
     });
+    if (pbUi.armed >= 0 && pv[pbUi.armed]) hint(pbUi.armed, 'pbarmed');
     if (!hov) return;
     // the square under the mouse: everything the move does
     hov.hits.forEach((o) => {
@@ -7543,6 +7735,7 @@
     if (dmg) html += '<span class="pb-dmg">' + dmg + ' damage here at the end of the turn.</span>';
     if (bl) html += '<span class="pb-dmg">' + bl + ' Blight: ' + bl + ' damage to end the turn here.</span>';
     if (F.wards.indexOf(q) >= 0) html += '<span>A Ward: monsters cannot enter it. Step on it for 3 Shields.</span>';
+    if (F.victory && q === F.portal) html += '<b>Portal</b><span>Step in to rest on your laurels: the run ends as a win.</span>';
     el.innerHTML = html;
   }
   /* what happened, shown on the board: hits and kills, a dodge, the splash, the damage taken */
@@ -7569,6 +7762,8 @@
       if (x.e === 'dragon') snd('promo');
       if (x.e === 'grasp') { if (x.hurt) pbHit(x.hurt, 0.15); else snd('portal', 0.12); }
       if (x.e === 'cleared') snd('win', 0.35);
+      if (x.e === 'gate') { snd('boom', 0.2); toast('The gate breaks: into the Gauntlet'); }
+      if (x.e === 'portal') snd('portal', 0.1);
     });
     const at = carded ? 0.12 : 0;
     if (killed) { snd('slash', at); snd('capture', at + 0.06); } else if (!carded && (ev || []).some((x) => x.e === 'hit' || x.e === 'splash')) snd('move');
@@ -7629,6 +7824,11 @@
     const run = pbRun();
     if (run && run.over && !run.settled) {
       run.settled = true; // counted by pawnbarian.js when it began (runs) and when the dungeon fell (won)
+      pbDailyRecord(run);
+      const d0 = pbData();
+      d0.bestGauntlet = Math.max(d0.bestGauntlet || 0, run.gauntlet || 0);
+      if (run.daily && run.over.won) d0.dailyWon = true;
+      runLog({ m: 'pb', won: !!run.over.won, hero: run.hero, dungeon: run.dungeon, chain: run.chain, floor: run.floor, gauntlet: run.gauntlet, daily: run.daily || null, by: run.over.by || null, quit: !!run.over.gaveUp });
       if (run.over.won) snd('win'); else snd('lose', 0.3);
     }
     MS.rev = (MS.rev || 0) + 1;
@@ -7651,10 +7851,11 @@
   function pbPlay(i, to) {
     const run = pbRun();
     if (!pbLive() || pbUi.busy) return;
+    pbGuideSeen('pick'); pbGuideSeen('target');
     const F = run.F, before = pbSnap(F), card = F.hand[i], from = F.hero, promos = F.hand.filter((c, k) => k !== i && c.promo).length;
     const ev = PBM.play(run, i, to);
     if (!ev) return;
-    pbUi.card = -1;
+    pbUi.card = -1; pbUi.armed = -1;
     pbPops(before, run.F);
     pbAfter(pbAnims(before, run.F === F ? F : null));
     pbCardSound(run, card, from, to, ev, promos);
@@ -7665,6 +7866,7 @@
     if (!pbLive() || pbUi.busy) return;
     const F = run.F, hero = F.hero;
     pbUi.card = -1;
+    if (F.actions <= 0) pbGuideSeen('end');
     // the attacks, one monster after the other, on the board as it stands
     const attackers = F.enemies.filter((e) => PBM.targets(e).indexOf(hero) >= 0).sort((a, b) => a.sq - b.sq);
     const blight = F.blight[hero], tutorial = PBM.DUNGEON[run.dungeon].tutorial;
@@ -7726,7 +7928,44 @@
     pbUi.card = -1;
     renderModes(); renderAll();
   }
+  /* A finger has no hover: with a card picked, the first tap on one of its squares shows what the move does there
+     (the same preview the mouse gets), a second tap on that square plays it. */
+  function pbTouch(sq) {
+    const run = pbRun(), F = run && run.F, c = F && pbLive() && F.hand[pbUi.card];
+    if (c && !pbUi.busy && PBM.cardTargets(run, F, c).some((x) => x.to === sq) && pbUi.armed !== sq) {
+      pbUi.armed = sq; pbUi.hover = sq;
+      if (window.PWA) PWA.buzz('select');
+      renderBoard(); pbHoverInfo();
+      return;
+    }
+    pbUi.armed = -1; pbUi.hover = sq;
+    modesDown(sq);
+    pbHoverInfo();
+  }
+  /* The daily run: today's hero, dungeon and seed, the same for everyone (Chain 0). A hero not open yet is played
+     as the Pawnbarian. Every try counts, the best one is kept per day (MS.pb.daily[day]). */
+  function pbDailyOf(key) {
+    const rnd = dayRandom(key, 'pawnbarian'), d = pbData();
+    const hero = PBM.HEROES[Math.floor(rnd() * PBM.HEROES.length)], dun = ['goblin', 'golem', 'shrine'][Math.floor(rnd() * 3)];
+    return { key: key, hero: hero, play: PBM.unlocked(d, hero) ? hero : 'pawnbarian', dungeon: dun, seed: rnd.seed() };
+  }
+  const pbScore = (o) => (o.won ? 1000 + (o.gauntlet || 0) * 10 : 0) + o.floor * 10 + Math.min(9, Math.floor((o.gold || 0) / 10));
+  function pbDailyStart() {
+    const day = pbDailyOf(dayKeyOf(new Date())), d = pbData();
+    PBM.newRun(d, day.seed, day.play, day.dungeon, 0).daily = day.key;
+    pbUi.card = -1; pbUi.busy = false;
+    snd('start');
+    pbAfter(null);
+  }
+  function pbDailyRecord(run) {
+    if (!run.daily) return;
+    const d = pbData(), all = d.daily = d.daily || {}, o = { floor: run.floor, won: !!run.over.won, gauntlet: run.gauntlet, gold: run.gold, hero: run.hero, dungeon: run.dungeon };
+    const best = all[run.daily];
+    o.tries = (best ? best.tries || 1 : 0) + 1;
+    all[run.daily] = !best || pbScore(o) > pbScore(best) ? o : Object.assign(best, { tries: o.tries });
+  }
   function pbStart(again) {
+    if (again && pbData().run && pbData().run.daily === dayKeyOf(new Date())) { pbDailyStart(); return; } // the daily again, same seed
     const d = pbData(), last = d.run;
     const hero = again && last ? last.hero : pbUi.hero, dun = again && last ? last.dungeon : pbUi.dungeon, chain = again && last ? last.chain : Math.min(pbUi.chain, d.chain);
     PBM.newRun(d, Modes.newSeed(), hero, dun, chain);
@@ -7742,6 +7981,11 @@
     const d = pbData();
     let html = '<div class="gm-head"><h2>Pawnbarian</h2><div class="gm-credits"><b class="notranslate">' + ROMAN[d.chain] + '</b><span>chain</span></div></div>' +
       '<p class="gm-fixed">A hero alone on a 5 x 5 board. Your cards are chess moves: land on a monster to kill it. Three cards a turn, two actions. Clear seven floors.</p>';
+    const day = pbDailyOf(dayKeyOf(new Date())), best = (d.daily || {})[day.key];
+    html += '<div class="pb-daily"><div><b>Daily run</b><span>' + PBM.HERO[day.play].name + ', ' + PBM.DUNGEON[day.dungeon].name + ', chain 0. The same for everyone today.</span>' +
+      (day.play !== day.hero ? '<span class="dim">Today\'s hero is still locked: you play the Pawnbarian.</span>' : '') +
+      (best ? '<span class="ok">Best today: ' + (best.won ? 'won' + (best.gauntlet ? ', Gauntlet floor ' + best.gauntlet : '') : 'floor ' + best.floor) + ' (' + best.tries + (best.tries === 1 ? ' try' : ' tries') + ').</span>' : '') +
+      '</div><button class="btn green" data-gm="pbdaily">' + (best ? 'Try again' : 'Play') + '</button></div>';
     html += '<h3 class="sk-h">Hero</h3><div class="pb-heroes">' + PBM.HEROES.map((id) => {
       const won = d.conquered[id] ? Object.keys(d.conquered[id]).length : 0, open = PBM.unlocked(d, id);
       return '<button class="pb-hb' + (pbUi.hero === id ? ' on' : '') + (open ? '' : ' locked') + '" data-pbhero="' + id + '"' + (open ? '' : ' title="Win a dungeon with the Pawnbarian first"') + '><i style="background-image:url(' + PB_ART + 'h_' + id + '.svg)"></i><b>' + PBM.HERO[id].name + '</b>' + (won ? '<em>' + '♛'.repeat(won) + '</em>' : '') + '</button>';
@@ -7759,6 +8003,8 @@
         '<ul class="pb-chainlist">' + PBM.CHAINS.slice(0, ch + 1).map((t, i) => '<li><b class="notranslate">' + ROMAN[i] + '</b> ' + t + '</li>').join('') + '</ul>';
     }
     html += heroOpen ? '<button class="btn green gm-wide" data-gm="pbstart">Embark</button>' : '<p class="gm-block">Locked: win a dungeon with the Pawnbarian to open the other heroes.</p><button class="btn gm-wide" disabled>Embark</button>';
+    html += '<div class="gm-row pb-guiderow"><span>Guide for the first runs: ' + (d.guide === 'off' ? 'off' : d.guide === 'done' ? 'all seen' : 'on') + '</span>' +
+      (d.guide === 'off' || d.guide === 'done' ? '<button class="btn" data-gm="pbguideon">' + (d.guide === 'done' ? 'Show it again' : 'Turn it on') + '</button>' : '<button class="btn" data-gm="pbguideoff">Turn it off</button>') + '</div>';
     html += '<div class="gm-stats">' + d.runs + (d.runs === 1 ? ' run' : ' runs') + ', ' + d.won + ' won. Chain ' + ROMAN[d.chain] + ' is open: it opens the next once all three dungeons are conquered on it, by any heroes.</div>';
     return html;
   }
@@ -7776,23 +8022,60 @@
     const D = PBM.DUNGEON[run.dungeon];
     const ch = D.tutorial ? '' : ', chain ' + ROMAN[run.chain];
     if (run.shop) return 'The shop before floor ' + run.shop.floor + ' of ' + PBM.floorsOf(run) + ch;
+    if (run.F && run.F.victory) return 'The victory floor' + ch;
     return run.gauntlet ? 'Gauntlet floor ' + run.gauntlet + ch : 'Floor ' + run.floor + ' of ' + PBM.floorsOf(run) + ch;
   }
+  /* The guide of the first runs: one short tip at a time, each the first time its thing comes up (the cards, the
+     squares, the attack ticks, ending the turn, the loot track, Blight, immune and Nimble monsters, the shop, the
+     victory floor). "Got it" or doing the thing moves it on; it can be switched off and on again (MS.pb.guide). */
+  const PB_GUIDE = [
+    { id: 'pick', when: (r, F) => F && !F.victory && pbUi.card < 0 && F.actions > 0, pulse: 'cards', text: 'Your cards are chess moves. Pick one (or press 1, 2, 3) to see where it can go.' },
+    { id: 'target', when: (r, F) => F && pbUi.card >= 0, pulse: 'board', text: 'The gold squares are where this card goes. Land on a monster to kill it. Point at a square (tap it on a phone) to see exactly what the move hits and what ending the turn there would cost.' },
+    { id: 'ticks', when: (r, F) => F && F.played > 0 && !F.victory, text: 'The red ticks show the monsters\' attacks: at the end of your turn each tick on your square is one point of damage. A skull means 4 or more. Try to end your turn where there are none.' },
+    { id: 'end', when: (r, F) => F && F.actions <= 0, pulse: 'end', text: 'No actions left: end the turn (Space). The monsters attack, then they move, and you draw three new cards.' },
+    { id: 'loot', when: (r, F) => F && F.turn >= 2 && !F.victory, pulse: 'loot', text: 'The loot track: what you get when the floor is cleared. It loses its last reward every turn, so clear floors quickly. The red crystal on its left heals a Heart.' },
+    { id: 'blight', when: (r, F) => F && F.blight.some((n) => n > 0), text: 'Red pips are Blight. Each pip hurts once if you end your turn on that square, and it never goes away.' },
+    { id: 'immune', when: (r, F) => F && !F.victory && F.enemies.some((e) => PBM.immune(r, F, e, F.hero)), text: 'A small shield over a monster: it cannot be hurt from where you stand now (a Brawler next to you, a Vigilant one from afar, a Champion while others live). Point at it to read why.' },
+    { id: 'nimble', when: (r, F) => F && F.enemies.some((e) => PBM.hasT(e, 'nimble')), text: 'A dashed ring: Nimble. It dodges the first attack each turn by one square in the attack\'s direction. Hit it twice, or drive it into the edge or another monster.' },
+    { id: 'shop', when: (r) => !!r.shop, pulse: 'board', text: 'The shop is a board too: move with these pieces as often as you like. Landing on an item buys it, and an upgrade stays on that card for the whole run. The stairs on c5 lead on.' },
+    { id: 'victory', when: (r, F) => F && F.victory, pulse: 'board', text: 'You won! Break the four pillars and the gate for the endless Gauntlet, or step into the portal to end the run as a win.' }
+  ];
+  function pbGuideStep(run) {
+    const d = pbData();
+    if (d.guide === 'off' || !run) return null;
+    const seen = d.guideSeen || {}, F = run.F && !run.F.over ? run.F : null;
+    return PB_GUIDE.find((g) => !seen[g.id] && g.when(run, F)) || null;
+  }
+  function pbGuideSeen(id) {
+    const d = pbData();
+    d.guideSeen = d.guideSeen || {};
+    if (d.guideSeen[id]) return;
+    d.guideSeen[id] = Date.now();
+    if (PB_GUIDE.every((g) => d.guideSeen[g.id])) d.guide = 'done';
+  }
+  function pbGuideBox(run) {
+    const g = pbGuideStep(run);
+    if (!g) return '';
+    document.body.dataset.pbpulse = g.pulse || '';
+    return '<div class="pb-guide"><b>Guide</b><span>' + g.text + '</span><div class="gm-row"><button class="btn green" data-gm="pbguideok" data-id="' + g.id + '">Got it</button><button class="btn" data-gm="pbguideoff">Turn the guide off</button></div></div>';
+  }
   function pbCard() {
+    document.body.dataset.pbpulse = '';
     if (!PBM) return '<section class="gm-card"><p>Pawnbarian did not load.</p></section>';
     const run = pbRun();
     let html = '<section class="gm-card sk pb">';
     if (!run) return html + pbSelector() + '</section>';
     const D = PBM.DUNGEON[run.dungeon], H = PBM.HERO[run.hero];
     html += '<div class="gm-head"><h2>' + D.name + '</h2><div class="gm-credits"><b>' + run.gold + '</b><span>gold</span></div></div>';
-    html += '<div class="sk-row small">' + H.name + ', ' + pbFloorName(run) + '</div>';
+    html += '<div class="sk-row small">' + H.name + ', ' + pbFloorName(run) + (run.daily ? ', daily run' : '') + '</div>';
+    if (!run.over) html += pbGuideBox(run);
     if (run.over) {
       const won = run.over.won;
       html += '<div class="sk-end ' + (won ? 'won' : 'lost') + '"><b>' + (won ? (run.gauntlet ? 'You rest after ' + (run.gauntlet - 1) + ' Gauntlet floors.' : 'The dungeon is conquered. You rest on your laurels.') : run.over.gaveUp ? 'You leave the dungeon on floor ' + run.floor + '.' : H.name + ' falls on ' + (run.gauntlet ? 'Gauntlet floor ' + run.gauntlet : 'floor ' + run.floor) + '.') + '</b></div>' +
         '<div class="gm-row"><button class="btn green" data-gm="pbagain">Restart dungeon</button><button class="btn" data-gm="pbclose">Back</button></div>';
       return html + pbDeckStrip(run.deck) + '</section>';
     }
-    if (run.victory) {
+    if (run.victory && !run.F) {
       html += '<div class="sk-end won"><b>The dungeon is conquered!</b><span>Rest on your laurels and end the run, or go on into the Gauntlet: endless floors, a boss every third, a full heal after each, no shops.</span></div>' +
         '<div class="gm-row"><button class="btn green" data-gm="pbrest">Rest on your laurels</button><button class="btn" data-gm="pbgauntlet">Enter the Gauntlet</button></div>';
       return html + pbDeckStrip(run.deck) + '</section>';
@@ -7809,7 +8092,8 @@
       return html + '<div class="sk-row small pb-hov" id="pbHover"></div><h3 class="sk-h">Deck</h3>' + pbDeckStrip(run.deck) + '<div class="gm-row sk-acts"><button class="btn" data-gm="pbquit">Give up</button></div></section>';
     }
     const F = run.F;
-    html += pbLoot(run, F) + pbHearts(run, F);
+    if (F.victory) html += '<div class="sk-end won"><b>The dungeon is conquered!</b><span>Break the four pillars and then the gate at the top to enter the Gauntlet: endless floors, a boss every third, a full heal after each, no shops. Or step into the portal in the middle to rest on your laurels.</span></div>' + pbHearts(run, F);
+    else html += pbLoot(run, F) + pbHearts(run, F);
     if (F.over === 'cleared') {
       html += '<div class="sk-end won"><b>Floor cleared!</b><span>' + (F.cleared.gold ? '+' + F.cleared.gold + ' gold.' : 'No gold left on the track.') + '</span>' + (F.cleared.heal ? '<span>Healed.</span>' : '') + '</div>' +
         '<button class="btn green gm-wide" data-gm="pbnext">' + (run.gauntlet ? 'On to the next floor' : run.floor >= PBM.floorsOf(run) ? 'Onward' : 'To the shop') + '</button>';
@@ -7830,6 +8114,7 @@
     html += '<div class="gm-row sk-acts"><button class="btn green" data-gm="pbend">End turn (Space)</button>' +
       (H.dragon ? '<button class="btn" data-gm="pbdrop"' + (F.actions > 0 ? '' : ' disabled') + ' title="Costs an action. A Shield and a promotion; from 1 charge a Diagonal Splash, from 2 a Cardinal Splash, from 3 a Cantrip, from 4 a Shield more per charge">Dragon Drop (' + F.charges + ')</button>' : '') +
       '<button class="btn" data-gm="pbquit">Give up</button></div>';
+    if (window.PWA && PWA.touch && pbUi.card >= 0) html += '<div class="sk-row small">Tap a square to see what the move does there, tap it again to play it.</div>';
     html += '<div class="sk-row small pb-hov" id="pbHover"></div>';
     html += '<h3 class="sk-h">Draw pile (' + F.draw.length + ')</h3>' + pbDeckStrip(F.draw.slice().sort((a, b) => a.id - b.id), 'small') + '<h3 class="sk-h">Discard (' + F.discard.length + ')</h3>' + pbDeckStrip(F.discard, 'small');
     return html + '</section>';
@@ -7838,7 +8123,7 @@
     box.querySelectorAll('[data-pbhero]').forEach((b) => { b.onclick = () => { pbUi.hero = b.dataset.pbhero; pbSaveSet(); renderModes(); renderAll(); }; });
     box.querySelectorAll('[data-pbdun]').forEach((b) => { b.onclick = () => { pbUi.dungeon = b.dataset.pbdun; pbSaveSet(); renderModes(); }; });
     box.querySelectorAll('[data-pbchain]').forEach((b) => { b.onclick = () => { pbUi.chain = +b.dataset.pbchain; pbSaveSet(); renderModes(); }; });
-    box.querySelectorAll('[data-pbcard]').forEach((b) => { b.onclick = () => { const i = +b.dataset.pbcard; pbUi.card = pbUi.card === i ? -1 : i; if (pbUi.card >= 0) snd('pb:flick'); renderModes(); renderAll(); }; });
+    box.querySelectorAll('[data-pbcard]').forEach((b) => { b.onclick = () => { const i = +b.dataset.pbcard; pbUi.card = pbUi.card === i ? -1 : i; pbUi.armed = -1; if (pbUi.card >= 0) snd('pb:flick'); renderModes(); renderAll(); }; });
   }
   function pbKey(e) {
     if (ui.tab !== 'modes' || gmTab !== 'pb' || !pbLive()) return false;
@@ -7852,6 +8137,7 @@
   function pbAct(k) {
     const d = pbData(), run = pbRun();
     if (k === 'pbstart') pbStart(false);
+    else if (k === 'pbdaily') pbDailyStart();
     else if (k === 'pbagain') pbStart(true);
     else if (k === 'pbclose') { if (d.run) d.run.closed = true; d.run = null; pbAfter(null); }
     else if (k === 'pbend') pbEnd();
@@ -7859,6 +8145,9 @@
     else if (k === 'pbnext') { if (PBM.next(d)) { if (run && run.victory) snd('win'); else snd('start'); pbAfter(null); } }
     else if (k === 'pbrest') { PBM.rest(d); pbAfter(null); }
     else if (k === 'pbgauntlet') { PBM.gauntlet(d); snd('start'); pbAfter(null); }
+    else if (k === 'pbguideok') { const b = document.querySelector('[data-gm="pbguideok"]'); if (b) pbGuideSeen(b.dataset.id); saveModes(); renderModes(); }
+    else if (k === 'pbguideoff') { d.guide = 'off'; saveModes(); renderModes(); }
+    else if (k === 'pbguideon') { d.guide = 'on'; d.guideSeen = {}; saveModes(); renderModes(); }
     else if (k === 'pbquit') { if (run && confirm('Give up this run? It ends on floor ' + run.floor + '.')) { PBM.giveUp(d); pbAfter(null); } }
     else return false;
     return true;
@@ -7888,6 +8177,7 @@
         else if (k === 'hxstart') startMode('hex', JSON.parse(JSON.stringify(hexSet)));
         else if (k === 'sgstart') startShogi();
         else if (k === 'skstart') skStart(false);
+        else if (k === 'skdaily') skDailyStart();
         else if (k === 'dailystart') startDaily();
         else if (k === 'skagain') skStart(true);
         else if (k === 'skclose') { const r = skRun(); if (r) r.closed = true; saveModes(); renderModes(); renderAll(); }
@@ -7911,8 +8201,14 @@
         else if (k === 'sksearch') { const r = skRun(); if (r && SKM.search(r)) { saveModes(); renderModes(); } }
         else if (k === 'skquit') { const r = skRun(); if (r && confirm('Give up this run? It ends on floor ' + r.floor + '.')) { r.phase = 'lost'; if (r.F) r.F.over = 'dead'; skSettle(); saveModes(); renderModes(); renderAll(); } }
         else if (k === 'ouback') { if (Ouro.cancelPlace(MS.run)) { saveModes(); renderModes(); renderAll(); } }
-        else if (k === 'ourostart') { const first = !MS.runs.count; Ouro.newRun(MS, Modes.newSeed(), first ? null : ouStart.slice()); ouStart = []; ouSel = null; saveModes(); snd('start'); renderModes(); renderAll(); }
+        else if (k === 'ourostart') {
+          const first = !MS.runs.count, boons = Ouro.boonsOpen(MS) ? Ouro.normBoons(boonSel()) : null;
+          Ouro.newRun(MS, Modes.newSeed(), first ? null : ouStart.slice(), boons);
+          if (boons) MS.runs.boonLast = boons; // the next start card offers the same
+          ouStart = []; ouSel = null; saveModes(); snd('start'); renderModes(); renderAll();
+        }
         else if (k === 'ouroclose') { MS.run = null; saveModes(); renderModes(); renderAll(); }
+        else if (k === 'ouroinf') { syncModes(); if (Ouro.startInfinity(MS)) { ouSel = null; saveModes(); snd('start'); renderModes(); renderAll(); } }
         else if (k === 'travel') { const run = ouroRun(); msSel = null; if (run && ouSel && Ouro.travel(run, ouSel)) { ouSel = null; saveModes(); snd('start'); renderModes(); renderAll(); } }
         else if (k === 'oleave') { const run = ouroRun(); if (run && Ouro.leave(run)) { obGet = null; saveModes(); renderModes(); renderAll(); } }
         else if (k === 'giveup') giveUpPending();
