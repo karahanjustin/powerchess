@@ -67,7 +67,8 @@
     var cores = navigator.hardwareConcurrency || 4;
     this.threads = Math.max(1, Math.min(this.limits.threadsMax, cores - 2, 8));
     this.hash = Math.min(this.limits.hashMax, this.kind === 'full' ? 256 : 64);
-    this._set({ Threads: this.threads, Hash: this.hash });
+    this._set(this._capped()); // started with what the energy setting allows (a change right after the start locks it up)
+    await this._ready();
     return this;
   };
 
@@ -104,7 +105,8 @@
     this.threads = Math.max(1, Math.min(this.limits.threadsMax, cores - 2, 6));
     this.hash = Math.min(this.limits.hashMax, 128);
     // No variant networks are shipped, so the classical evaluation is used.
-    this._set({ 'Use NNUE': 'false', Threads: this.threads, Hash: this.hash });
+    this._set(Object.assign({ 'Use NNUE': 'false' }, this._capped()));
+    await this._ready();
     return this;
   };
 
@@ -125,7 +127,22 @@
     }
   };
 
+  /* The energy setting (app.js puts it in root.PC_ENERGY): at most so many threads and so much hash. */
+  Engine.prototype._capped = function () {
+    var cap = root.PC_ENERGY;
+    return cap ? { Threads: Math.max(1, Math.min(this.threads, cap.threads)), Hash: Math.max(16, Math.min(this.hash, cap.hash)) } : { Threads: this.threads, Hash: this.hash };
+  };
+  // isready, and wait for readyok: after a change of threads the engine must have its threads up before the next go
+  Engine.prototype._ready = function () {
+    var self = this;
+    return new Promise(function (resolve) {
+      var t = setTimeout(function () { self.readyWait = null; resolve(); }, 5000);
+      self.readyWait = function () { clearTimeout(t); resolve(); };
+      self.w.postMessage('isready');
+    });
+  };
   Engine.prototype._line = function (line) {
+    if (line === 'readyok' && this.readyWait) { var f = this.readyWait; this.readyWait = null; f(); return; }
     var cur = this.cur;
     if (!cur) return;
     if (line.indexOf('info ') === 0 && line.indexOf(' score ') > 0) {
@@ -162,8 +179,15 @@
           finish: function (res) { self.cur = null; done(); resolve(res); }
         };
         if (job.options) self._set(job.options);
-        self.w.postMessage('position ' + job.position);
-        self.w.postMessage('go ' + job.go);
+        // the energy setting: fewer threads and a smaller hash table to save the battery; after a change of threads
+        // the search waits until the engine says it is ready
+        var want = self._capped(), change = self.opts.Threads !== want.Threads || self.opts.Hash !== want.Hash;
+        if (change) self._set(want);
+        (change ? self._ready() : Promise.resolve()).then(function () {
+          if (self.cur && self.cur.cancelled) { self.cur.finish({ cancelled: true }); return; }
+          self.w.postMessage('position ' + job.position);
+          self.w.postMessage('go ' + job.go);
+        });
       });
     });
   };

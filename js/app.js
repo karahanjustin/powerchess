@@ -540,7 +540,7 @@
   const KEY = 'powerchess_v1';
   let saved = {};
   try { saved = JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { saved = {}; }
-  const settings = Object.assign({ music: true, haptics: true, theme: 'green', pieces: 'cburnett', evalBar: true, legal: true, coords: true, sound: true, anim: true, premove: true, multiPremove: false, autoQueen: false, thinkMs: 3000, reviewMs: 700 }, saved.settings);
+  const settings = Object.assign({ energy: 'auto', music: true, haptics: true, theme: 'green', pieces: 'cburnett', evalBar: true, legal: true, coords: true, sound: true, anim: true, premove: true, multiPremove: false, autoQueen: false, thinkMs: 3000, reviewMs: 700 }, saved.settings);
   const setup = Object.assign({ bot: 'max', color: 'w', clock: 0, fen: R.START_FEN, engine: 'auto', mode: 'human', flipEach: true, kingCapture: false, variant: 'chess', customIni: Fairy.TEMPLATES[0].ini }, saved.setup);
   const noPowers = () => { const o = { double: 0, midasPerTurn: 1 }; POWER_KEYS.forEach((k) => { o[k] = false; }); return o; };
   setup.powers = Object.assign(noPowers(), saved.setup && saved.setup.powers);   // yours, or White's in a bot match
@@ -1474,14 +1474,16 @@
     $('#statusInfo').textContent = G && ev.depth && !ranked() ? 'depth ' + ev.depth + ', ' + (ev.mate != null ? txt : ((ev.cp > 0 ? '+' : ev.cp < 0 ? '-' : '') + txt)) : '';
   }
 
+  const useThreads = (E) => Math.max(1, Math.min(E.threads, energy().threads)); // the threads the energy setting lets it use
   function renderEngineBox() {
     const box = $('#engineBox');
     box.classList.toggle('ok', engineReady);
     box.classList.toggle('bad', !engineReady);
     let html = engineReady
-      ? '<b>' + engine.label + '</b>' + (engine.kind === 'full' ? engine.threads + ' threads, ' + engine.hash + ' MB hash' : 'single thread fallback')
+      ? '<b>' + engine.label + '</b>' + (engine.kind === 'full' ? useThreads(engine) + ' threads, ' + Math.min(engine.hash, energy().hash) + ' MB hash' : 'single thread fallback')
       : '<b>Engine failed</b>Open the app through its server';
-    if (fairyEngine) html += '<b style="margin-top:6px">Fairy-Stockfish</b>' + fairyEngine.threads + ' threads, for variants';
+    if (fairyEngine) html += '<b style="margin-top:6px">Fairy-Stockfish</b>' + useThreads(fairyEngine) + ' threads, for variants';
+    if (energyMode() !== 'full') html += '<span class="engine-energy">' + (energyMode() === 'saver' ? 'Battery saver' : 'Balanced') + '</span>';
     $('#engineText').innerHTML = html;
   }
 
@@ -1590,7 +1592,7 @@
     $('#showEnd').style.display = G && G.over && !G.endOpen && ui.tab === 'play' ? '' : 'none';
     $('#rvResult').style.display = G && G.over ? '' : 'none';
     document.querySelector('.nav[data-tab="play"]').classList.toggle('live', !!G && !G.over);
-    if (window.PWA) PWA.awake((!!G && !G.over && ui.tab === 'play') || (ui.tab === 'modes' && ((gmTab === 'sk' && skLive()) || (gmTab === 'pb' && pbLive())))); // the screen stays on during a game
+    if (window.PWA) PWA.awake(energy().awake && ((!!G && !G.over && ui.tab === 'play') || (ui.tab === 'modes' && ((gmTab === 'sk' && skLive()) || (gmTab === 'pb' && pbLive()))))); // the screen stays on during a game (not in Battery saver)
   }
 
   function statusText() {
@@ -3443,10 +3445,11 @@
           busy++;
           w.postMessage({ id: id, state: st, cfg: cfg, opts: opts });
           // helpers only for a search without a depth limit: a bot held to a few moves of depth must not borrow deeper results
-          if (helpers && busy === 1 && (!opts.maxDepth || opts.maxDepth >= 64)) {
+          const nh = Math.min(helpers, energy().helpers); // the energy setting may use fewer helpers
+          if (nh && busy === 1 && (!opts.maxDepth || opts.maxDepth >= 64)) {
             const gen = Atomics.add(ctl, 0, 1) + 1;
-            while (aides.length < helpers) { const a = new Worker('js/brainworker.js'); a.postMessage({ table: table }); aides.push(a); }
-            aides.forEach((a, k) => a.postMessage({ id: 0, state: st, cfg: cfg, opts: Object.assign({}, opts, { helper: k + 1, gen: gen, maxDepth: 64 }) }));
+            while (aides.length < nh) { const a = new Worker('js/brainworker.js'); a.postMessage({ table: table }); aides.push(a); }
+            aides.slice(0, nh).forEach((a, k) => a.postMessage({ id: 0, state: st, cfg: cfg, opts: Object.assign({}, opts, { helper: k + 1, gen: gen, maxDepth: 64 }) }));
           }
         });
       },
@@ -3466,6 +3469,48 @@
     };
   }
   const botBrain = makeBrain(CORES >= 10 ? 3 : CORES >= 8 ? 2 : CORES >= 6 ? 1 : 0), evalBrain = makeBrain(CORES >= 10 ? 2 : CORES >= 6 ? 1 : 0);
+  /* ---------- battery and energy (Settings) ----------
+     What the engines may use. Full power: everything (all cores but two, long looks). Balanced: at most four
+     threads, a smaller hash table, one helper, the eval bar and the analysis board looking shorter, Max thinking at
+     most 4 seconds. Battery saver: one thread, no helpers, short looks, Max at most 1.5 seconds, the screen may dim,
+     the world drawn at half the frame rate. Automatic picks by the battery where the browser tells it (charging:
+     full power; on battery: balanced; under 20 %: saver), else balanced on a phone and full power elsewhere. */
+  const ENERGY = {
+    full: { threads: 64, hash: 4096, helpers: 9, look: 1, botMs: 1e9, anMs: 20000, reviewMs: 1e9, awake: true, frame: 0 },
+    balanced: { threads: 4, hash: 128, helpers: 1, look: 0.5, botMs: 4000, anMs: 8000, reviewMs: 700, awake: true, frame: 0 },
+    saver: { threads: 1, hash: 32, helpers: 0, look: 0.25, botMs: 1500, anMs: 3000, reviewMs: 350, awake: false, frame: 32 }
+  };
+  let battery = null;
+  if (navigator.getBattery) navigator.getBattery().then((b) => {
+    battery = b;
+    ['chargingchange', 'levelchange'].forEach((ev) => b.addEventListener(ev, () => { applyEnergy(); if (ui.tab === 'settings') renderEnergy(); }));
+    applyEnergy();
+  }).catch(() => {});
+  function energyMode() {
+    if (settings.energy && settings.energy !== 'auto' && ENERGY[settings.energy]) return settings.energy;
+    if (battery) return battery.charging ? 'full' : battery.level < 0.2 ? 'saver' : 'balanced';
+    return window.PWA && PWA.touch ? 'balanced' : 'full';
+  }
+  // (a function, so a call before this part of the file has run gets full power instead of an error)
+  function energy() { try { return ENERGY[energyMode()]; } catch (e) { return { threads: 64, hash: 4096, helpers: 9, look: 1, botMs: 1e9, anMs: 20000, reviewMs: 1e9, awake: true, frame: 0 }; } }
+  const reviewMs = () => Math.min(settings.reviewMs, energy().reviewMs); // the Game Review's look per position
+  // what engine.js reads before every search: always the setting of the moment
+  Object.defineProperty(window, 'PC_ENERGY', { configurable: true, get: () => { const e = energy(); return { threads: e.threads, hash: e.hash }; } });
+  function applyEnergy() {
+    try { renderEngineBox(); } catch (err) { /* the page is not built yet */ }
+  }
+  applyEnergy();
+  function renderEnergy() {
+    const box = $('#energySeg');
+    if (!box) return;
+    seg(box, [['auto', 'Automatic'], ['full', 'Full power'], ['balanced', 'Balanced'], ['saver', 'Battery saver']], settings.energy || 'auto', (v) => { settings.energy = v; applyEnergy(); changed(); renderEnergy(); });
+    const m = energyMode(), names = { full: 'Full power', balanced: 'Balanced', saver: 'Battery saver' };
+    const why = settings.energy !== 'auto' ? '' : battery ? (battery.charging ? '(charging, ' : '(on battery, ') + Math.round(battery.level * 100) + ' %)' : window.PWA && PWA.touch ? '(a phone)' : '(no battery reported)';
+    const what = { full: 'The engines use all they can: the strongest play and the deepest evaluation.',
+      balanced: 'At most four threads and less memory, shorter looks for the evaluation bar, the analysis board and the Game Review, Max thinks at most 4 seconds a move.',
+      saver: 'One thread, short looks everywhere, Max thinks at most 1.5 seconds a move, the screen may dim during a game, the open world drawn at a lower frame rate.' }[m];
+    $('#energyNow').innerHTML = '<b>Now: ' + names[m] + '</b> ' + (why ? '<span>' + why + '</span>' : '') + '<br><span>' + what + '</span>';
+  }
   /* The variants have a search of their own (js/fairybrain.js): a module worker with the variant rules inside. */
   const makeFairyBrain = () => {
     let w = null, seq = 0, busy = 0;
@@ -3805,7 +3850,7 @@
     return !!n && (n.turn === me || !R.checkedSquares(n, me, cfg).length);
   }
   // How long a full-strength bot thinks: the setting, except in a game mode, which keeps its own fixed rules.
-  const thinkMs = (game) => (game && game.spec && game.spec.gameMode ? 3000 : settings.thinkMs);
+  const thinkMs = (game) => Math.min(energy().botMs, game && game.spec && game.spec.gameMode ? 3000 : settings.thinkMs);
   async function engineTurn() {
     const game = G, s = live(), legal = G.legal, t0 = performance.now();
     // In a bot match each side has its own engine and level.
@@ -3886,7 +3931,7 @@
          never finishes, so there a running look is left to finish and its verdict shown, a moment late. */
       if (G.auto && evalBrain.busy) return;
       if (!G.auto) evalBrain.stop();
-      const lookMs = G.auto ? 600 : Math.min(2500, Math.max(900, settings.thinkMs * 0.5));
+      const lookMs = Math.max(250, (G.auto ? 600 : Math.min(2500, Math.max(900, settings.thinkMs * 0.5))) * energy().look);
       evalBrain.think(s, brainCfg(game.cfg, s.turn, true), { ms: lookMs, margin: 0, allow: legal.map(moveKey), free: true, seen: seenKeys(game) }).then((res) => {
         if (!res || !res.actions || game !== G || G.over || (!G.auto && live() !== s)) return;
         if (res.expected) { setEval(brainInfo({ score: res.score, depth: res.depth }), s.turn); G.analysis = { state: s, best: null, act: null }; return; } // before the throw: its average
@@ -3898,7 +3943,7 @@
       });
       return;
     }
-    let go = 'movetime 1500';
+    let go = 'movetime ' + Math.max(250, Math.round(1500 * energy().look));
     const only = G.B.searchmoves(s, G.legal, true);
     if (only) {
       if (!only.length) return;
@@ -4084,7 +4129,7 @@
       else if (byBrain) {
         // Dice Chess: every legal move is searched, rolled or not (see buildReview), the allowed ones give the verdict
         const every = game.dice ? R.legalAll(s, game.cfg) : null;
-        const res = await evalBrain.think(s, brainCfg(game.cfg, s.turn, true), { ms: settings.reviewMs * (every ? 1.5 : 1), margin: every ? 400 : 60, allow: (every || lg).map(moveKey), free: true });
+        const res = await evalBrain.think(s, brainCfg(game.cfg, s.turn, true), { ms: reviewMs() * (every ? 1.5 : 1), margin: every ? 400 : 60, allow: (every || lg).map(moveKey), free: true });
         if (rv !== my || G !== game || !res) { if (rv === my) { rv = null; renderReview(); } return; }
         const acts = (res.actions || []).map((a) => ({ a: a, act: keyToAct(a.key, lg) })).filter((x) => actFits(game, s, lg, x.act));
         if (res.expected) rec.ev = evWhite(brainInfo({ score: res.score, depth: res.depth }).score, s.turn); // before a throw: its average
@@ -4112,7 +4157,7 @@
              search (see buildReview). */
           const every = game.dice ? R.legalAll(s, game.cfg).map(R.uci).filter((u, k, a) => a.indexOf(u) === k) : null;
           const r = await E.search({
-            position: 'fen ' + game.B.fen(s), go: 'movetime ' + (every ? Math.round(settings.reviewMs * 1.5) + ' searchmoves ' + every.join(' ') : settings.reviewMs + (only ? ' searchmoves ' + only.join(' ') : '')),
+            position: 'fen ' + game.B.fen(s), go: 'movetime ' + (every ? Math.round(reviewMs() * 1.5) + ' searchmoves ' + every.join(' ') : reviewMs() + (only ? ' searchmoves ' + only.join(' ') : '')),
             options: Object.assign(variantOpts(game, E), FULL, { MultiPV: every ? Math.max(2, Math.min(every.length, 60)) : 2 })
           });
           if (rv !== my || G !== game || r.cancelled) { if (rv === my) { rv = null; renderReview(); } return; }
@@ -4144,7 +4189,7 @@
         if (game.variantGame && game.B.powers) {
           // the engine judged this as the plain variant: add what the power-ups change
           // a fixed depth, so that two neighbouring positions are measured with the same yardstick
-          const d = await powerDelta(game, s, Math.max(500, settings.reviewMs), 2);
+          const d = await powerDelta(game, s, Math.max(500, reviewMs()), 2);
           if (rv !== my || G !== game) { if (rv === my) { rv = null; renderReview(); } return; }
           if (d && d.best) {
             // what the power-up search would do here, free actions included
@@ -4189,7 +4234,7 @@
         if (!nb) continue;
         const lgb = game.B.legal(nb), stb = game.B.status(nb, lgb);
         if (stb.over) { my.evals[i].bestAfter = { win: stb.result }; continue; }
-        const res = await evalBrain.think(nb, brainCfg(game.cfg, nb.turn, true), { ms: settings.reviewMs, margin: 0, allow: lgb.map(moveKey), free: true });
+        const res = await evalBrain.think(nb, brainCfg(game.cfg, nb.turn, true), { ms: reviewMs(), margin: 0, allow: lgb.map(moveKey), free: true });
         if (rv !== my || G !== game || !res) { if (rv === my) { rv = null; renderReview(); } return; }
         if (res.actions && res.actions.length) my.evals[i].bestAfter = evWhite(brainInfo(res).score, nb.turn);
       }
@@ -4484,7 +4529,7 @@
       let first = rec.bestAct;
       if (reply && first) {
         const lg = my.legal[i] || game.B.legal(s);
-        const res = await evalBrain.think(s, brainCfg(game.cfg, s.turn, true), { ms: Math.max(1500, settings.reviewMs * 2), margin: 0, allow: lg.map(moveKey), free: true });
+        const res = await evalBrain.think(s, brainCfg(game.cfg, s.turn, true), { ms: Math.max(1500, reviewMs() * 2), margin: 0, allow: lg.map(moveKey), free: true });
         if (res && res.actions) { const fit = res.actions.map((a) => keyToAct(a.key, lg)).filter((x) => actFits(game, s, lg, x))[0]; if (fit) first = fit; }
       }
       const best = reply && first ? await brainLine(game, s, first, 5) : null;
@@ -4941,7 +4986,7 @@
         return true;
       });
       evalBrain.stop();
-      round(500).then((ok) => (ok ? round(4000) : false)).then(() => { if (A === my && A.cur === node) { A.searching = false; renderLines(); } });
+      round(500).then((ok) => (ok ? round(Math.min(4000, energy().anMs / 2)) : false)).then(() => { if (A === my && A.cur === node) { A.searching = false; renderLines(); } });
       return;
     }
     A.brain = false;
@@ -4952,7 +4997,7 @@
       if (!E || A !== my || A.cur !== node || ui.tab !== 'analysis' || !A.on) return;
       const adjust = (ev) => (!d || !ev ? ev : d.mate != null ? { mate: d.mate } : ev.cp != null ? { cp: ev.cp + d.cp } : ev);
       E.search({
-        position: 'fen ' + A.B.fen(s), go: 'movetime 20000' + (only ? ' searchmoves ' + only.join(' ') : ''),
+        position: 'fen ' + A.B.fen(s), go: 'movetime ' + energy().anMs + (only ? ' searchmoves ' + only.join(' ') : ''),
         options: Object.assign(variantOpts(A, E), FULL, { MultiPV: A.multipv }),
         onLine: (rank, entry) => {
           if (A !== my || A.cur !== node) return;
@@ -5695,7 +5740,7 @@
     BOTS.forEach((b) => {
       if (b.hidden) return;
       const rec = stats[statKey(kind, b)], lb = botLabel(b, fairy, ownName());
-      const threads = fairy ? (fairyEngine ? fairyEngine.threads + ' threads' : 'all threads') : (engineReady ? engine.threads + ' threads' : 'all threads');
+      const threads = fairy ? (fairyEngine ? useThreads(fairyEngine) + ' threads' : 'all threads') : (engineReady ? useThreads(engine) + ' threads' : 'all threads');
       if (b.style && !BOTS.slice(0, BOTS.indexOf(b)).some((x) => x.style)) box.appendChild(h('div', 'bots-head', 'Personalities'));
       const el = h('button', 'bot' + (b.max ? ' max' : '') + (b.style ? ' persona' : '') + (setup.bot === b.id ? ' on' : ''),
         face(b) + '<div style="min-width:0"><div class="nm">' + lb.name + '</div><div class="el">' +
@@ -5706,6 +5751,10 @@
     });
     $('#thinkBox').style.display = (botsMode ? setup.botW.bot === 'max' || setup.botB.bot === 'max' : !localMode && setup.bot === 'max') ? '' : 'none';
     seg($('#thinkSeg'), THINK, settings.thinkMs, (v) => { settings.thinkMs = v; changed(); });
+    // the energy setting may hold Max to less: said under the choice
+    let cap = $('#thinkCap');
+    if (!cap) { cap = h('p', 'energy-now'); cap.id = 'thinkCap'; $('#thinkSeg').after(cap); }
+    cap.textContent = energy().botMs < settings.thinkMs ? 'Battery and energy (Settings) holds this to ' + energy().botMs / 1000 + ' s right now.' : '';
     seg($('#colorSeg'), [['w', 'White'], ['r', 'Random'], ['b', 'Black']], setup.color, (v) => {
       setup.color = v;
       if (!G || G.over) { ui.flipped = v === 'b'; buildSquares(); }
@@ -5964,6 +6013,7 @@
   }
 
   function renderSettings() {
+    renderEnergy();
     const th = $('#themes');
     th.innerHTML = '';
     th.innerHTML = boardGroups(settings.theme, 'data-board');
@@ -8564,7 +8614,9 @@
     wv.raf = 0;
     if (!crownLive() || document.hidden) { wv.on = false; return; }
     wTick(now);
-    drawWorld(now);
+    // Battery saver: about 30 frames a second instead of the screen's full rate
+    const fr = energy().frame;
+    if (!fr || now - (wv.drawn || 0) >= fr) { wv.drawn = now; drawWorld(now); }
     wv.raf = requestAnimationFrame(wFrame);
   }
   function wStart() {

@@ -89,6 +89,9 @@ input,select{font-family:inherit}
 #boardcol{display:flex;flex-direction:column;gap:8px;flex:none;width:calc(var(--S) + 30px);position:relative}
 .pbar{display:flex;align-items:center;gap:10px;height:44px;margin-left:30px;width:max(var(--VW), min(var(--S), 340px))}
 #boardview{position:relative;width:var(--VW);height:var(--VH);overflow:auto;flex:none;border-radius:4px;scrollbar-width:thin;overscroll-behavior:contain}
+#energyBox .seg{flex-wrap:wrap}#energyBox .seg button{flex:1 1 auto}
+.engine-energy{display:block;margin-top:4px;color:#e8b33a;font-size:11.5px}
+.energy-now{margin:8px 2px 4px;font-size:12.5px;color:var(--muted);line-height:1.5}.energy-now b{color:var(--text)}
 #zoombar{display:none;flex-direction:row;align-items:center;gap:6px;flex:none;position:absolute;top:5px;right:0} /* in the top player bar, right end */
 #zoombar.on{display:flex}
 #zoombar button{width:34px;height:34px;border-radius:7px;background:var(--raise);color:var(--muted);font-weight:800;font-size:15px}
@@ -1726,6 +1729,8 @@ body.touch .keyskeys,body.touch .keyshead{display:none}
           <div class="piecesets" id="pieceSets"></div>
           <h3>Shogi pieces</h3>
           <div class="piecesets" id="shogiStyle"></div>
+          <h3>Battery and energy</h3>
+          <div id="energyBox"><div class="seg" id="energySeg"></div><p class="energy-now" id="energyNow"></p></div>
           <h3>Options</h3>
           <div id="setrows"></div>
           <h3>App</h3>
