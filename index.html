@@ -291,7 +291,7 @@ body[data-theme="pawnbarian"]{--sq-light:#69758f; --sq-dark:#545e7b}
 .pb-prev{color:#d9d4c8}
 .pb-daily{display:flex;align-items:center;gap:10px;margin:8px 0 4px;padding:10px 12px;border-radius:8px;background:#2f3a2c;box-shadow:inset 0 0 0 1px rgba(129,182,76,.45)}
 .pb-daily>div{flex:1;display:flex;flex-direction:column;gap:3px;min-width:0}.pb-daily b{font-size:14px}.pb-daily span{font-size:12.5px;color:#cfd8c4}.pb-daily .ok{color:#a6d47a}.pb-daily .dim{color:#a9a59d}
-.pb-daily .btn{flex:none;height:34px;padding:0 16px}
+.pb-daily .btn,.pb-daily .btn.green{flex:none;width:auto;height:36px;padding:0 18px;font-size:14px;box-shadow:0 3px 0 var(--green-d)}
 .pb-guide{display:flex;flex-direction:column;gap:6px;margin:8px 0;padding:10px 12px;border-radius:8px;background:rgba(232,179,58,.12);box-shadow:inset 0 0 0 1px rgba(232,179,58,.45)}
 .pb-guide>b{color:#e8b33a;font-size:12px;text-transform:uppercase;letter-spacing:.06em}.pb-guide>span{font-size:13px;line-height:1.45;color:#eee}
 .pb-guide .gm-row{margin:2px 0 0}.pb-guide .btn{height:30px;font-size:12.5px}
@@ -438,6 +438,19 @@ body[data-tab=modes][data-gm=pb][data-pbpulse=board] #board{box-shadow:0 0 0 3px
 .skv.mini{display:inline-flex;margin:0;gap:2px}
 .skv.mini .ski{padding:0 2px;background:none;font-size:10.5px}
 .skv.mini .ski-i{width:11px;height:11px}.skv.mini .ski-p{width:12px;height:12px}.skv.mini em{display:none}
+/* the cards to choose: as wide as the panel allows, the text big enough to read */
+.sk-pair{grid-template-columns:repeat(2,minmax(0,190px));gap:10px;padding:10px}
+.skc{width:auto;height:auto;min-height:190px;padding:10px 9px 9px;gap:5px}
+.skc b{font-size:15px;line-height:1.2;padding-right:22px}
+.skc span{font-size:12.5px}
+.skc>i{font-size:11px;right:8px;top:9px}
+.skl{gap:7px;margin-top:6px}
+.skl li{font-size:13px;line-height:1.3;gap:6px;letter-spacing:0}
+.skl li .ski-i{width:15px;height:15px;margin-top:1px}
+.skl li .ski-p,.skl li>.ski-p+.ski-p,.skl li span+.ski-p{width:18px;height:18px}
+.skl li span .ski-p,.skl li span .ski-i{width:16px;height:16px}
+.skl li .skl-pics .ski-p{width:16px;height:16px}
+.gm-card.sk .sk-pair .btn,.gm-card.sk .sk-pair .btn.green{font-size:14.5px;padding:9px 10px}
 .skc.empty{background:#2f2d2a;color:#888;align-items:center;justify-content:center}
 .sk-owned{display:flex;flex-wrap:wrap;gap:4px;margin-top:10px}
 .sk-chip{font-size:11px;padding:3px 7px;border-radius:10px}.sk-chip.black{background:#16151a;color:#ddd;box-shadow:inset 0 0 0 1px #4a4458}.sk-chip.white{background:#ece8de;color:#222}
