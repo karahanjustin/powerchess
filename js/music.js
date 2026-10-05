@@ -19,6 +19,13 @@
       arp: [0, 1, 2, 3, 2, 1, 0, 1], bass: [0, -1, 0, -1, 0, 0, -1, 0], drums: 'k...s...k.k.s.hh', pad: 0.045, arpVol: 0.04, wave: 'square', cut: 1500, bell: true },
     ouro: { bpm: 76, root: 52, chords: [[0, 7, 12, 15], [-4, 3, 8, 12], [-2, 5, 10, 14], [-5, 2, 7, 10]], steps: 8,
       arp: [0, 1, 2, 3, 2, 1, -1, -1], bass: [0, -1, -1, -1, -1, -1, -1, -1], drums: '........k.......', pad: 0.04, arpVol: 0.05, wave: 'sine', cut: 3000, drone: true },
+    // The Gilded Crown: the open land (slow, wide, a little sad), the inside of houses (warm, quiet), the lake
+    cfield: { bpm: 66, root: 50, chords: [[0, 7, 14, 15], [-2, 5, 12, 14], [-4, 3, 10, 12], [-5, 2, 9, 14]], steps: 8,
+      arp: [0, -1, 2, -1, 1, -1, 3, -1], bass: [0, -1, -1, -1, -1, -1, -1, -1], drums: '................', pad: 0.045, arpVol: 0.04, wave: 'triangle', cut: 2400, drone: true },
+    cinn: { bpm: 72, root: 55, chords: [[0, 4, 7, 11], [-3, 0, 4, 7], [5, 9, 12, 16], [2, 5, 9, 12]], steps: 6,
+      arp: [0, 2, 1, -1, 3, -1], bass: [0, -1, -1, 0, -1, -1], drums: '............', pad: 0.04, arpVol: 0.035, wave: 'sine', cut: 2000 },
+    clake: { bpm: 58, root: 52, chords: [[0, 7, 12, 16], [5, 9, 12, 16], [-3, 4, 9, 12], [-1, 4, 7, 11]], steps: 8,
+      arp: [0, -1, 1, -1, 2, -1, -1, -1], bass: [0, -1, -1, -1, -1, -1, -1, -1], drums: '................', pad: 0.04, arpVol: 0.04, wave: 'sine', cut: 3000, drone: true },
     ouroboss: { bpm: 104, root: 52, chords: [[0, 3, 7], [-4, 0, 3], [-2, 2, 5], [-5, -1, 2]], steps: 8,
       arp: [0, 2, 1, 2, 0, 2, 1, 3], bass: [0, -1, 0, -1, 0, -1, 0, 0], drums: 'k.h.k.h.s.h.k.hh', pad: 0.045, arpVol: 0.045, wave: 'triangle', cut: 2200, drone: true }
   };

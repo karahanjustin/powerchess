@@ -1562,6 +1562,7 @@
       if (!r || !r.F || r.phase !== 'play') return null;
       return r.floor >= SKM.BOSS_FLOOR || r.F.pieces.some((p) => p.boss) ? 'skboss' : 'sk';
     }
+    if (crownLive()) { const mm = CW.mapOf(crownW()).music; return mm === 'inn' ? 'cinn' : mm === 'lake' ? 'clake' : 'cfield'; }
     if (ui.tab === 'play' && G && !G.over && runGame()) { const r = ouroRun(); return r && r.battle && r.battle.boss ? 'ouroboss' : 'ouro'; }
     return null;
   }
@@ -5567,6 +5568,7 @@
   document.addEventListener('keydown', (e) => {
     if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName) || e.metaKey || e.ctrlKey || e.altKey) return;
     if (pbKey(e)) return; // Pawnbarian: the digits pick a card, Space ends the turn
+    if (crownKey(e, true)) return; // The Gilded Crown: walk, talk
     // the same everywhere: a digit picks a tab, letters press the buttons of the bar under the board
     if (TAB_KEYS[e.key] !== undefined) { setTab(TAB_KEYS[e.key]); return; }
     const press = (id) => { const b = $('#' + id); if (b && !b.disabled && b.offsetParent) { b.click(); return true; } return false; };
@@ -6110,7 +6112,7 @@
   const MODES_KEY = 'powerchess_modes';
   let MS = Modes.fresh(), msTimer = null, msSel = null, gmTab = 'home';
   let msPeek = null; // a piece kind whose card is open, picked from the army list or the reward offers
-  try { const t0 = localStorage.getItem('powerchess_gmtab'); gmTab = ['run', 'sk', 'pb', 'records', 'daily', 'dice', 'drawback', 'hex', 'shogi'].indexOf(t0) >= 0 ? t0 : 'home'; } catch (e) { /* first visit */ }
+  try { const t0 = localStorage.getItem('powerchess_gmtab'); gmTab = ['run', 'sk', 'pb', 'records', 'crown', 'daily', 'dice', 'drawback', 'hex', 'shogi'].indexOf(t0) >= 0 ? t0 : 'home'; } catch (e) { /* first visit */ }
   // Hexagonal Chess settings, like Drawback Chess
   let hexSet = { bot: 'b3', side: 'w', match: null };
   try { hexSet = Object.assign(hexSet, JSON.parse(localStorage.getItem('powerchess_hexset')) || {}); } catch (e) { /* first visit */ }
@@ -6399,7 +6401,7 @@
   function modesView() {
     const run = MS.run;
     if (gmTab === 'hex') return { s: Hex.initial(), W: 11, H: 11, glyphs: {}, cfg: null, hex: true };
-    if (gmTab === 'daily' || gmTab === 'home' || gmTab === 'records') return { s: R.fromFen(R.START_FEN), W: 8, H: 8, glyphs: {}, cfg: null };
+    if (gmTab === 'daily' || gmTab === 'home' || gmTab === 'records' || gmTab === 'crown') return { s: R.fromFen(R.START_FEN), W: 8, H: 8, glyphs: {}, cfg: null };
     if (gmTab === 'sk') return skView();
     if (gmTab === 'pb') return pbView();
     if (gmTab === 'shogi') return { s: R.fromFen(SHOGI_START, { side: 'w', freeArmy: true }), W: 9, H: 9, glyphs: Fairy.byId('shogi').glyphs, cfg: null };
@@ -6608,7 +6610,9 @@
     const run = MS.run, sk = skData(), skr = sk.run, dkey = dayKeyOf(new Date()), drec = daily[dkey], streak = dailyStreak();
     const big = (tab, img, name, line, stat) => '<button class="gm-big" data-gmtab="' + tab + '"><i class="gm-art" style="background-image:' + img + '"></i><span class="gm-txt"><b>' + name + '</b><span>' + line + '</span></span><em>' + stat + '</em></button>';
     const tile = (tab, name, stat) => '<button class="gm-tile" data-gmtab="' + tab + '"><i class="gm-ic">' + GM_ICON[tab] + '</i><b>' + name + '</b><span>' + stat + '</span></button>';
-    let html = '<div class="gm-home"><h3 class="gm-cat">Runs</h3>';
+    let html = '<div class="gm-home">';
+    if (CW) html += '<h3 class="gm-cat">Adventure</h3>' + big('crown', 'url(' + pieceUrl('K') + ')', 'The Gilded Crown', 'An open world, a story, chess battles', MS.world && MS.world.started ? CW.mapOf(MS.world).name : 'New');
+    html += '<h3 class="gm-cat">Runs</h3>';
     html += big('run', 'url(pieces/fairy/w_wyrm.svg)', 'Ouroboros King', 'Grow an army, stage by stage', ouroRun() ? (ouroRun().inf ? 'Infinity ' + ouroRun().inf.level : 'Act ' + Math.min(4, ouroRun().act + 1)) : MS.runs.best ? 'Best ' + MS.runs.best : '');
     html += big('sk', 'url(pieces/fairy/b_shotgunking.svg)', 'Shotgun King', 'One king, one shotgun', skr && skr.phase !== 'lost' && skr.phase !== 'won' ? 'Floor ' + Math.min(skr.floor, 12) : 'Rank ' + Math.min(skUi.rank, sk.maxRank));
     const pbr = pbRun();
@@ -6653,12 +6657,14 @@
     if (gmTab === 'sk') html += skCard();
     if (gmTab === 'pb') html += pbCard();
     if (gmTab === 'records') html += recordsCard();
+    if (gmTab === 'crown') html += crownCard();
     if (gmTab === 'shogi') html += shogiModeCard();
     box.innerHTML = html;
     // the card of the piece last clicked on the board, as in a game
     const slot = $('#gmCard'), pv = gmTab !== 'run' ? null : msPeek || (ui.info != null ? modesView().s.board[ui.info] : null);
     if (slot && pv) slot.appendChild(pieceCard(pv, { pw: { w: null, b: null } }, msPeek ? null : modesView().s)); // on the board: what a mimic copies from the line-up
     wireModes(box);
+    if (gmTab === 'crown') { wStart(); wDlgRender(); }
   }
   /* ---------- The Ouroboros King: the run (js/ouro.js) ----------
      The page: the act and its map (places to travel to, bottom to top, the boss at the top), gold, Rewinds, relics and
@@ -8209,6 +8215,434 @@
     else return false;
     return true;
   }
+  /* ---------- The Gilded Crown (the open world; the rules are in world.js, the maps in world_maps.js) ----------
+     The world is drawn on a canvas in the board's place: the tiles painted here (a muted palette, gold only where
+     the curse is), the King and the people as chess pieces that walk with a small step. The arrow keys or WASD walk,
+     Space talks or looks; a click or tap walks there on the shortest way (and talks to whoever is clicked). What is
+     said is page text (so it can be translated), in a box over the world. The state is MS.world, saved on a door, at
+     the end of a talk and every few steps. */
+  const CW = typeof World !== 'undefined' ? World : null;
+  const wv = { on: false, raf: 0, anim: null, path: [], target: null, held: null, dlg: null, npcAnim: {}, wanderAt: 0, steps: 0, cache: {}, imgs: {}, T: 48, cam: [0, 0], fadeUntil: 0 };
+  const crownW = () => MS.world || null;
+  const crownLive = () => !!(CW && ui.tab === 'modes' && gmTab === 'crown' && crownW() && crownW().started);
+  // a seeded number per tile (the same grass every time)
+  const hashXY = (x, y, k) => { let h = (x * 374761393 + y * 668265263 + (k || 0) * 1442695041) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+  const WCOL = {
+    grass: ['#55703f', '#5a7643', '#4f6a3b'], blade: '#40592e', road: '#8e7a55', pebble: '#6f5f42', sand: '#a8976b', wheat: '#b39a4f', stalk: '#8e7a35',
+    pave: '#8a8478', paveLine: '#6b665c', plank: '#7a5a3a', plankLine: '#4b3622', floor: '#6b4f35', floorLine: '#57402b', water: '#2f5470', wave: '#4a7590',
+    stone: '#6f6a62', mortar: '#4e4a44', plaster: '#b8ad94', beam: '#4a3828', slate: '#4d4f57', slateDark: '#3c3e45', leaf: ['#2f4a2a', '#3a5a32', '#4d7040'], trunk: '#4a3524',
+    rock: ['#7d7b74', '#5f5d58', '#9a978e'], wood: '#5a3d24', woodLight: '#7a5434', brass: '#b8964a', moss: '#4c6a3a', canvas: ['#8c7a5a', '#6e5f45'], cloth: '#5d6b7a', rug: '#6e2a26'
+  };
+  // the ground under a solid thing: the walkable tile around it that comes first (paving, floor, road, grass)
+  function wGround(M, x, y) {
+    const near = [CW.tile(M, x, y + 1), CW.tile(M, x - 1, y), CW.tile(M, x + 1, y), CW.tile(M, x, y - 1)];
+    for (const c of ['f', 'P', '=', ':', '.']) if (near.indexOf(c) >= 0) return c;
+    return M.outdoor ? '.' : 'f';
+  }
+  function wRect(g, c, x, y, w, h) { g.fillStyle = c; g.fillRect(x, y, w, h); }
+  // grass: one colour everywhere (no checkerboard), with small patches and blades that differ per tile
+  function wGrassTile(g, T, x, y) {
+    wRect(g, WCOL.grass[0], 0, 0, T, T);
+    for (let i = 0; i < 3; i++) { g.fillStyle = i ? '#5b7745' : '#506b3c'; g.beginPath(); g.ellipse(hashXY(x, y, 30 + i) * T, hashXY(x, y, 40 + i) * T, T * 0.22, T * 0.12, 0, 0, 7); g.fill(); }
+    for (let i = 0; i < 5; i++) { const a = hashXY(x, y, 10 + i), b = hashXY(x, y, 20 + i); wRect(g, WCOL.blade, a * T, b * T, Math.max(1, T / 24), Math.max(2, T / 10)); }
+  }
+  // a ground tile on its own small canvas (the static ones are drawn once per size and kept)
+  function wPaintGround(g, c, T, x, y) {
+    const r = (k) => hashXY(x, y, k);
+    if (c === '.' || c === ',' || c === '"') {
+      wGrassTile(g, T, x, y);
+      if (c === ',') for (let i = 0; i < 4; i++) { g.fillStyle = ['#c9c3a8', '#a8574a', '#c8a94e'][Math.floor(r(30 + i) * 3)]; g.beginPath(); g.arc(r(40 + i) * T, r(50 + i) * T, T / 16, 0, 7); g.fill(); }
+      if (c === '"') { g.strokeStyle = '#6d8a4c'; g.lineWidth = Math.max(1, T / 30); for (let i = 0; i < 7; i++) { const a = r(60 + i) * T, b = T * (0.45 + r(70 + i) * 0.5); g.beginPath(); g.moveTo(a, b); g.lineTo(a + (r(80 + i) - 0.5) * T * 0.15, b - T * 0.3); g.stroke(); } }
+    } else if (c === '=') {
+      wRect(g, WCOL.road, 0, 0, T, T);
+      for (let i = 0; i < 4; i++) wRect(g, WCOL.pebble, r(90 + i) * T, r(100 + i) * T, T / 14, T / 18);
+    } else if (c === ':') {
+      wRect(g, WCOL.sand, 0, 0, T, T);
+      for (let i = 0; i < 3; i++) wRect(g, '#8e7e58', r(110 + i) * T, r(120 + i) * T, T / 14, T / 14);
+    } else if (c === 'w') {
+      wRect(g, WCOL.wheat, 0, 0, T, T);
+      g.strokeStyle = WCOL.stalk; g.lineWidth = Math.max(1, T / 28);
+      for (let i = 0; i < 4; i++) { const yy = T * (0.18 + i * 0.24); g.beginPath(); g.moveTo(0, yy); g.lineTo(T, yy); g.stroke(); }
+    } else if (c === 'P') {
+      wRect(g, WCOL.pave, 0, 0, T, T);
+      g.strokeStyle = WCOL.paveLine; g.lineWidth = Math.max(1, T / 32);
+      const off = (y % 2) * T / 2;
+      g.beginPath(); g.moveTo(0, T / 2); g.lineTo(T, T / 2); g.moveTo(0, 0.5); g.lineTo(T, 0.5);
+      g.moveTo((off + T / 4) % T, 0); g.lineTo((off + T / 4) % T, T / 2); g.moveTo((off + 3 * T / 4) % T, T / 2); g.lineTo((off + 3 * T / 4) % T, T); g.stroke();
+    } else if (c === '_') {
+      wRect(g, WCOL.plank, 0, 0, T, T);
+      g.strokeStyle = WCOL.plankLine; g.lineWidth = Math.max(1, T / 24);
+      for (let i = 1; i < 4; i++) { g.beginPath(); g.moveTo(T * i / 4, 0); g.lineTo(T * i / 4, T); g.stroke(); }
+    } else if (c === 'f' || c === 'D' && false) {
+      wRect(g, WCOL.floor, 0, 0, T, T);
+      g.strokeStyle = WCOL.floorLine; g.lineWidth = Math.max(1, T / 30);
+      for (let i = 1; i < 3; i++) { g.beginPath(); g.moveTo(0, T * i / 3); g.lineTo(T, T * i / 3); g.stroke(); }
+      g.beginPath(); g.moveTo(T * (0.3 + (x % 2) * 0.4), 0); g.lineTo(T * (0.3 + (x % 2) * 0.4), T / 3); g.stroke();
+    } else if (c === 'R') {
+      wRect(g, WCOL.rug, 0, 0, T, T);
+      // the border only on the rug's outer edges (x, y carry which: 1 left, 2 right, 4 top, 8 bottom)
+      const e = x, b = Math.max(2, T / 14);
+      g.fillStyle = WCOL.brass;
+      if (e & 1) g.fillRect(T * 0.06, 0, b, T); if (e & 2) g.fillRect(T * 0.94 - b, 0, b, T);
+      if (e & 4) g.fillRect(0, T * 0.06, T, b); if (e & 8) g.fillRect(0, T * 0.94 - b, T, b);
+    } else wGrassTile(g, T, x, y);
+  }
+  // a solid thing on its ground (drawn in the row pass, after the ground of the whole view)
+  function wPaintThing(g, M, c, T, x, y, now) {
+    const r = (k) => hashXY(x, y, k);
+    const circle = (cx, cy, rad, col) => { g.fillStyle = col; g.beginPath(); g.arc(cx, cy, rad, 0, 7); g.fill(); };
+    switch (c) {
+      case 'T': {
+        circle(T / 2, T * 0.92, T * 0.34, 'rgba(0,0,0,.25)');
+        wRect(g, WCOL.trunk, T * 0.42, T * 0.55, T * 0.16, T * 0.4);
+        const s = 0.85 + r(3) * 0.25;
+        circle(T * 0.5, T * 0.3, T * 0.5 * s, WCOL.leaf[0]);
+        circle(T * 0.38, T * 0.22, T * 0.33 * s, WCOL.leaf[1]);
+        circle(T * 0.62, T * 0.38, T * 0.3 * s, WCOL.leaf[1]);
+        circle(T * 0.42, T * 0.1, T * 0.16 * s, WCOL.leaf[2]);
+        break;
+      }
+      case 't': circle(T / 2, T * 0.62, T * 0.36, WCOL.leaf[0]); circle(T * 0.42, T * 0.5, T * 0.22, WCOL.leaf[1]); break;
+      case 'o': {
+        g.fillStyle = WCOL.rock[0]; g.beginPath(); g.moveTo(T * 0.12, T * 0.85); g.lineTo(T * 0.2, T * 0.35); g.lineTo(T * 0.55, T * 0.15); g.lineTo(T * 0.88, T * 0.4); g.lineTo(T * 0.9, T * 0.85); g.closePath(); g.fill();
+        g.fillStyle = WCOL.rock[1]; g.beginPath(); g.moveTo(T * 0.55, T * 0.15); g.lineTo(T * 0.88, T * 0.4); g.lineTo(T * 0.9, T * 0.85); g.lineTo(T * 0.6, T * 0.85); g.closePath(); g.fill();
+        wRect(g, WCOL.rock[2], T * 0.25, T * 0.38, T * 0.18, T * 0.06);
+        break;
+      }
+      case '~': {
+        wRect(g, WCOL.water, 0, 0, T, T);
+        g.strokeStyle = WCOL.wave; g.lineWidth = Math.max(1, T / 26);
+        for (let i = 0; i < 2; i++) { const yy = T * (0.3 + i * 0.4), ph = now / 900 + x * 0.7 + y * 0.3 + i; g.beginPath(); g.moveTo(T * 0.15 + Math.sin(ph) * T * 0.08, yy); g.lineTo(T * 0.5 + Math.sin(ph) * T * 0.08, yy); g.stroke(); }
+        break;
+      }
+      case '#': {
+        wRect(g, M.outdoor ? WCOL.stone : '#4a443d', 0, 0, T, T);
+        g.strokeStyle = M.outdoor ? WCOL.mortar : '#38332d'; g.lineWidth = Math.max(1, T / 28);
+        for (let i = 1; i < 3; i++) { g.beginPath(); g.moveTo(0, T * i / 3); g.lineTo(T, T * i / 3); g.stroke(); }
+        for (let i = 0; i < 3; i++) { const xx = T * ((i % 2) * 0.5 + 0.25); g.beginPath(); g.moveTo(xx, T * i / 3); g.lineTo(xx, T * (i + 1) / 3); g.stroke(); }
+        break;
+      }
+      case 'H': {
+        wRect(g, WCOL.plaster, 0, 0, T, T);
+        wRect(g, WCOL.beam, 0, 0, T, T * 0.1); wRect(g, WCOL.beam, 0, T * 0.9, T, T * 0.1);
+        if (r(5) < 0.5) { wRect(g, '#2a3540', T * 0.3, T * 0.25, T * 0.4, T * 0.35); g.strokeStyle = WCOL.beam; g.lineWidth = Math.max(1, T / 18); g.strokeRect(T * 0.3, T * 0.25, T * 0.4, T * 0.35); }
+        else wRect(g, WCOL.beam, T * 0.45, T * 0.1, T * 0.1, T * 0.8);
+        break;
+      }
+      case '^': {
+        wRect(g, WCOL.slate, 0, 0, T, T);
+        g.fillStyle = WCOL.slateDark;
+        for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) g.fillRect(T * (j / 3 + (i % 2) / 6), T * (i / 4) + T * 0.2, T / 3 - 2, Math.max(1, T / 30));
+        if (CW.tile(M, x, y - 1) !== '^') wRect(g, '#5d606a', 0, 0, T, T * 0.08);
+        break;
+      }
+      case 'D': {
+        const inside = !M.outdoor;
+        wRect(g, inside ? '#4a443d' : WCOL.plaster, 0, 0, T, T);
+        wRect(g, WCOL.wood, T * 0.2, T * (inside ? 0.05 : 0.15), T * 0.6, T * (inside ? 0.95 : 0.85));
+        g.strokeStyle = '#3a2716'; g.lineWidth = Math.max(1, T / 30); g.beginPath(); g.moveTo(T / 2, T * 0.2); g.lineTo(T / 2, T); g.stroke();
+        circle(T * 0.62, T * 0.6, T * 0.04, WCOL.brass);
+        break;
+      }
+      case '|': {
+        g.fillStyle = WCOL.plank;
+        wRect(g, WCOL.plank, 0, T * 0.35, T, T * 0.08); wRect(g, WCOL.plank, 0, T * 0.6, T, T * 0.08);
+        wRect(g, '#5d4129', T * 0.1, T * 0.2, T * 0.12, T * 0.65); wRect(g, '#5d4129', T * 0.62, T * 0.2, T * 0.12, T * 0.65);
+        break;
+      }
+      case 'W': circle(T / 2, T / 2, T * 0.4, WCOL.rock[0]); circle(T / 2, T / 2, T * 0.26, '#1e3446'); circle(T * 0.45, T * 0.45, T * 0.06, '#4a7590'); break;
+      case 'S': wRect(g, WCOL.wood, T * 0.44, T * 0.35, T * 0.12, T * 0.6); wRect(g, '#8a6a42', T * 0.15, T * 0.15, T * 0.7, T * 0.35); wRect(g, '#5a432b', T * 0.25, T * 0.27, T * 0.5, T * 0.04); break;
+      case 'X': {
+        wRect(g, '#5c5a52', 0, 0, T, T);
+        g.strokeStyle = '#46443e'; g.lineWidth = Math.max(1, T / 26);
+        for (let i = 1; i < 3; i++) { g.beginPath(); g.moveTo(0, T * i / 3); g.lineTo(T, T * i / 3); g.stroke(); }
+        if (r(7) < 0.5) circle(T * r(8), T * r(9), T * 0.16, WCOL.moss);
+        break;
+      }
+      case 'G': wRect(g, '#5c5a52', 0, 0, T, T); wRect(g, '#15161a', T * 0.15, T * 0.15, T * 0.7, T * 0.85); g.fillStyle = '#3a3a40'; for (let i = 0; i < 4; i++) g.fillRect(T * (0.2 + i * 0.17), T * 0.15, T * 0.05, T * 0.85); g.fillRect(T * 0.15, T * 0.5, T * 0.7, T * 0.05); break;
+      case 'c': {
+        g.fillStyle = WCOL.rock[0]; g.beginPath(); g.moveTo(0, T); g.lineTo(T * 0.1, T * 0.2); g.lineTo(T * 0.9, T * 0.2); g.lineTo(T, T); g.closePath(); g.fill();
+        g.fillStyle = '#101012'; g.beginPath(); g.moveTo(T * 0.22, T); g.quadraticCurveTo(T * 0.5, T * 0.15, T * 0.78, T); g.closePath(); g.fill();
+        break;
+      }
+      case 'A': wRect(g, '#7f7c73', T * 0.2, T * 0.25, T * 0.6, T * 0.65); wRect(g, '#9a978e', T * 0.15, T * 0.2, T * 0.7, T * 0.1); g.strokeStyle = '#cfcab9'; g.lineWidth = Math.max(1, T / 30); g.strokeRect(T * 0.32, T * 0.42, T * 0.36, T * 0.3); break;
+      case 'F': case 'K': {
+        if (c === 'K') { wRect(g, '#4a443d', 0, 0, T, T); wRect(g, '#16120f', T * 0.18, T * 0.3, T * 0.64, T * 0.7); }
+        else for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; circle(T / 2 + Math.cos(a) * T * 0.3, T * 0.6 + Math.sin(a) * T * 0.22, T * 0.08, WCOL.rock[1]); }
+        const fl = 0.85 + Math.sin(now / 110 + x) * 0.15;
+        g.fillStyle = '#d9692a'; g.beginPath(); g.moveTo(T * 0.32, T * 0.82); g.quadraticCurveTo(T * 0.5, T * (0.82 - 0.55 * fl), T * 0.68, T * 0.82); g.closePath(); g.fill();
+        g.fillStyle = '#f0c14e'; g.beginPath(); g.moveTo(T * 0.42, T * 0.82); g.quadraticCurveTo(T * 0.5, T * (0.82 - 0.32 * fl), T * 0.58, T * 0.82); g.closePath(); g.fill();
+        break;
+      }
+      case 'n': {
+        g.fillStyle = WCOL.canvas[0]; g.beginPath(); g.moveTo(T * 0.5, T * 0.05); g.lineTo(T * 0.98, T * 0.92); g.lineTo(T * 0.02, T * 0.92); g.closePath(); g.fill();
+        g.fillStyle = WCOL.canvas[1]; g.beginPath(); g.moveTo(T * 0.5, T * 0.05); g.lineTo(T * 0.98, T * 0.92); g.lineTo(T * 0.5, T * 0.92); g.closePath(); g.fill();
+        g.fillStyle = '#2a2219'; g.beginPath(); g.moveTo(T * 0.5, T * 0.45); g.lineTo(T * 0.62, T * 0.92); g.lineTo(T * 0.38, T * 0.92); g.closePath(); g.fill();
+        break;
+      }
+      case 'v': circle(T / 2, T * 0.55, T * 0.34, '#6b4a2b'); g.strokeStyle = '#3a2a1a'; g.lineWidth = Math.max(1, T / 18); g.beginPath(); g.arc(T / 2, T * 0.55, T * 0.24, 0, 7); g.stroke(); break;
+      case 'C': wRect(g, WCOL.woodLight, 0, T * 0.15, T, T * 0.25); wRect(g, WCOL.wood, 0, T * 0.4, T, T * 0.55); break;
+      case 'b': wRect(g, WCOL.wood, T * 0.1, T * 0.05, T * 0.8, T * 0.9); wRect(g, WCOL.cloth, T * 0.15, T * 0.35, T * 0.7, T * 0.55); wRect(g, '#d8d2c2', T * 0.2, T * 0.1, T * 0.6, T * 0.2); break;
+      case 'k': wRect(g, '#3a2a1a', T * 0.18, T * 0.75, T * 0.08, T * 0.2); wRect(g, '#3a2a1a', T * 0.74, T * 0.75, T * 0.08, T * 0.2); wRect(g, WCOL.woodLight, T * 0.1, T * 0.3, T * 0.8, T * 0.45); break;
+      case 'a': wRect(g, '#3a3a3e', T * 0.2, T * 0.35, T * 0.6, T * 0.18); wRect(g, '#2e2e32', T * 0.38, T * 0.53, T * 0.24, T * 0.3); wRect(g, '#3a3a3e', T * 0.28, T * 0.8, T * 0.44, T * 0.12); break;
+      case '!': wRect(g, '#4a443d', 0, 0, T, T); wRect(g, '#3f6a3a', T * 0.25, T * 0.1, T * 0.5, T * 0.75); wRect(g, '#e6e0cf', T * 0.4, T * 0.3, T * 0.2, T * 0.12); break;
+      default: break;
+    }
+  }
+  // the static ground of one tile, from the cache
+  function wGroundImg(c, T, x, y) {
+    let variant = c === '.' || c === ',' || c === '"' || c === '=' || c === ':' ? Math.floor(hashXY(x, y, 2) * 6) : c === 'P' || c === 'f' ? (y % 2) * 2 + (x % 2) : 0;
+    if (c === 'R') { const M = CW.mapOf(crownW()); variant = (CW.tile(M, x - 1, y) !== 'R' ? 1 : 0) | (CW.tile(M, x + 1, y) !== 'R' ? 2 : 0) | (CW.tile(M, x, y - 1) !== 'R' ? 4 : 0) | (CW.tile(M, x, y + 1) !== 'R' ? 8 : 0); }
+    const key = c + variant + ':' + T;
+    let cv = wv.cache[key];
+    if (!cv) {
+      cv = document.createElement('canvas'); cv.width = cv.height = T;
+      if (c === 'R') wPaintGround(cv.getContext('2d'), c, T, variant, 0);
+      else wPaintGround(cv.getContext('2d'), c, T, variant * 7 + 1, variant * 13 + 3 + (c === 'P' || c === 'f' ? y % 2 : 0));
+      wv.cache[key] = cv;
+    }
+    return cv;
+  }
+  function wPieceImg(letter) {
+    let im = wv.imgs[letter];
+    if (!im) { im = new Image(); im.src = pieceUrl(letter); wv.imgs[letter] = im; }
+    return im;
+  }
+  function wSprite(g, letter, px, py, T, bob) {
+    const im = wPieceImg(letter);
+    g.fillStyle = 'rgba(0,0,0,.28)'; g.beginPath(); g.ellipse(px + T / 2, py + T * 0.88, T * 0.3, T * 0.1, 0, 0, 7); g.fill();
+    if (im.complete && im.naturalWidth) g.drawImage(im, px + T * 0.07, py + T * 0.02 - bob, T * 0.86, T * 0.86);
+  }
+  // the King's drawn place in tiles: between two squares while he walks
+  function wPlayerPos(now) {
+    const W = crownW(), a = wv.anim;
+    if (!a) return [W.x, W.y, 0];
+    const t = Math.min(1, (now - a.t0) / a.dur);
+    return [a.fx + (a.tx - a.fx) * t, a.fy + (a.ty - a.fy) * t, Math.sin(t * Math.PI)];
+  }
+  function drawWorld(now) {
+    const cv = $('#worldCanvas'), W = crownW();
+    if (!cv || !W) return;
+    const dpr = window.devicePixelRatio || 1, cw = cv.clientWidth, chh = cv.clientHeight;
+    if (!cw || !chh) return;
+    if (cv.width !== Math.round(cw * dpr) || cv.height !== Math.round(chh * dpr)) { cv.width = Math.round(cw * dpr); cv.height = Math.round(chh * dpr); }
+    const g = cv.getContext('2d'), M = CW.mapOf(W), sz = CW.size(M);
+    // a tile's size: outside about 15 across (10 on a phone); a room fills the view, up to a limit
+    const T = Math.round((M.outdoor ? Math.max(28, Math.min(64, cw / (cw > 560 ? 15 : 10))) : Math.max(28, Math.min(84, cw / (sz[0] + 1), chh / (sz[1] + 1)))) * dpr);
+    if (T !== wv.T) { wv.T = T; wv.cache = {}; }
+    const vw = cv.width, vh = cv.height, pp = wPlayerPos(now);
+    // the camera: the King in the middle, held inside the map (a small map sits in the middle of the view)
+    let camX = (pp[0] + 0.5) * T - vw / 2, camY = (pp[1] + 0.5) * T - vh / 2;
+    const mw = sz[0] * T, mh = sz[1] * T;
+    camX = mw <= vw ? (mw - vw) / 2 : Math.max(0, Math.min(mw - vw, camX));
+    camY = mh <= vh ? (mh - vh) / 2 : Math.max(0, Math.min(mh - vh, camY));
+    camX = Math.round(camX); camY = Math.round(camY);
+    wv.cam = [camX, camY];
+    g.fillStyle = M.outdoor ? '#2a3a22' : '#15120f';
+    g.fillRect(0, 0, vw, vh);
+    const x0 = Math.max(0, Math.floor(camX / T) - 1), y0 = Math.max(0, Math.floor(camY / T) - 1);
+    const x1 = Math.min(sz[0] - 1, Math.ceil((camX + vw) / T) + 1), y1 = Math.min(sz[1] - 1, Math.ceil((camY + vh) / T) + 1);
+    // the ground
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      let c = CW.tile(M, x, y);
+      const d = CW.TILES[c];
+      if (d && (d.block || c === 'D')) c = wGround(M, x, y);
+      g.drawImage(wGroundImg(c, T, x, y), x * T - camX, y * T - camY);
+    }
+    // the things and the people, row by row (what stands lower is drawn over what stands higher)
+    const people = (M.things || []).filter((t) => t.t === 'npc');
+    const tgt = CW.facing(W);
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const c = CW.tile(M, x, y), d = CW.TILES[c];
+        if (!d || !(d.block || c === 'D')) continue;
+        g.save(); g.translate(x * T - camX, y * T - camY);
+        wPaintThing(g, M, c, T, x, y, now);
+        g.restore();
+      }
+      people.forEach((p) => {
+        const a = wv.npcAnim[p.id], at = CW.npcAt(W, p);
+        let px = at[0], py = at[1], bob = 0;
+        if (a) { const t = Math.min(1, (now - a.t0) / a.dur); px = a.from[0] + (a.to[0] - a.from[0]) * t; py = a.from[1] + (a.to[1] - a.from[1]) * t; bob = Math.sin(t * Math.PI) * T * 0.06; if (t >= 1) delete wv.npcAnim[p.id]; }
+        if (Math.round(py) !== y) return;
+        wSprite(g, p.piece, px * T - camX, py * T - camY, T, bob);
+      });
+      if (Math.round(pp[1]) === y) wSprite(g, 'K', pp[0] * T - camX, pp[1] * T - camY, T, pp[2] * T * 0.08);
+    }
+    // what the King faces and can talk to or look at: a small marker over it
+    if (tgt && tgt.t !== 'door' && !wv.dlg && !wv.anim) {
+      const at = tgt.t === 'npc' ? CW.npcAt(W, tgt) : [tgt.x, tgt.y], bx = at[0] * T - camX + T / 2, by = at[1] * T - camY - T * 0.05 + Math.sin(now / 250) * T * 0.04;
+      g.fillStyle = '#e8dcb5'; g.beginPath(); g.moveTo(bx, by); g.lineTo(bx - T * 0.1, by - T * 0.14); g.lineTo(bx + T * 0.1, by - T * 0.14); g.closePath(); g.fill();
+    }
+  }
+  /* ---------- walking, talking ---------- */
+  const W_STEP = 150;
+  function wTick(now) {
+    const W = crownW();
+    if (!W) return;
+    if (wv.anim && now - wv.anim.t0 >= wv.anim.dur) wv.anim = null;
+    if (!wv.anim && !wv.dlg && now >= wv.fadeUntil) {
+      const d = wv.path.length ? wv.path.shift() : wv.held;
+      if (d) {
+        const fx = W.x, fy = W.y, map0 = W.map, r = CW.step(W, d);
+        if (r.door) wDoor(r, now);
+        else if (r.moved) { wv.anim = { fx: fx, fy: fy, tx: W.x, ty: W.y, t0: now, dur: W_STEP }; wv.steps++; }
+        if (!r.moved && wv.path.length && !r.turned) wv.path = []; // something stepped into the way
+        if (r.moved && wv.steps % 25 === 0) saveModes();
+        if (map0 === W.map && !wv.path.length && wv.target) {
+          // the end of a walk to someone or something: talk to it, look at it
+          const t = wv.target; wv.target = null;
+          const f = CW.facing(W);
+          if (f && f === t) wInteract(f);
+        }
+      }
+    }
+    // the people stroll now and then
+    if (now >= wv.wanderAt && !wv.dlg) {
+      wv.wanderAt = now + 1300;
+      CW.wander(W, Math.random).forEach((mv) => { wv.npcAnim[mv.id] = { from: mv.from, to: mv.to, t0: now, dur: 420 }; });
+    }
+  }
+  function wDoor(r, now) {
+    const fade = $('#worldFade');
+    wv.fadeUntil = now + 260; wv.path = []; wv.held = null; wv.npcAnim = {};
+    if (fade) { fade.classList.remove('on'); void fade.offsetWidth; fade.classList.add('on'); }
+    snd('move');
+    wBanner(CW.mapOf(crownW()).name);
+    saveModes();
+    renderModes();
+    updateMusic();
+  }
+  function wBanner(text) {
+    const b = $('#worldBanner');
+    if (!b) return;
+    b.textContent = text;
+    b.classList.remove('on'); void b.offsetWidth; b.classList.add('on');
+  }
+  // talk to a person, read a sign, look at a thing: the lines one by one in the box
+  function wInteract(t) {
+    if (!t || t.t === 'door') return;
+    const W = crownW();
+    if (t.t === 'npc') {
+      // the person turns to the King
+      const at = CW.npcAt(W, t);
+      t.faceNow = W.x > at[0] ? 'e' : W.x < at[0] ? 'w' : W.y > at[1] ? 's' : 'n';
+    }
+    const said = CW.talk(W, t.say);
+    if (!said.lines.length) return;
+    wv.dlg = { said: said, i: 0, who: t.t === 'npc' ? t : null };
+    snd('pb:flick');
+    wDlgRender();
+  }
+  function wNarrate(key) {
+    const W = crownW(), said = CW.talk(W, key);
+    if (!said.lines.length) return;
+    wv.dlg = { said: said, i: 0, who: null, narration: true };
+    wDlgRender();
+  }
+  function wDlgRender() {
+    const box = $('#worldDlg'), d = wv.dlg;
+    if (!box) return;
+    if (!d) { box.classList.remove('on'); box.innerHTML = ''; return; }
+    const who = d.who, last = d.i >= d.said.lines.length - 1;
+    box.innerHTML = '<div class="wd-box' + (d.narration ? ' narr' : '') + '">' + (who ? '<i class="wd-pic" style="background-image:url(' + pieceUrl(who.piece) + ')"></i>' : '') +
+      '<div class="wd-txt">' + (who ? '<b>' + who.name + '</b>' : '') + '<p>' + d.said.lines[d.i] + '</p></div><span class="wd-more">' + (last ? '■' : '▼') + '</span></div>';
+    box.classList.add('on');
+  }
+  function wDlgNext() {
+    const d = wv.dlg;
+    if (!d) return false;
+    if (d.i < d.said.lines.length - 1) { d.i++; wDlgRender(); return true; }
+    CW.done(crownW(), d.said);
+    wv.dlg = null; wDlgRender();
+    saveModes();
+    renderModes();
+    return true;
+  }
+  /* ---------- the loop ---------- */
+  function wFrame(now) {
+    wv.raf = 0;
+    if (!crownLive() || document.hidden) { wv.on = false; return; }
+    wTick(now);
+    drawWorld(now);
+    wv.raf = requestAnimationFrame(wFrame);
+  }
+  function wStart() {
+    if (!crownLive()) return;
+    wv.on = true;
+    if (!wv.raf) wv.raf = requestAnimationFrame(wFrame);
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) wStart(); });
+  const W_KEYS = { ArrowUp: 'n', ArrowDown: 's', ArrowLeft: 'w', ArrowRight: 'e', w: 'n', s: 's', a: 'w', d: 'e', W: 'n', S: 's', A: 'w', D: 'e' };
+  function crownKey(e, down) {
+    if (!crownLive()) return false;
+    const d = W_KEYS[e.key];
+    if (down && (e.key === ' ' || e.key === 'Enter' || e.key === 'e' || e.key === 'E')) {
+      e.preventDefault();
+      if (!wDlgNext() && !wv.anim) wInteract(CW.facing(crownW()));
+      return true;
+    }
+    if (down && e.key === 'Escape' && wv.dlg) { wv.dlg = null; wDlgRender(); return true; }
+    if (!d) return false;
+    e.preventDefault();
+    if (down) { if (wv.dlg) return true; wv.held = d; wv.path = []; wv.target = null; }
+    else if (wv.held === d) wv.held = null;
+    return true;
+  }
+  document.addEventListener('keyup', (e) => { crownKey(e, false); });
+  function wPointer(e) {
+    if (!crownLive()) return;
+    e.preventDefault();
+    if (wDlgNext()) return;
+    const cv = $('#worldCanvas'), rc = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    const tx = Math.floor(((e.clientX - rc.left) * dpr + wv.cam[0]) / wv.T), ty = Math.floor(((e.clientY - rc.top) * dpr + wv.cam[1]) / wv.T);
+    const W = crownW(), t = CW.thingAt(W, tx, ty);
+    // clicking the thing in front of him: talk to it at once
+    const f = CW.front(W);
+    if (t && f[0] === tx && f[1] === ty) { wInteract(t); return; }
+    const p = CW.path(W, tx, ty);
+    if (!p) return;
+    wv.path = p; wv.held = null;
+    wv.target = t && t.t !== 'door' ? t : null;
+  }
+  { const wvEl = $('#worldview'); if (wvEl) wvEl.addEventListener('pointerdown', wPointer); }
+  /* ---------- the panel ---------- */
+  function crownCard() {
+    if (!CW) return '<section class="gm-card"><p>The Gilded Crown did not load.</p></section>';
+    const W = crownW();
+    let html = '<section class="gm-card crown"><div class="gm-head"><h2>The Gilded Crown</h2></div>';
+    if (!W || !W.started) {
+      html += '<p class="crown-intro">The rulers of the Chesslands have been turned to gold, one by one. Yours is the last crown still made of wood.</p>' +
+        '<p class="gm-fixed">An early version: walk the Greenmarch and the town of Ashford, and talk to its people. The battles, your army and the quests come next.</p>' +
+        '<button class="btn green gm-wide" data-gm="crownbegin">' + (W ? 'Continue' : 'Begin') + '</button>';
+      return html + crownHelp() + '</section>';
+    }
+    const M = CW.mapOf(W);
+    html += '<div class="crown-where"><b>' + M.name + '</b>' + (M.outdoor ? '' : '<span>Ashford, in the Greenmarch</span>') + '</div>';
+    html += crownHelp();
+    html += '<div class="gm-row sk-acts"><button class="btn" data-gm="crownrestart">Start again</button></div>';
+    return html + '</section>';
+  }
+  const crownHelp = () => '<ul class="crown-help">' + (window.PWA && PWA.touch ? '<li>Tap where to go. Tap a person to walk up and talk.</li><li>Tap the box to read on.</li>'
+    : '<li>Arrow keys or WASD: walk</li><li>Space: talk, look, read on</li><li>Click where to go, or on a person to talk</li>') + '</ul>';
+  function crownAct(k) {
+    if (k === 'crownbegin') {
+      if (!MS.world) MS.world = CW.fresh();
+      const first = !MS.world.started;
+      MS.world.started = true;
+      saveModes(); renderModes(); renderAll();
+      setTimeout(() => { wStart(); if (first) { wBanner(CW.mapOf(MS.world).name); wNarrate('intro'); } }, 50);
+      return true;
+    }
+    if (k === 'crownrestart') {
+      if (!confirm('Start The Gilded Crown again from the beginning? Everything in it so far is lost.')) return true;
+      MS.world = CW.fresh(); MS.world.started = true; wv.dlg = null; wv.path = []; wv.npcAnim = {}; wDlgRender();
+      saveModes(); renderModes(); renderAll();
+      setTimeout(() => { wStart(); wNarrate('intro'); }, 50);
+      return true;
+    }
+    return false;
+  }
   function wireModes(box) {
     box.querySelectorAll('[data-tp]').forEach((b) => { b.onclick = () => { const set = SETS[b.dataset.tp](); set.twoP = !set.twoP; if (set.twoP) set.match = null; saveSets(); renderModes(); renderAll(); }; });
     box.querySelectorAll('[data-tpflip]').forEach((b) => { b.onclick = () => { const set = SETS[b.dataset.tpflip](); set.flip = !set.flip; saveSets(); renderModes(); }; });
@@ -8228,6 +8662,7 @@
         const k = b.dataset.gm;
         syncModes();
         if (k.indexOf('pb') === 0 && pbAct(k)) return;
+        if (k.indexOf('crown') === 0 && crownAct(k)) return;
         if (k === 'resume') { b.disabled = true; b.textContent = 'Loading'; resumePending(); }
         else if (k === 'dbstart') startMode('drawback', JSON.parse(JSON.stringify(dbSet)));
         else if (k === 'dc2start') startMode('dice', JSON.parse(JSON.stringify(diceSet)));
@@ -8542,7 +8977,7 @@
     fp.innerHTML = '';
     // three groups, each white then black: the classic fairy pieces, The Ouroboros King's units (from the crusader on), checkers
     const cut = ED_ORDER.indexOf('o'), CHECKERS = ['є', 'ї'], ULTIMATE = ['ѓ', 'ќ', 'ў', 'џ'], SHOTGUN = ['ґ'], SHOGI = ED_ORDER.filter((l) => R.FAIRY[l].shogi), apart = CHECKERS.concat(ULTIMATE, SHOTGUN, SHOGI);
-    [['Classic fairy pieces', ED_ORDER.slice(0, cut)], ['The Ouroboros King', ouroOrder(ED_ORDER.slice(cut).filter((l) => apart.indexOf(l) < 0))], ['Checkers', CHECKERS], ['Chess Ultimate', ULTIMATE], ['Shotgun King (one per side, it is the king)', SHOTGUN], ['Shogi (they promote on the far rank)', ['ѣ', 'ѥ', 'ѩ', 'ѭ', 'ѯ', 'ѳ', 'ѹ', 'ѽ', 'ѧ', 'ѫ', 'ѱ', 'ѵ', 'ѻ', 'ѿ']]].forEach((grp) => {
+    [['Classic fairy pieces', ED_ORDER.slice(0, cut)], ['The Ouroboros King', ouroOrder(ED_ORDER.slice(cut).filter((l) => apart.indexOf(l) < 0))], ['Checkers', CHECKERS], ['Chess Ultimate', ULTIMATE], ['Shotgun King (one per side, it is the king)', SHOTGUN], ['Shogi (they promote in the far third and come back as drops)', ['ѣ', 'ѥ', 'ѩ', 'ѭ', 'ѯ', 'ѳ', 'ѹ', 'ѽ', 'ѧ', 'ѫ', 'ѱ', 'ѵ', 'ѻ', 'ѿ']]].forEach((grp) => {
       fp.appendChild(h('div', 'palhead', grp[0]));
       ['w', 'b'].forEach((c) => {
         grp[1].forEach((l) => {
@@ -8705,7 +9140,7 @@
     sw.onclick = () => { presetUi.terrain = !presetUi.terrain; renderPresets(); };
     $('#pmTerrainBox').style.display = presetUi.tab === 'terrainOnly' || presetUi.tab === 'handicap' || presetUi.tab === 'checkers' || presetUi.tab === 'shogi' ? 'none' : '';
     $('#pmNote').textContent = presetUi.tab === 'checkers' ? 'Checkers set-ups on every board size: the classic start, inverted colours, whole rows, a crowned back row and kings only. Picking one switches the game to Checkers.'
-      : presetUi.tab === 'shogi' ? 'Shogi set-ups for a normal game: the shogi pieces move as in Shogi and promote on the far rank. With Reinforcements on, what you take can be dropped back. The full game, with its hand and promotion zone, is under Game Modes.'
+      : presetUi.tab === 'shogi' ? 'Shogi set-ups for a normal game, played by the Shogi rules: the pieces promote in the far third of the board (marked by the dots), and a shogi piece you take goes to your hand, to be dropped back as a move. The full game is also under Game Modes.'
       : presetUi.tab === 'ouroboros' ? 'Armies and witches of The Ouroboros King on every board size, each balanced to an even start: the search rates it within half a pawn, with and without its terrain, and big armies of more than 40 pieces within four. Picking one switches on king capture, the rules of the game.'
       : presetUi.tab === 'fairy' ? 'Chancellors, archbishops, amazons, camels, nightriders and the other classic fairy pieces, on every board size. Each starts even: within half a pawn, big armies of more than 40 pieces within four.'
       : presetUi.tab === 'terrainOnly' ? 'Puts the terrain under the pieces already on the board. A boulder is left out where a piece stands.'
@@ -9697,7 +10132,7 @@
   window.PC = {
     get game() { return G; }, get modes() { return MS; }, saveModes: () => saveModes(), get custom() { return custom; }, ui: ui, setup: setup, settings: settings, engine: engine, rules: R,
     puzzle: (id) => pzPowerReady().then(() => { const it = (pz.power || []).concat(pz.list || []).find((x) => x.id === id); if (it) { setTab('puzzles'); pzStart(it, 'custom'); } return !!it; }), get pz() { return pz.cur; },
-    makeBrain: makeBrain, brains: { bot: botBrain, eval: evalBrain }, importPgn: importPgnText, pgn: (g) => pgn(g || G), exportArchive: exportArchive, get mine() { return mine; }, get puzzles() { return pz; }, get puzzleProfile() { return prof; }, puzzleStart: (item, kind) => pzStart(item, kind || 'custom'), get review() { return rv; }, get skins() { return SKIN; }, get analysis() { return A; }, get archive() { return archive; }, openArchived: openArchived, analyseGame: analyseGame, analyseFresh: analyseFresh, analyseText: analyseText, aMove: (uci) => { const m = A.B.find(A.legal, uci); if (m) analysisMove(m); return !!m; }, aGoto: aGoto, startReview: startReview, start: startGame, canAct: canAct, canPremove: canPremove, refresh: changed, sk: () => skData(), pb: { data: () => pbData(), ui: pbUi, down: (sq) => pbDown(sq), end: () => pbEnd(), act: (k) => pbAct(k) }, renderModes: () => renderModes(), sanMap: (st) => sanMap(st),
+    makeBrain: makeBrain, brains: { bot: botBrain, eval: evalBrain }, importPgn: importPgnText, pgn: (g) => pgn(g || G), exportArchive: exportArchive, get mine() { return mine; }, get puzzles() { return pz; }, get puzzleProfile() { return prof; }, puzzleStart: (item, kind) => pzStart(item, kind || 'custom'), get review() { return rv; }, get skins() { return SKIN; }, get analysis() { return A; }, get archive() { return archive; }, openArchived: openArchived, analyseGame: analyseGame, analyseFresh: analyseFresh, analyseText: analyseText, aMove: (uci) => { const m = A.B.find(A.legal, uci); if (m) analysisMove(m); return !!m; }, aGoto: aGoto, startReview: startReview, start: startGame, canAct: canAct, canPremove: canPremove, refresh: changed, sk: () => skData(), pb: { data: () => pbData(), ui: pbUi, down: (sq) => pbDown(sq), end: () => pbEnd(), act: (k) => pbAct(k) }, crown: { wv: wv, frame: (t) => { wTick(t); drawWorld(t); }, next: () => wDlgNext(), interact: () => wInteract(CW.facing(crownW())) }, renderModes: () => renderModes(), sanMap: (st) => sanMap(st),
     play: (m) => { if (canAct()) applyMove(m); }, gild: (sq) => { if (canAct()) doGild(sq); }, freeze: (sq) => { if (canAct()) doFreeze(sq); }, shield: (sq) => { if (canAct()) doShield(sq); }, convert: (sq) => { if (canAct()) doConvert(sq); },
     move: (uci) => {
       if (!G || !canAct()) return false;

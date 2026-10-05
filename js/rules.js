@@ -216,7 +216,7 @@
     'ъ': { name: 'Golem', san: 'Gl', pic: 'golem', base: 'R', badge: 'K', value: 520, how: 'Moves like a rook, a king or a knight, but only to take: it never moves to an empty square', atoms: [ride(ORTH, 0, { mode: 'c' }), ride(KG, 1, { mode: 'c' }), leap(KN, { mode: 'c' })] },
     /* Shogi: the pieces of Japanese chess, with their own moves. On the board they point at the other side, so both
        sides' pieces look the same but turned round (Settings can colour them). In a chess game a piece that can
-       promote does so on the enemy back rank (shogiUp: what it turns into); in the Shogi mode the game's own rules
+       promote may do so in the far third of the board (shogiUp: what it turns into, see shogiPromos); in the Shogi mode the game's own rules
        apply (Fairy-Stockfish): the last three ranks, drops, and the rest. */
     'ѣ': { name: 'Shogi King', san: 'Ou', pic: 'shogi_king', base: 'K', badge: '', value: 0, how: 'Steps one square in any direction. It is royal: it must be kept safe just like the king, and losing it loses the game', atoms: [ride(KG, 1)], royal: true, shogi: true },
     'ѥ': { name: 'Rook (Hisha)', san: 'Hi', pic: 'shogi_rook', base: 'R', badge: '', value: 500, how: 'Slides any distance straight, like a rook. Promotes to a Dragon King', atoms: [ride(ORTH)], shogi: true, shogiUp: 'ѧ' },

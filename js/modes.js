@@ -47,6 +47,7 @@
       pb: { run: null, conquered: {}, chain: 0, runs: 0, won: 0 },
       // every finished run of the roguelike modes, newest first ({ m, t, won, ... }), and the achievements earned ({ id: time })
       log: [], ach: null,
+      world: null, // The Gilded Crown (js/world.js): null until it is begun
       pending: null // a mode game in progress: { id, kind, spec, actions, tier | stage, started }
     };
   }
@@ -62,6 +63,8 @@
     out.sk = Object.assign(fresh().sk, o.sk || {});
     out.pb = Object.assign(fresh().pb, o.pb || {});
     if (!Array.isArray(out.log)) out.log = [];
+    var Wd = root.World || (typeof require !== 'undefined' ? (function () { try { return require('./world.js'); } catch (e) { return null; } })() : null);
+    if (out.world && Wd) out.world = Wd.migrate(out.world);
     if (!out.pb.conquered || typeof out.pb.conquered !== 'object') out.pb.conquered = {};
     if (!out.drawback.per || typeof out.drawback.per !== 'object') out.drawback.per = {};
     if (!Array.isArray(out.runs.history)) out.runs.history = [];
