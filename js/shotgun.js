@@ -39,7 +39,7 @@
   SHOTGUNS.forEach(function (g) { GUN[g.id] = g; });
 
   /* ---------- the cards ----------
-     All 93 + 93 cards of the game. A card: { id, name, max, fx, needs, tags, later }. fx is a list of effects:
+     All 93 + 93 cards of the game. A card: { id, name, max, fx, needs, tags, later, secret }. fx is a list of effects:
        S(stat, v)            the king's gun and body: fp arc range cap res regen pierce knock souls move mark blade
                              grenades gdmg (grenade damage) search fright (fear radius) shrapnel. Black and white
                              cards alike: a white card may weaken the gun (Karma) or the blade (Full Plate Armor).
@@ -55,7 +55,8 @@
      run must not have (King's Shoulders and a blade); blockedBy: cards that keep it away; floorMax: the last floor
      after which it is offered; pawns: pawns the next floor's army must have (The Mole). tags: what the card gives (as
      in the game: blade, bleed, grenade, on_hit, cloak, jump, ally, orb, mission, tunnels, leader). The gun gives tags
-     too. later: a card whose mechanics are not built yet (it needs a white card that is not built): never offered. */
+     too. later: a card whose mechanics are not built yet (it needs a white card that is not built): never offered.
+     secret: a card that is never offered, the run gets it some other way (Fallen Dynasty, see dynasty below). */
   var S = function (k, v) { return { s: k, v: v }; }, A = function (t, v, o) { var e = { a: t, v: v }; if (o) { e.after = o.after; e.every = o.every; } return e; };
   var HP = function (t, v) { return { hp: t, v: v }; }, SP = function (t, v) { return { spd: t, v: v }; };
   var EVERY = function (n, e) { var o = {}; for (var k in e) o[k] = e[k]; o.every = n; return o; }, RULE = function (id) { return { r: id }; };
@@ -184,7 +185,7 @@
     { id: 'emergency', name: 'Emergency Call', max: 1, fx: [A('p', 1), RULE('emergency')], text: 'Add 1 pawn; the first time you hit a leader it gets +1 speed and promotes the nearest pawn' },
     { id: 'entitle', name: 'Entitle', max: 1, fx: [A('p', -1), A('n', 1), S('res', -1)], text: 'Remove 1 pawn; add 1 knight; -1 ammo max' },
     { id: 'excommunication', name: 'Excommunication', max: 1, fx: [A('r', 1), A('n', 1), FLIP('bishopAt15')], text: 'Add 1 rook and 1 knight; if a bishop is still alive on or after turn 15, flip this card' },
-    { id: 'dynasty', name: 'Fallen Dynasty', max: 1, later: LATER, text: 'They ruled a long time ago... But royalty shall prevail' },
+    { id: 'dynasty', name: 'Fallen Dynasty', max: 1, secret: true, fx: [RULE('dynasty')], text: 'Never offered: on floor 12 it takes the place of Theocracy or Commoner\'s Reign; the White King rules again; the bishop or knight they added and their +2 HP are gone' },
     { id: 'countdown', name: 'Final Countdown', max: 1, fx: [RULE('countdown')], text: 'When 6 pieces remain, you have 12 turns to end the level' },
     { id: 'fleshwall', name: 'Flesh Wall', max: 1, fx: [A('p', 1), RULE('fleshwall')], text: 'Add 1 pawn; pawns won\'t die until the turn ends' },
     { id: 'plate', name: 'Full Plate Armor', max: 1, fx: [HP('all', 1), SP('all', 1), S('blade', -1)], text: 'All: +1 HP; all: -1 speed; blade: -1' },
@@ -1488,16 +1489,29 @@
   function floorDone(run, ev) {
     if (run.floor >= FLOORS) { run.phase = 'won'; ev.push({ e: 'won' }); return ev; }
     if (run.floor <= CARD_FLOORS) { run.phase = 'cards'; run.offer = offer(run); run.searchLeft = stats(run, null).search; }
-    else nextFloor(run);
+    else nextFloor(run, ev);
     return ev;
   }
-  function nextFloor(run) {
+  function nextFloor(run, ev) {
     run.floor++; run.phase = 'play'; run.offer = null;
+    if (run.floor === BOSS_FLOOR) dynasty(run, ev);
     run.F = newFloor(run);
+  }
+  /* Fallen Dynasty: when the White King takes the field (floor 12), Theocracy and Commoner's Reign are torn up and
+     this card takes their place (as in the game since v1.3). The rulers they crowned step down: the White King
+     leads, and the bishop or knight they added goes with them, its +2 HP too. run.fallen keeps what was torn up. */
+  function dynasty(run, ev) {
+    var torn = ['theocracy', 'commoner'].filter(function (id) { return run.cards[id] > 0; });
+    if (!torn.length) return null;
+    torn.forEach(function (id) { delete run.cards[id]; });
+    run.cards.dynasty = 1;
+    run.fallen = torn;
+    if (ev) ev.push({ e: 'dynasty', torn: torn });
+    return torn;
   }
   // may the run be offered card c now? Not at its maximum, its needs met (cards or tags), and an army it can take from
   function offerable(run, c, tags) {
-    if (c.later || (run.cards[c.id] || 0) >= c.max) return false;
+    if (c.later || c.secret || (run.cards[c.id] || 0) >= c.max) return false;
     var own = function (n) { return CARD[n] ? (run.cards[n] || 0) > 0 : !!tags[n]; };
     if (c.needs && !c.needs.every(own)) return false;
     if (c.any && !c.any.some(own)) return false;
@@ -1565,7 +1579,7 @@
     SHOTGUNS: SHOTGUNS, GUN: GUN, BLACK: BLACK, WHITE: WHITE, CARD: CARD, NAMES: NAMES, FLOORS: FLOORS, BOSS_PAWN_FLOOR: BOSS_PAWN_FLOOR, BOSS_FLOOR: BOSS_FLOOR, W: W, H: H,
     newRun: newRun, newFloor: newFloor, stats: stats, actions: actions, act: act, finish: finish, attackedBy: attackedBy, attackedFrom: attackedFrom, inCheck: inCheck, reach: reach, pieceAt: pieceAt,
     soulMoves: soulMoves, cone: cone, choosePair: choosePair, search: search, rankArmy: rankArmy, leaderKind: leaderKind, works: works, rule: rule, offerable: offerable, tagsOf: tagsOf, jailed: jailed,
-    allyAt: allyAt, predict: predict, browsable: browsable, browse: browse, MOAT: MOAT
+    allyAt: allyAt, predict: predict, browsable: browsable, browse: browse, dynasty: dynasty, MOAT: MOAT
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Shotgun = api;

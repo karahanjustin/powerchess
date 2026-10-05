@@ -125,7 +125,8 @@
   var RELICS = {
     sigil: { name: 'Ouroboros sigil', text: '+1 Rewind at the start of every battle', start: true },
     bell: { name: 'Alarm bell', text: 'Warns you when your King is in danger', start: true },
-    finisher: { name: 'The Finisher', text: 'If the enemy General stands alone at the start of your turn and you still have another unit, you win', start: true, premium: true },
+    finisher: { name: 'The Finisher', text: 'If the enemy General stands alone at the start of your turn and you still have another unit, you win', start: true, premium: true,
+      etext: 'If your King stands alone at the start of the enemy\'s turn and it still has another unit, the enemy wins' },
     angel: { name: 'Guardian angel', text: 'If a move of yours would leave your King in danger, it is taken back for 3 Rewinds', start: true },
     clock: { name: 'Ouroboros clock', text: 'Starting a battle with no Rewinds gives you 2' },
     backpack: { name: 'Backpack', text: '2 Rewinds, a random item and 200 gold, at once' },
@@ -141,8 +142,10 @@
     scarab: { name: 'Gold scarab', text: '+200 gold every time your King takes a unit' },
     shovel: { name: 'Shovel', text: 'A boulder on the board at the start of every battle' },
     suitcase: { name: 'Magic suitcase', text: 'A random item at the start of every battle', premium: true },
-    horn: { name: 'Bodyguard horn', text: 'When your King is your only unit left, a Queen joins him (once a battle)', premium: true },
-    spiked: { name: 'Spiked shield', text: 'The first time a unit of yours is taken by anything but a king, the taker is destroyed (once a battle)', premium: true },
+    horn: { name: 'Bodyguard horn', text: 'When your King is your only unit left, a Queen joins him (once a battle)', premium: true,
+      etext: 'When the enemy General is its only unit left, a Queen joins him (once a battle)' },
+    spiked: { name: 'Spiked shield', text: 'The first time a unit of yours is taken by anything but a king, the taker is destroyed (once a battle)', premium: true,
+      etext: 'The first time you take an enemy unit with anything but your King, the taker is destroyed (once a battle)' },
     firegem: { name: 'Fire gem', text: 'Your King cannot be taken by Edea, Tabitha or Andromeda', premium: true },
     boots: { name: 'Marching boots', text: 'The first turn of every battle you move twice, two different units', premium: true },
     // for one kind of unit: offered only when the army has one of them (units)
@@ -168,10 +171,15 @@
     feather: { name: 'Feather necklace', text: 'A unit can move onto one of your own units, and the two change places' },
     helmet: { name: 'Dwarven helmet', text: 'Bomb blasts do not hurt your units' },
     totem: { name: 'Totem mask', text: 'Your units (not the King) turn into whatever they take' },
-    carnival: { name: 'Carnival mask', text: 'Your units (not the King) turn into a random unit after every move' }
+    carnival: { name: 'Carnival mask', text: 'Your units (not the King) turn into a random unit after every move' },
+    // only an enemy has these (as in the game): their texts are written for the player
+    tiara: { name: 'Magic tiara', text: 'After you use an item, the enemy General cannot be taken for the rest of that turn', enemy: true },
+    camo: { name: 'Camouflage', text: 'The enemy moves first', enemy: true }
   };
-  // the relics the rules read in a battle (powers .ou of the player)
-  var RULE_RELICS = ['axe', 'wheel', 'heavyarmor', 'grail', 'vestments', 'sceptre', 'carrots', 'stiletto', 'tabi', 'horseshoes', 'daggers', 'terraform', 'whiteflag', 'cursed', 'fence', 'wrecking', 'feather', 'helmet', 'totem', 'boots'];
+  // the relics the rules read in a battle (powers .ou of a side): The Finisher, the Spiked shield and the Bodyguard
+  // horn at the start of a turn, the Magic tiara when an item is used, the others in the moves
+  var RULE_RELICS = ['axe', 'wheel', 'heavyarmor', 'grail', 'vestments', 'sceptre', 'carrots', 'stiletto', 'tabi', 'horseshoes', 'daggers', 'terraform', 'whiteflag', 'cursed', 'fence', 'wrecking', 'feather', 'helmet', 'totem', 'boots',
+    'finisher', 'spiked', 'horn', 'tiara'];
   var PREMIUM_PRICE = { finisher: 640, suitcase: 560, horn: 700, spiked: 760, firegem: 900, boots: 620 };
   /* Items: used up when used. In a battle they are actions of their own (the app); the enemy never uses items. */
   var ITEMS = {
@@ -385,13 +393,16 @@
   function infLimit(n) { return 34 + 2 * n; }
   // how many relics the enemy has: the boon's, and in Infinity one more every ten battles; at most eight
   function enemyRelicCount(run) { return Math.min(8, boonLevel(run, 'erelics') + (run.inf ? Math.floor(run.inf.level / 10) : 0)); }
-  /* The relics an enemy can have: those the rules play for either side. Not the ones that count turns (the Marching
-     boots, the Cursed staff), nor those that only matter for gold, the map or the player's own items. A unit's relic
-     only when the army has such a unit, a terrain's relic only on such a terrain. */
-  var ENEMY_RELICS = ['axe', 'wheel', 'heavyarmor', 'grail', 'vestments', 'sceptre', 'carrots', 'stiletto', 'tabi', 'horseshoes', 'daggers', 'terraform', 'whiteflag', 'medal', 'fence', 'wrecking', 'feather', 'helmet', 'totem'];
-  function enemyRelicPool(units, terrain) {
+  /* The relics an enemy can have: those the rules play for either side, and the two only an enemy has (the Magic tiara,
+     Camouflage). Not the ones that count turns (the Marching boots, the Cursed staff), nor those that only matter for
+     gold, the map or the player's own items. A unit's relic only when the army has such a unit, a terrain's relic only
+     on such a terrain, the Magic tiara only when the player has items. */
+  var ENEMY_RELICS = ['axe', 'wheel', 'heavyarmor', 'grail', 'vestments', 'sceptre', 'carrots', 'stiletto', 'tabi', 'horseshoes', 'daggers', 'terraform', 'whiteflag', 'medal', 'fence', 'wrecking', 'feather', 'helmet', 'totem',
+    'finisher', 'spiked', 'horn', 'tiara', 'camo'];
+  function enemyRelicPool(units, terrain, items) {
     var t = terrain || {};
     return ENEMY_RELICS.filter(function (id) {
+      if (id === 'tiara') return !!items;
       var u = RELICS[id].units;
       if (u) return units.some(function (l) { return u.indexOf(String(l).toLowerCase()) >= 0; });
       if (id === 'fence') return !!(t.portals && t.portals.length === 2);
@@ -450,10 +461,12 @@
     black.forEach(function (x) { b[sq(x[0])] = x[1]; });
     return b;
   }
-  function fenOf(white, black) { return R.boardFen(boardOf(white, black), 8) + ' w - - 0 1'; }
+  function fenOf(white, black, first) { return R.boardFen(boardOf(white, black), 8) + ' ' + (first || 'w') + ' - - 0 1'; }
+  // who moves first in a battle: the enemy with its Camouflage, else the player
+  function firstOf(erelics) { return erelics && erelics.indexOf('camo') >= 0 ? 'b' : 'w'; }
   function hotStart(fen, cfg) {
     for (var t = 0; t < 2; t++) {
-      var s = R.fromFen(fen.replace(' w ', t ? ' b ' : ' w '), cfg);
+      var s = R.fromFen(fen.replace(/ [wb] /, t ? ' b ' : ' w '), cfg);
       if (R.legalMoves(s, cfg).some(function (m) { return m.cap && R.isRoyal(m.cap); })) return true;
     }
     return false;
@@ -484,9 +497,10 @@
     // the enemy's relics (the Enemy relics boon, Infinity), dealt from those that fit its army and the terrain
     var erelics = [], nRel = enemyRelicCount(run);
     if (nRel) {
-      var epool = enemyRelicPool(units, terrain);
+      var epool = enemyRelicPool(units, terrain, Object.keys(run.items).length > 0 || has(run, 'suitcase'));
       while (erelics.length < nRel && epool.length) { var er = r.pick(epool); epool.splice(epool.indexOf(er), 1); erelics.push(er); }
-      if (erelics.length) cfg.pw.b = { ou: flagsOf(erelics) };
+      var eou = erelics.length ? flagsOf(erelics) : null; // (Camouflage alone gives the rules nothing to read)
+      if (eou) cfg.pw.b = { ou: eou };
     }
     // the enemy's formation: four files wide, more when the army is bigger (the Enemy units boon)
     var width = Math.max(4, Math.min(8, Math.ceil((units.length + 1) / 2)));
@@ -508,7 +522,7 @@
       }
       var white = shifted(run.army, dx);
       if (terrain && white.some(function (x) { return terrain.walls.indexOf(x[0]) >= 0 || terrain.portals.indexOf(x[0]) >= 0 || (terrain.bombs || []).indexOf(x[0]) >= 0; })) continue;
-      var fen = fenOf(white, black), s;
+      var fen = fenOf(white, black, firstOf(erelics)), s;
       try { s = R.fromFen(fen, cfg); } catch (e) { continue; }
       if (R.validate(s, cfg).length || hotStart(fen, cfg)) continue;
       var sc = Math.abs(rate(fen, cfg));
@@ -544,7 +558,7 @@
     return true;
   }
   // the position the battle starts from
-  function battleFen(run) { return fenOf(shifted(run.army, run.battle.dx), run.battle.black); }
+  function battleFen(run) { return fenOf(shifted(run.army, run.battle.dx), run.battle.black, firstOf(run.battle.erelics)); }
   function battleCfg(run) { return cfgFor(run.battle.terrain, run); }
   // the gold a battle pays after `moves` moves (both sides' moves count)
   function rewardAfter(battle, moves) { return Math.max(0, battle.reward - 4 * moves); }
@@ -689,7 +703,7 @@
       var owned = function (id) { return has(run, id); };
       // a unit's relic only when the army has such a unit
       var fitsArmy = function (id) { var u = RELICS[id].units; return !u || run.army.some(function (x) { return u.indexOf(x[1].toLowerCase()) >= 0; }); };
-      var normal = Object.keys(RELICS).filter(function (id) { return !RELICS[id].premium && !RELICS[id].start && !owned(id) && fitsArmy(id); });
+      var normal = Object.keys(RELICS).filter(function (id) { return !RELICS[id].premium && !RELICS[id].start && !RELICS[id].enemy && !owned(id) && fitsArmy(id); });
       var prem = Object.keys(RELICS).filter(function (id) { return RELICS[id].premium && !owned(id); });
       var rel = [];
       if (run.ticket) {

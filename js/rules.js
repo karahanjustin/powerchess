@@ -238,6 +238,40 @@
   FAIRY['μ'].shoot = true;   // the musketeer returns to its square after a capture
   FAIRY['ε'].respawn = true; // the phoenix comes back like the fire chick
   var FAIRY_LETTERS = Object.keys(FAIRY);
+  /* Shogi pieces in any game: the promotion zone is the far third of the board (the ranks, rounded down, at least
+     one: 2 on 8 ranks, 3 on 9 to 11, 4 on 12), where the dots are drawn. A move that starts or ends in it may
+     promote; a pawn or lance on the last rank and a knight on the last two must. A taken shogi piece goes to its
+     taker's hand, unpromoted, and can be dropped back as a move, in every game (with the drop rules of Shogi). */
+  var SHOGI_BASE = {};
+  FAIRY_LETTERS.forEach(function (k) { if (FAIRY[k].shogiUp) SHOGI_BASE[FAIRY[k].shogiUp] = k; });
+  // Shogi has no 50 move rule: a game with shogi pieces on the board or in a hand plays on (taken ones come back)
+  function shogiInPlay(s) {
+    var sh = function (p) { return p && FAIRY.hasOwnProperty(typeOf(p)) && FAIRY[typeOf(p)].shogi; };
+    return !!(s.fairy && s.board.some(sh)) || (s.pocket || []).some(sh) || (s.pocket2 || []).some(sh);
+  }
+  function shogiZone(h) { return Math.max(1, Math.floor(h / 3)); }
+  function inZone(c, row) { var z = shogiZone(H); return c === 'w' ? row < z : row >= H - z; }
+  function shogiDead(t, c, row) {
+    var last = c === 'w' ? row : H - 1 - row;
+    if (t === '\u047d' || t === '\u0479') return last === 0; // pawn, lance
+    if (t === '\u0473') return last <= 1;                     // knight
+    return false;
+  }
+  function shogiPromos(out, c) {
+    var extra = [];
+    for (var i = 0; i < out.length; i++) {
+      var m = out[i];
+      if (m.drop || m.from < 0 || m.promo || !m.piece || m.snipe || m.shot || m.swap || m.blast || m.stay || m.pass) continue;
+      var d = FAIRY[typeOf(m.piece)];
+      if (!d || !d.shogiUp || !(inZone(c, ROW[m.from]) || inZone(c, ROW[m.to]))) continue;
+      if (shogiDead(typeOf(m.piece), c, ROW[m.to])) { m.promo = '+'; continue; }
+      var pm = {};
+      for (var k in m) pm[k] = m[k];
+      pm.promo = '+';
+      extra.push(pm);
+    }
+    for (i = 0; i < extra.length; i++) out.push(extra[i]);
+  }
   /* Lookup tables by piece letter, both colours: the lowercase letter and the fairy definition. The search asks
      these millions of times, and building a lowercase string each time costs more than the move generation. */
   var LOW = {}, DEF = {};
@@ -320,9 +354,10 @@
     }
     return false;
   }
-  // Does a prince of colour c stand within three squares of sq?
+  // Does a prince of colour c stand within three squares of sq? (Or is it a royal piece of c under the Magic tiara?)
   function guarded(s, sq, c) {
     use(s);
+    if (s.ouSafe && s.ouSafe === c && isRoyal(s.board[sq])) return true; // the Magic tiara: the General cannot be taken this turn
     if (!(s.fairy & 8)) return false;
     for (var i = 0; i < N; i++) {
       var p = s.board[i];
@@ -598,8 +633,11 @@
     // Cursed staff; the Marching boots give the first turn of a battle two moves
     s.bombs = cfg.terrain && cfg.terrain.bombs ? cfg.terrain.bombs.filter(function (q) { return !board[q]; }) : [];
     s.boulders = []; s.ouTurns = 0; s.ouLock = -1; s.bottle = ''; s.knife = false; s.boomer = false; s.glide = false;
-    var ou0 = powersOf(cfg, turn).ou;
+    var ou0 = powersOf(cfg, turn).ou, ou1 = powersOf(cfg, other(turn)).ou;
     if (ou0) { if (ou0.cursed) s.ouTurns = 1; if (ou0.boots) s.movesLeft = Math.max(s.movesLeft, 2); } // the turns of the side with the staff only (the enemy may have relics too)
+    // the other side moves first (the enemy's Camouflage): the Marching boots wait for that side's first turn
+    s.ouBoots = ou1 && ou1.boots ? other(turn) : '';
+    s.ouDone = ''; s.ouSafe = ''; // the relics used up in the battle (Spiked shield, Bodyguard horn), the Magic tiara's turn
     s.helmets = cfg.traits && cfg.traits.helmets ? cfg.traits.helmets.filter(function (q) { return !!board[q] && !isRoyal(board[q]); }) : [];
     s.vests = cfg.traits && cfg.traits.vests ? cfg.traits.vests.filter(function (q) { return !!board[q] && !isRoyal(board[q]); }) : [];
     ['w', 'b'].forEach(function (c) { // the army-wide ones: the power-up puts them on at the start
@@ -1226,6 +1264,7 @@
         if (b[vq] && colorOf(b[vq]) === c && isV(s, vq) && !(hasIce && ice.indexOf(vq) >= 0)) out.push({ from: vq, to: vq, piece: b[vq], cap: '', capSq: -1, blast: true });
       }
     }
+    if (fairy) shogiPromos(out, c);
     if (noisy) return out;
     if (again >= 0) {
       // the bonus move is a plain move of that piece, and it may be left out: staying ends the turn (a chain of
@@ -1240,19 +1279,23 @@
       out.push({ from: -1, to: -1, piece: w ? 'P' : 'p', cap: '', capSq: -1, storm: true });
     }
 
-    // Reinforcements: drop a captured piece on any empty square.
-    var pocket = pw.drops ? s[pocketKey(cfg, c)] : null;
+    // Reinforcements: drop a captured piece on any empty square. Shogi pieces in hand: always, by Shogi's rules
+    // (not where they could never move, and no second unpromoted pawn on a file).
+    var pocket = s[pocketKey(cfg, c)];
     if (pocket && pocket.length) {
-      var seen = {}, army = armyRoom(b, c);
+      var seen = {}, army = pw.drops ? armyRoom(b, c) : null;
       for (var i = 0; i < pocket.length; i++) {
-        var pt = pocket[i];
-        if (seen[pt]) continue;
+        var pt = pocket[i], sh = !!(FAIRY.hasOwnProperty(pt) && FAIRY[pt].shogi);
+        if (seen[pt] || (!sh && !pw.drops)) continue;
         seen[pt] = true;
-        if (!cfg.freeArmy && !canDrop(army, pt)) continue;
-        var piece = w ? pt.toUpperCase() : pt;
+        if (!sh && !cfg.freeArmy && !canDrop(army, pt)) continue;
+        var piece = w ? pt.toUpperCase() : pt, files = null;
+        if (pt === '\u047d') { files = {}; for (var f = 0; f < N; f++) if (b[f] === piece) files[COL[f]] = true; }
         for (var e = 0; e < N; e++) {
           if (b[e] || (terrain && isWall(cfg, e, s))) continue;
           if (pt === 'p' && (ROW[e] === 0 || ROW[e] === H - 1)) continue;
+          if (sh && shogiDead(pt, c, ROW[e])) continue;
+          if (files && files[COL[e]]) continue;
           out.push({ from: -1, to: e, piece: piece, cap: '', capSq: -1, drop: pt });
         }
       }
@@ -1391,6 +1434,7 @@
       ducks: s.ducks || [], bducks: s.bducks || [], duckHand: s.duckHand || 0, duckPhase: 0, dTodo: [], dBan: [], bMoved: s.bMoved || [], sleep: s.sleep || [], fresh: s.fresh || [],
       sg: s.sg, dmg: s.dmg, seed: s.seed,
       bombs: s.bombs || [], boulders: s.boulders || [], ouTurns: s.ouTurns || 0, ouLock: -1, bottle: s.bottle || '', knife: !!s.knife, boomer: false, glide: false,
+      ouBoots: s.ouBoots || '', ouDone: s.ouDone || '', ouSafe: s.ouSafe || '',
       fx: { removed: [], tp: -1, boom: false }
     };
     var touched = [], removed = n.fx.removed, i;
@@ -1476,7 +1520,7 @@
       }
       var piece = m.piece;
       if (!m.snipe) {
-        if (m.promo) piece = c === 'w' ? m.promo.toUpperCase() : m.promo;
+        if (m.promo && m.promo !== '+') piece = c === 'w' ? m.promo.toUpperCase() : m.promo;
         b[m.from] = '';
         b[m.to] = piece;
         if (typeOf(m.piece) === 'p') { n.half = 0; if (m.dbl) n.ep = (m.from + m.to) / 2; }
@@ -1533,7 +1577,7 @@
           if (md.hopper && m.hop && !(md.promote && lr === (c === 'w' ? 0 : H - 1))) { n.again = land; n.againHop = true; }
           if (md.onCapture && m.cap) b[land] = c === 'w' ? (md.onCapture === 'q' ? 'Q' : m.cap.toUpperCase()) : (md.onCapture === 'q' ? 'q' : m.cap.toLowerCase());
           else if (md.promote && lr === (c === 'w' ? 0 : H - 1)) b[land] = c === 'w' ? (md.promoteTo || 'q').toUpperCase() : (md.promoteTo || 'q'); // a checker is crowned, a marching pawn becomes a queen
-          else if (md.shogiUp && lr === (c === 'w' ? 0 : H - 1)) b[land] = c === 'w' ? md.shogiUp.toUpperCase() : md.shogiUp; // a shogi piece promotes on the enemy back rank
+          else if (md.shogiUp && m.promo === '+') b[land] = c === 'w' ? md.shogiUp.toUpperCase() : md.shogiUp; // a shogi piece promotes (in the zone, see shogiPromos)
           else if (md.spawn) { b[land] = c === 'w' ? 'P' : 'p'; if (ROW[m.from] !== 0 && ROW[m.from] !== H - 1) b[m.from] = b[land]; }
           else if (md.becomes) b[land] = c === 'w' ? md.becomes.toUpperCase() : md.becomes;
         }
@@ -1619,10 +1663,16 @@
         if (!b[corner] && !isWall(cfg, corner, s)) { b[corner] = rp; removed[i].back = corner; }
       }
     }
-    if (pw.drops && removed.length) {
-      var pocket = n[pkey].slice();
-      for (i = 0; i < removed.length; i++) if (colorOf(removed[i].p) !== c && removed[i].back == null) pocket.push(typeOf(removed[i].p));
-      n[pkey] = pocket;
+    if (removed.length) {
+      // the taken pieces to the taker's hand: all of them with Reinforcements, shogi pieces always (unpromoted)
+      var pocket = null;
+      for (i = 0; i < removed.length; i++) {
+        if (colorOf(removed[i].p) === c || removed[i].back != null) continue;
+        var rt = typeOf(removed[i].p), rsd = FAIRY.hasOwnProperty(rt) ? FAIRY[rt] : null;
+        if (rsd && rsd.shogi && !rsd.royal) (pocket = pocket || n[pkey].slice()).push(SHOGI_BASE[rt] || rt);
+        else if (pw.drops) (pocket = pocket || n[pkey].slice()).push(rt);
+      }
+      if (pocket) n[pkey] = pocket;
     }
     if (s.fairy || (m.drop && FAIRY.hasOwnProperty(m.drop))) n.fairy = hasFairy(b);
     if ((n.ghosts.length || n.snipers.length || n.reborn.length || n.helmets.length || n.vests.length || n.stun.length || n.guard.length) && !m.stay && !m.blast && n.fx.bounce == null) {
@@ -1706,11 +1756,14 @@
   }
   // The turn goes over: the mover's ice melts, the other side starts fresh and unrolled.
   // The Ouroboros King at the start of a turn: the items of the last one are spent, the Cursed staff gives an extra
-  // move every third turn of its side
+  // move every third turn of its side, the Marching boots the first turn of a side that did not move first; the Magic
+  // tiara's protection ends with the turn
   function ouTurnStart(n, cfg) {
     n.ouLock = -1; n.bottle = ''; n.knife = false;
+    if (n.ouSafe) n.ouSafe = '';
     var nou = powersOf(cfg, n.turn).ou;
     if (nou && nou.cursed) { n.ouTurns = (n.ouTurns || 0) + 1; if (n.ouTurns % 3 === 0) n.movesLeft = Math.max(n.movesLeft, 2); }
+    if (n.ouBoots && n.ouBoots === n.turn) { n.ouBoots = ''; if (nou && nou.boots) n.movesLeft = Math.max(n.movesLeft, 2); }
   }
   function passTurn(n, mover, cfg) {
     n.turn = other(mover); n.ep = -1; n.again = -1; n.movesLeft = 0;
@@ -1804,9 +1857,14 @@
     for (var i = 0; i < ps.length; i++) {
       if (ps[i].inCheck) { out.push(ps[i]); continue; } // a shot at the attacker: legal whatever the pellets do
       var n = applyRaw(s, ps[i], cfg);
-      if (royalAlive(n, c) && !inCheck(n, c, cfg)) out.push(ps[i]);
+      if (royalAlive(n, c) && !inCheck(n, c, cfg) && !pawnDropMate(n, ps[i], c, cfg)) out.push(ps[i]);
     }
     return out;
+  }
+  // Shogi: a dropped pawn may give check, but not mate (uchifuzume)
+  function pawnDropMate(n, m, c, cfg) {
+    if (m.drop !== '\u047d' || n.turn === c || !inCheck(n, n.turn, cfg)) return false;
+    return !anyLegal(n, cfg);
   }
 
   // Is there a legal move at all? Stops at the first one, so it costs a fraction of listing them.
@@ -1817,7 +1875,7 @@
       if (dice && s.again < 0 && dice.indexOf(dieOf(ps[i])) < 0) continue;
       if (ps[i].inCheck) return true;
       var n = applyRaw(s, ps[i], cfg);
-      if (royalAlive(n, c) && !inCheck(n, c, cfg)) return true;
+      if (royalAlive(n, c) && !inCheck(n, c, cfg) && !pawnDropMate(n, ps[i], c, cfg)) return true;
     }
     return false;
   }
@@ -2100,7 +2158,7 @@
       if (ww || wb) return ww && wb ? { over: true, result: 'draw', reason: 'all pieces taken' } : { over: true, result: ww ? 'b' : 'w', reason: 'all pieces taken' };
     }
     if (cfg.dice && !cfg.legacyDice && !s.dice && s.again < 0) { // not rolled yet: the move count, and a side that no throw can help
-      if (s.half >= 100) return { over: true, result: 'draw', reason: 'the 50 move rule' };
+      if (s.half >= 100 && !shogiInPlay(s)) return { over: true, result: 'draw', reason: 'the 50 move rule' };
       if (!cfg.kingCapture && !legalAll(s, cfg).length && !(midasTurn(powersOf(cfg, s.turn)) && gildTargets(s, cfg).length)) {
         if (inCheck(s, s.turn, cfg)) return { over: true, result: other(s.turn), reason: 'checkmate' };
         return { over: true, result: 'draw', reason: 'stalemate' };
@@ -2111,17 +2169,99 @@
     if (cfg.duckChess && !legal.length) return { over: true, result: s.turn, reason: 'no moves, which wins in Duck Chess' }; // there is no stalemate in Duck Chess
     if (s.checkers || cfg.checkers) { // the game of Checkers: who cannot move (no pieces, all blocked) loses
       if (!legal.length) return { over: true, result: other(s.turn), reason: 'no moves left' };
-      if (s.half >= 100) return { over: true, result: 'draw', reason: 'the 50 move rule' };
+      if (s.half >= 100 && !shogiInPlay(s)) return { over: true, result: 'draw', reason: 'the 50 move rule' };
       return { over: false };
     }
     if (!legal.length && !(midasTurn(powersOf(cfg, s.turn)) && gildTargets(s, cfg).length)) { // a gild that uses the turn is a move too
       if (inCheck(s, s.turn, cfg)) return { over: true, result: other(s.turn), reason: 'checkmate' };
       return { over: true, result: 'draw', reason: 'stalemate' };
     }
-    if (s.half >= 100) return { over: true, result: 'draw', reason: 'the 50 move rule' };
+    if (s.half >= 100 && !shogiInPlay(s)) return { over: true, result: 'draw', reason: 'the 50 move rule' };
     // not under king capture (The Ouroboros King): a king can still walk into a capture, so nothing is a dead draw
     if (!hasPowers(cfg) && !cfg.kingCapture && !s.kingless && insufficient(s)) return { over: true, result: 'draw', reason: 'insufficient material' };
+    if (ouFinisher(s, cfg)) return { over: true, result: s.turn, reason: 'finisher' }; // The Finisher (The Ouroboros King)
     return { over: false };
+  }
+
+  /* The Ouroboros King's relics that act at the start of a side's turn (powers .ou of that side, the player's or the
+     enemy's alike). The Finisher: the other side's General (or King) stands alone and this side still has another
+     unit, which wins (status). The Spiked shield: the first unit of this side taken by anything but a king, the taker
+     is destroyed (once a battle). The Bodyguard horn: the King is this side's only unit left, a Queen joins him on a
+     free square next to him (once a battle). What is used up is kept on the state: s.ouDone holds 'S' or 'H' and the
+     side. The app plays the shield and the horn as entries of their own (ouRelicStep), the search right after the
+     move that ends a turn (ouTurnRelics). */
+  function ouFinisher(s, cfg) {
+    var ou = powersOf(cfg, s.turn).ou;
+    if (!ou || !ou.finisher) return false;
+    var c = s.turn, mine = false, theirs = false, b = s.board;
+    for (var i = 0; i < b.length; i++) {
+      var p = b[i];
+      if (!p) continue;
+      if (colorOf(p) === c) { if (!isRoyal(p)) mine = true; } else if (isRoyal(p)) theirs = true; else return false;
+    }
+    return mine && theirs;
+  }
+  // The square of the unit the Spiked shield destroys now, or -1. m: the last move of the other side (null if none).
+  function ouSpike(s, cfg, m) {
+    var c = s.turn, ou = powersOf(cfg, c).ou;
+    if (!ou || !ou.spiked || (s.ouDone || '').indexOf('S' + c) >= 0 || !m || !m.cap || colorOf(m.cap) !== c || !m.piece || colorOf(m.piece) === c || isRoyal(m.piece)) return -1;
+    return s.board[m.to] === m.piece ? m.to : m.from >= 0 && s.board[m.from] === m.piece ? m.from : -1;
+  }
+  // The square the Bodyguard horn's Queen comes to now, or -1.
+  function ouHorn(s, cfg) {
+    var c = s.turn, ou = powersOf(cfg, c).ou;
+    if (!ou || !ou.horn || (s.ouDone || '').indexOf('H' + c) >= 0) return -1;
+    var k = -1, i;
+    for (i = 0; i < s.board.length; i++) {
+      var p = s.board[i];
+      if (!p || colorOf(p) !== c) continue;
+      if (k >= 0 || !isRoyal(p)) return -1;
+      k = i;
+    }
+    if (k < 0) return -1;
+    for (i = 0; i < 8; i++) {
+      var rr = ROW[k] + HORN[i][0], ff = COL[k] + HORN[i][1], q = rr * W + ff;
+      if (inside(rr, ff) && !s.board[q] && !isWall(cfg, q, s)) return q;
+    }
+    return -1;
+  }
+  var HORN = [[-1, 0], [-1, -1], [-1, 1], [0, -1], [0, 1], [1, 0], [1, -1], [1, 1]];
+  /* One relic acting at the start of s.turn: { n, spike, spiked } or { n, horn }, or null when none does. m: the last
+     move of the other side. */
+  function ouRelicStep(s, cfg, m) {
+    use(s);
+    var c = s.turn, q = ouSpike(s, cfg, m), out = null;
+    if (q >= 0) out = { spike: q, spiked: s.board[q], put: '', mark: 'S' };
+    else if ((q = ouHorn(s, cfg)) >= 0) out = { horn: q, put: c === 'w' ? 'Q' : 'q', mark: 'H' };
+    if (!out) return null;
+    var n = {};
+    for (var k in s) n[k] = s[k];
+    n.board = s.board.slice();
+    n.board[q] = out.put;
+    n.fairy = hasFairy(n.board);
+    n.ouDone = (s.ouDone || '') + out.mark + c;
+    n.fx = null;
+    out.n = n;
+    return out;
+  }
+  // The relics at the start of the turn n has reached by move m (a no-op while the same side is still moving).
+  function ouTurnRelics(s, m, n, cfg) {
+    if (n.turn === s.turn || n.lost || !ouTurnOn(cfg)) return n;
+    var r = ouRelicStep(n, cfg, m);
+    while (r) { n = r.n; r = r.horn != null ? null : ouRelicStep(n, cfg, null); }
+    return n;
+  }
+  function ouTurnOn(cfg) {
+    for (var i = 0; i < 2; i++) { var o = powersOf(cfg, i ? 'b' : 'w').ou; if (o && (o.spiked || o.horn)) return true; }
+    return false;
+  }
+  function ouFinisherOn(cfg) { var a = powersOf(cfg, 'w').ou, b = powersOf(cfg, 'b').ou; return !!((a && a.finisher) || (b && b.finisher)); }
+  /* An item was used by side c (the enemy never uses items): with the other side's Magic tiara its General cannot be
+     taken for the rest of the turn. */
+  function ouItemUsed(n, cfg, c) {
+    var f = other(c), fo = powersOf(cfg, f).ou;
+    if (fo && fo.tiara && n.turn === c) n.ouSafe = f;
+    return n;
   }
 
   /* The Ouroboros King's items that act on the board (the app counts what is left): a bottle (this turn every unit
@@ -2157,6 +2297,7 @@
       n.board[a] = pb; n.board[b2] = pa; pass = true;
     } else return null;
     if (pass) n = play(n, { from: -1, to: -1, piece: '', cap: '', capSq: -1, pass: true }, cfg);
+    else ouItemUsed(n, cfg, c);
     n.fx = null;
     return n;
   }
@@ -2173,7 +2314,8 @@
       (s.sleep && s.sleep.length ? '|z' + s.sleep.join(',') : '') + (s.fresh && s.fresh.length ? '|f' + s.fresh.join(',') : '') +
       (s.sg ? '|g' + JSON.stringify(s.sg) + JSON.stringify(s.dmg) : '') +
       ((s.bombs && s.bombs.length) || (s.boulders && s.boulders.length) ? '|B' + (s.bombs || []).join(',') + '/' + (s.boulders || []).join(',') : '') +
-      (s.bottle || s.knife || s.boomer || s.glide || s.ouLock >= 0 ? '|I' + s.bottle + (s.knife ? 1 : 0) + (s.boomer ? 1 : 0) + (s.glide ? 1 : 0) + s.ouLock : '') + (s.ouTurns ? '|t' + (s.ouTurns % 3) : '');
+      (s.bottle || s.knife || s.boomer || s.glide || s.ouLock >= 0 ? '|I' + s.bottle + (s.knife ? 1 : 0) + (s.boomer ? 1 : 0) + (s.glide ? 1 : 0) + s.ouLock : '') + (s.ouTurns ? '|t' + (s.ouTurns % 3) : '') +
+      (s.ouDone || s.ouSafe || s.ouBoots ? '|o' + (s.ouDone || '') + '/' + (s.ouSafe || '') + '/' + (s.ouBoots || '') : '');
   }
 
   function uci(m) { return sqName(m.from) + sqName(m.to) + (m.promo || ''); }
@@ -2203,7 +2345,7 @@
     else if (m.swap) out = (FAIRY.hasOwnProperty(t) ? FAIRY[t].san : 'K') + '~' + dest;
     else if (m.stay) out = (FAIRY.hasOwnProperty(t) ? FAIRY[t].san : t.toUpperCase()) + ' stays';
     else if (m.castle) out = m.castle === 'K' ? 'O-O' : 'O-O-O';
-    else if (m.drop) out = m.drop.toUpperCase() + '@' + dest;
+    else if (m.drop) out = (FAIRY.hasOwnProperty(m.drop) ? FAIRY[m.drop].san : m.drop.toUpperCase()) + '@' + dest;
     else {
       var dis = '';
       if (t !== 'p') {
@@ -2220,7 +2362,7 @@
       var letter = FAIRY.hasOwnProperty(t) ? FAIRY[t].san : t.toUpperCase();
       if (m.snipe) out = (t === 'p' ? sqName(m.from)[0] : letter + dis) + '*' + dest;
       else if (t === 'p') out = (m.cap ? sqName(m.from)[0] + 'x' : '') + dest + (m.promo ? '=' + m.promo.toUpperCase() : '');
-      else out = letter + dis + (m.cap ? 'x' : '') + dest;
+      else out = letter + dis + (m.cap ? 'x' : '') + dest + (m.promo === '+' && FAIRY.hasOwnProperty(t) && FAIRY[t].shogiUp ? '=' + FAIRY[FAIRY[t].shogiUp].san : '');
     }
     if (after.fx && after.fx.boom && !m.blast) out += '^';
     if (after.fx && after.fx.bounce >= 0) out += '\u26d1'; // bounced off a helmet: Bxe5⛑
@@ -2290,7 +2432,7 @@
     START_FEN: START_FEN, MAXW: MAXW, use: use, size: function () { return { W: W, H: H }; }, sqName: sqName, sqIndex: sqIndex, colorOf: colorOf, typeOf: typeOf, other: other,
     fromFen: fromFen, toFen: toFen, boardFen: boardFen, cleanCastling: cleanCastling,
     attacked: attacked, inCheck: inCheck, kingSq: kingSq, royalAlive: royalAlive, wiped: wiped, pellets: pellets, mulberry: mulberry, hpOf: hpOf, SG: SG, shotResult: shotResult, hasRoyal: hasRoyal, duckAt: duckAt, duckDue: duckDue, duckSquares: duckSquares, demonNext: demonNext, demonHits: demonHits, asleep: asleep, isGhostAt: isG, isSniperAt: isS, royalSquares: royalSquares, checkedSquares: checkedSquares, isRoyal: isRoyal, ability: ability, stiff: stiff, guarded: guarded, atomsFor: atomsFor,
-    ouItem: ouItem, bombAt: bombAt, isRock: isRock,     legalMoves: legalMoves, anyLegal: anyLegal, noisyMoves: noisyMoves, FAIRY: FAIRY, FAIRY_LETTERS: FAIRY_LETTERS, isFairy: isFairy, fairyOf: fairyOf, hasFairy: hasFairy, fairyAttacks: fairyAttacks, isWall: isWall, isWater: isWater, play: play, gildTargets: gildTargets, gild: gild, midasTurn: midasTurn, freezeTargets: freezeTargets, freeze: freeze, shieldTargets: shieldTargets, shield: shield, stopReady: stopReady, timeStop: timeStop, has: has, pocketKey: pocketKey, powersOf: powersOf, anyPower: anyPower, KEYS: KEYS,
+    ouItem: ouItem, ouItemUsed: ouItemUsed, ouFinisher: ouFinisher, ouFinisherOn: ouFinisherOn, ouRelicStep: ouRelicStep, ouTurnRelics: ouTurnRelics, ouTurnOn: ouTurnOn, bombAt: bombAt, isRock: isRock, shogiZone: shogiZone, SHOGI_BASE: SHOGI_BASE,     legalMoves: legalMoves, anyLegal: anyLegal, noisyMoves: noisyMoves, FAIRY: FAIRY, FAIRY_LETTERS: FAIRY_LETTERS, isFairy: isFairy, fairyOf: fairyOf, hasFairy: hasFairy, fairyAttacks: fairyAttacks, isWall: isWall, isWater: isWater, play: play, gildTargets: gildTargets, gild: gild, midasTurn: midasTurn, freezeTargets: freezeTargets, freeze: freeze, shieldTargets: shieldTargets, shield: shield, stopReady: stopReady, timeStop: timeStop, has: has, pocketKey: pocketKey, powersOf: powersOf, anyPower: anyPower, KEYS: KEYS,
     isRock: isRock, isHole: isHole, convertTargets: convertTargets, convert: convert, legalAll: legalAll, dieOf: dieOf, diceMost: diceMost, dicePool: dicePool, rollFaces: rollFaces, roll: roll, diceChance: diceChance, diceCount: diceCount, pseudoMoves: pseudoMoves,
     status: status, hasPowers: hasPowers, posKey: posKey, uci: uci, findUci: findUci, san: san,
     validate: validate, perft: perft, armyRoom: armyRoom, canDrop: canDrop

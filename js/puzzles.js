@@ -34,7 +34,9 @@
     'backRankMate', 'smotheredMate', 'arabianMate', 'anastasiaMate', 'promotion', 'advancedPawn', 'advantage', 'crushing',
     'opening', 'middlegame', 'endgame', 'rookEndgame', 'pawnEndgame', 'queenEndgame', 'master', 'oneMove', 'short', 'long', 'veryLong'];
   var BANDS = [['all', 'Any', 0, 9999], ['a', 'Under 900', 0, 900], ['b', '900+', 900, 1300], ['c', '1300+', 1300, 1700], ['d', '1700+', 1700, 9999]];
-  var RUSH = { 3: { name: '3 minutes', secs: 180, strikes: 3 }, 5: { name: '5 minutes', secs: 300, strikes: 3 }, s: { name: 'Survival', secs: 0, strikes: 3 }, k: { name: 'Streak', secs: 0, strikes: 1 } };
+  var RUSH = { 3: { name: '3 minutes', secs: 180, strikes: 3 }, 5: { name: '5 minutes', secs: 300, strikes: 3 }, s: { name: 'Survival', secs: 0, strikes: 3 }, k: { name: 'Streak', secs: 0, strikes: 1 },
+    // the same puzzles for everyone on a day (3 minutes), and a run of the puzzles that need power-ups
+    d: { name: 'Daily Rush', secs: 180, strikes: 3, daily: true }, p: { name: 'Power-up Rush', secs: 180, strikes: 3, power: true } };
 
   function fresh() {
     return { rating: 800, rd: 250, best: 800, streak: 0, bestStreak: 0, solved: 0, failed: 0, seconds: 0,
@@ -111,12 +113,14 @@
   }
 
   /* Puzzle Rush: the puzzles get harder one by one. used = ids already played in this run. */
-  function rushNext(list, k, used, p) {
-    var target = 420 + k * 42 + rnd(60), best = null, bd = 1e9;
+  // rand: a random source of its own (a Daily Rush gives everyone the same one), else Math.random
+  function rushNext(list, k, used, p, rand) {
+    var r = rand ? function (n) { return Math.floor(rand() * n); } : rnd;
+    var target = 420 + k * 42 + r(60), best = null, bd = 1e9;
     for (var i = 0; i < list.length; i++) {
       var x = list[i];
       if (used[x.id] || x.moves.length > 5) continue;
-      var d = Math.abs(ratingOf(x, p) - target) + rnd(40);
+      var d = Math.abs(ratingOf(x, p) - target) + r(40);
       if (d < bd) { bd = d; best = x; }
     }
     return best;

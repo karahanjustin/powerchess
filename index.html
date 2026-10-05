@@ -152,6 +152,8 @@ body.nocoords .hexsvg .hexl{display:none}
 .sq .fl{position:absolute;right:5%;bottom:2%}
 body.nocoords .sq span{display:none}
 .mark{position:absolute;width:calc(100% / var(--W));height:calc(100% / var(--H));pointer-events:none}
+/* shogi pieces: the dots that mark the promotion zones */
+.zonedot{position:absolute;width:calc(var(--cell) / 7);height:calc(var(--cell) / 7);margin:calc(var(--cell) / -14) 0 0 calc(var(--cell) / -14);border-radius:50%;background:var(--star,rgba(0,0,0,.6));opacity:.85;pointer-events:none;z-index:1}
 .mark.premove{background:rgba(244,42,50,.5)}
 .mark.frozen{background:radial-gradient(circle,rgba(150,225,255,.9) 0%,rgba(90,190,255,.55) 55%,rgba(90,190,255,0) 78%)}
 .mark.last,.mark.sel{background:var(--hl)}
@@ -455,6 +457,7 @@ body[data-tab=modes][data-gm=pb][data-pbpulse=board] #board{box-shadow:0 0 0 3px
 .skc.empty{background:#2f2d2a;color:#888;align-items:center;justify-content:center}
 .sk-owned{display:flex;flex-wrap:wrap;gap:4px;margin-top:10px}
 .sk-chip{font-size:11px;padding:3px 7px;border-radius:10px}.sk-chip.black{background:#16151a;color:#ddd;box-shadow:inset 0 0 0 1px #4a4458}.sk-chip.white{background:#ece8de;color:#222}
+.sk-chip.white.torn{background:linear-gradient(104deg,#ece8de 0 54%,transparent 54% 57%,#ddd6c6 57%);color:#3a3630} /* Fallen Dynasty: a card torn in two */
 .sk-end{display:flex;flex-direction:column;gap:4px;padding:10px 12px;border-radius:8px;margin:8px 0}
 .sk-end.won{background:rgba(129,182,76,.18)}.sk-end.lost{background:rgba(214,58,42,.16)}.sk-end span{font-size:12.5px;color:#a9a59d}
 .mark.duck{background:url(pieces/fairy/duck_yellow.svg) center/88% no-repeat;filter:drop-shadow(0 2px 2px rgba(0,0,0,.35))}

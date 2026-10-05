@@ -1107,6 +1107,7 @@
     (dsrc.bducks || []).forEach((sq) => mark(sq, 'duck blue'));
     ui.marks.forEach((sq) => mark(sq, 'user'));
     if (ui.sel && ui.sel.sq >= 0 && (inGame || an || md === 'puzzle')) mark(ui.sel.sq, 'sel');
+    shogiDots(s, v);
 
     L.pieces.innerHTML = '';
     const els = {};
@@ -1117,7 +1118,8 @@
       if (!p) continue;
       if (inGame && fogged(R.colorOf(p))) continue; // Fog of War
       const gold = s.gold.indexOf(sq) >= 0, ice = !gold && !!s.ice && s.ice.indexOf(sq) >= 0;
-      const d = h('div', 'piece' + (gold ? ' gold' : '') + (ice ? ' ice' : '') + (s.reborn && s.reborn.indexOf(sq) >= 0 ? ' spent' : '') + (s.guard && s.guard.indexOf(sq) >= 0 ? ' shielded' : '')); // spent: a fire chick or phoenix that already came back; shielded: Shield
+      const safe = (s.guard && s.guard.indexOf(sq) >= 0) || (s.ouSafe && R.colorOf(p) === s.ouSafe && R.isRoyal(p)); // Shield, or the enemy General under its Magic tiara
+      const d = h('div', 'piece' + (gold ? ' gold' : '') + (ice ? ' ice' : '') + (s.reborn && s.reborn.indexOf(sq) >= 0 ? ' spent' : '') + (safe ? ' shielded' : '')); // spent: a fire chick or phoenix that already came back
       const up = (s.snipers && s.snipers.indexOf(sq) >= 0 && !/camo/.test(d.className) ? ' camo' : '') + (s.ghosts && s.ghosts.indexOf(sq) >= 0 ? ' ghost' : '');
       // a variant's raw token where it is drawn differently: a promoted shogi piece is '+B' (the board holds the bare 'B')
       const tok = s.raw && s.raw[sq] && s.raw[sq] !== p && v.glyphs && v.glyphs[s.raw[sq].toLowerCase()] ? s.raw[sq] : p;
@@ -1242,6 +1244,19 @@
     renderArrows();
   }
 
+  /* Shogi pieces on the board (or in a hand): dots on the lines that close off each side's promotion zone, the far
+     third of the ranks (R.shogiZone), and a third in from each side; the Shogi variant's own board draws its own. */
+  function shogiDots(s, v) {
+    if (!s || v.hex || (v.glyphs && v.glyphs['+p'])) return;
+    const isSh = (p) => p && R.isFairy(p) && R.fairyOf(p).shogi;
+    if (!s.board.some(isSh) && !(s.pocket || []).some(isSh) && !(s.pocket2 || []).some(isSh)) return;
+    const z = R.shogiZone(BH), zx = Math.max(1, Math.floor(BW / 3));
+    [[zx, z], [BW - zx, z], [zx, BH - z], [BW - zx, BH - z]].forEach((d) => {
+      const el = h('div', 'zonedot');
+      el.style.left = d[0] * 100 / BW + '%'; el.style.top = d[1] * 100 / BH + '%';
+      L.marks.appendChild(el);
+    });
+  }
   function renderArrows() {
     const list = ui.arrows.slice();
     if (ui.hintArrow) list.push(ui.hintArrow);
@@ -1902,11 +1917,13 @@
       row.appendChild(h('span', '', s.portals.length ? sqLabel(s.portals[0]) + ' and ' + sqLabel(s.portals[1]) + ' are linked' : 'No portals on the board'));
       bar.appendChild(row);
     }
-    if (mine.drops) bar.appendChild(pocketRow('Reinforcements', s[R.pocketKey(cfg, me)], me, true, act));
+    // a hand of shogi pieces (taken ones come back as drops in any game) shows like a pocket
+    const shogiHand = (c) => !G.variantGame && (s[R.pocketKey(cfg, c)] || []).some((t) => R.isFairy(t) && R.fairyOf(t).shogi);
+    if (mine.drops || shogiHand(me)) bar.appendChild(pocketRow(mine.drops ? 'Reinforcements' : 'In your hand', s[R.pocketKey(cfg, me)], me, true, act));
     if (!G.hand) {
       // pockets nobody here can click: the bot's, or both in a bot match
       (G.auto ? ['w', 'b'] : [R.other(me)]).forEach((c) => {
-        if (G.pw[c] && G.pw[c].drops) bar.appendChild(pocketRow(G.auto || G.local ? (c === 'w' ? 'White\'s pocket' : 'Black\'s pocket') : 'Their pocket', s[R.pocketKey(cfg, c)], c, false, false));
+        if ((G.pw[c] && G.pw[c].drops) || shogiHand(c)) bar.appendChild(pocketRow(G.auto || G.local ? (c === 'w' ? 'White\'s pocket' : 'Black\'s pocket') : 'Their pocket', s[R.pocketKey(cfg, c)], c, false, false));
       });
     }
     const simple = (label, enabled, onClick, text, on) => {
@@ -2041,6 +2058,22 @@
     box.appendChild(x);
     openOverlay(box);
   }
+  // A shogi piece entering, leaving or moving inside the promotion zone: the promoted piece or the piece as it is
+  function showShogiPromo(cands) {
+    const xy = sqXY(cands[0].to), box = h('div', 'rowpick'), cw = 100 / BW, p = cands[0].piece, d = R.fairyOf(p), white = R.colorOf(p) === 'w';
+    box.style.width = Math.min(100, 2 * cw) + '%';
+    box.style.left = Math.max(0, Math.min(100 - 2 * cw, (xy[0] + 0.5 - 1) * cw)) + '%';
+    box.style.top = (xy[1] < BH / 2 ? xy[1] + 1 : xy[1] - 1) * 100 / BH + '%';
+    [cands.find((c) => c.promo === '+'), cands.find((c) => !c.promo)].forEach((m) => {
+      if (!m) return;
+      const letter = m.promo ? (white ? d.shogiUp.toUpperCase() : d.shogiUp) : p;
+      const b = paint(h('button'), letter, {}, null);
+      b.title = m.promo ? 'Promote' : 'Do not promote';
+      b.onclick = () => { closeOverlay(); dispatch(m); };
+      box.appendChild(b);
+    });
+    openOverlay(box);
+  }
   // Variant promotions can offer any number of pieces, so they get a row instead of the column.
   function showPromoRow(cands) {
     const xy = sqXY(cands[0].to), n = cands.length, white = R.colorOf(cands[0].piece) === 'w';
@@ -2098,7 +2131,7 @@
       stopped: 'before it was decided',
       checkmate: 'by checkmate', stalemate: 'by stalemate', repetition: 'by repetition', timeout: 'on time', resignation: 'by resignation',
       explosion: 'a royal piece was caught in a martyr\'s blast', 'king captured': 'by taking the king',
-      finisher: 'by The Finisher: the enemy General stood alone', smoke: 'gone in a cloud of smoke', hourglass: 'the sand runs back',
+      finisher: st.result === side || G.auto || G.local ? 'by The Finisher: the enemy General stood alone' : 'by the enemy\'s Finisher: your King stood alone', smoke: 'gone in a cloud of smoke', hourglass: 'the sand runs back',
       variant: 'by the rules of ' + G.vname, drawrule: 'by repetition, the 50 move rule or too little material',
       drawback: G.db ? (G.auto || G.local ? (st.by === 'w' ? 'White' : 'Black') + ' lost by its drawback, ' : (st.by === side ? 'you lost by your drawback, ' : G.botName + ' lost by its drawback, ')) + dbName(G.db[st.by]) : '',
       'no legal moves': (G.auto || G.local ? (st.by === 'w' ? 'White' : 'Black') + ' had' : st.by === side ? 'you had' : G.botName + ' had') + ' no legal move left by the drawback'
@@ -2643,13 +2676,13 @@
         return;
       }
       if (kind === 'g') { n = g.B.gild(s, +arg); entry = { by: by, gild: +arg, san: '✦' + Fairy.sqName(+arg, g.W, g.H), removed: [] }; }
-      else if (kind === 'f') { n = g.B.freeze(s, +arg); entry = { by: by, freeze: +arg, san: '❄' + Fairy.sqName(+arg, g.W, g.H), removed: [] }; }
-      else if (kind === 'h') { n = g.B.shield(s, +arg); entry = { by: by, shield: +arg, san: '\u26e8' + Fairy.sqName(+arg, g.W, g.H), removed: [] }; }
+      else if (kind === 'f') { n = ouTiara(g, g.B.freeze(s, +arg), by); entry = { by: by, freeze: +arg, san: '❄' + Fairy.sqName(+arg, g.W, g.H), removed: [] }; }
+      else if (kind === 'h') { n = ouTiara(g, g.B.shield(s, +arg), by); entry = { by: by, shield: +arg, san: '\u26e8' + Fairy.sqName(+arg, g.W, g.H), removed: [] }; }
       else if (kind === 't') { n = g.B.timeStop(s); entry = { by: by, stop: true, san: '⧖', removed: [] }; }
-      else if (kind === 'u' || kind === 'v') { const a2 = arg.split(':'); n = ouEdit(g.B, s, +a2[0], a2[1], kind === 'v'); entry = { by: by, to: a2[1], san: (kind === 'u' ? '\u21e7' : '\u21e9') + Fairy.sqName(+a2[0], g.W, g.H), removed: [] }; entry[kind === 'u' ? 'powerup' : 'downgrade'] = +a2[0]; }
-      else if (kind === 'x') { const t0 = s.board[+arg]; n = ouEdit(g.B, s, +arg, '', false); entry = { by: by, spike: +arg, spiked: t0, san: '\u2736' + Fairy.sqName(+arg, g.W, g.H), removed: [{ sq: +arg, p: t0 }] }; }
+      else if (kind === 'u' || kind === 'v') { const a2 = arg.split(':'); n = ouTiara(g, ouEdit(g.B, s, +a2[0], a2[1], kind === 'v'), by); entry = { by: by, to: a2[1], san: (kind === 'u' ? '\u21e7' : '\u21e9') + Fairy.sqName(+a2[0], g.W, g.H), removed: [] }; entry[kind === 'u' ? 'powerup' : 'downgrade'] = +a2[0]; }
+      else if (kind === 'x') { const t0 = s.board[+arg]; n = ouSpent(ouEdit(g.B, s, +arg, '', false), 'S' + by); entry = { by: by, spike: +arg, spiked: t0, san: '\u2736' + Fairy.sqName(+arg, g.W, g.H), removed: [{ sq: +arg, p: t0 }] }; }
       else if (kind === 'o') { const a3 = arg.split(':'); n = R.ouItem(s, g.cfg, a3[0], +a3[1], +a3[2]); entry = { by: by, ouItem: a3[0], a: +a3[1], b: +a3[2], san: (OU_SAN[a3[0]] || '') + (+a3[1] >= 0 ? Fairy.sqName(+a3[1], g.W, g.H) : '') + (+a3[2] >= 0 ? Fairy.sqName(+a3[2], g.W, g.H) : ''), removed: [] }; }
-      else if (kind === 'q') { n = ouEdit(g.B, s, +arg, by === 'w' ? 'Q' : 'q', false); entry = { by: by, horn: +arg, san: '+Q' + Fairy.sqName(+arg, g.W, g.H), removed: [] }; }
+      else if (kind === 'q') { n = ouSpent(ouEdit(g.B, s, +arg, by === 'w' ? 'Q' : 'q', false), 'H' + by); entry = { by: by, horn: +arg, san: '+Q' + Fairy.sqName(+arg, g.W, g.H), removed: [] }; }
       else if (kind === 'c') { n = g.B.convert(s, +arg); entry = { by: by, convert: +arg, san: '⇄' + Fairy.sqName(+arg, g.W, g.H), removed: [] }; }
       else if (kind === 'r') { const f = arg.split(','); n = g.B.roll(s, f); entry = { by: by, roll: f, san: '', removed: [], wasted: !!(n && n.wasted) }; }
       else {
@@ -3000,7 +3033,7 @@
     G.log.forEach((e) => {
       if (e.m && e.m.cap) { if (e.by === me) kills.push([e.m.piece, e.m.cap]); else lost.push(e.m.cap); }
       (e.removed || []).forEach((r) => { if (r && r.p && R.colorOf(r.p) === me) lost.push(r.p); });
-      if (e.spike != null && e.spiked) kills.push(['', e.spiked]);
+      if (e.spike != null && e.spiked && e.by === me) kills.push(['', e.spiked]); // the player's Spiked shield (the enemy's takes a unit of yours: removed)
     });
     return { moves: ouroMoves(), kills: kills, lost: lost, used: ouUsed() };
   }
@@ -3013,6 +3046,12 @@
     n.fx = null;
     return n;
   }
+  // a relic used up for the battle (the Spiked shield 'S', the Bodyguard horn 'H', with the side), kept on the state
+  function ouSpent(n, mark) { if (n && (n.ouDone || '').indexOf(mark) < 0) n.ouDone = (n.ouDone || '') + mark; return n; }
+  /* An item used by `by` (game g): with the enemy's Magic tiara its General cannot be taken for the rest of the turn
+     (R.ouItemUsed; the Rocking chair, Downgrade and the items that pass hand the turn over first). */
+  function ouTiara(g, n, by) { return n && g.cfg && g.cfg.pw ? R.ouItemUsed(n, g.cfg, by) : n; }
+  function ouTiaraToast(s, n) { if (n && n.ouSafe && !s.ouSafe) toast('Enemy\'s Magic tiara: the General cannot be taken for the rest of this turn'); }
   function ouTargets(mode, s) {
     const me = G.cfg.side, out = [];
     s.board.forEach((p, q) => {
@@ -3025,7 +3064,7 @@
   function doOuItem(mode, sq) {
     const s = live(), p = s.board[sq];
     if (!runGame() || !itemsLeft(mode) || ouTargets(mode, s).indexOf(sq) < 0) return;
-    const to = mode === 'powerup' ? Ouro.upgradeOf(p) : Ouro.downgradeOf(p), n = ouEdit(G.B, s, sq, to, mode === 'downgrade');
+    const to = mode === 'powerup' ? Ouro.upgradeOf(p) : Ouro.downgradeOf(p), n = ouTiara(G, ouEdit(G.B, s, sq, to, mode === 'downgrade'), s.turn);
     const e = { by: s.turn, to: to, san: (mode === 'powerup' ? '\u21e7' : '\u21e9') + sqLabel(sq), removed: [] };
     e[mode] = sq;
     pushState(n, e);
@@ -3034,6 +3073,7 @@
     renderAll();
     fxRing(sq, mode === 'powerup' ? 'glint' : 'blue');
     snd('gold');
+    ouTiaraToast(s, n);
     afterAction();
   }
   const OU_SAN = { knife: '\u2020', bottle_b: 'B!', bottle_n: 'N!', bottle_r: 'R!', boomerang: '\u21ba', glider: '\u21e1', boulder: '\u25aa', hammer: '\u2692', snow: '\u2744\ufe0e', rock: '\u2739', teleporter: '\u21c4' };
@@ -3060,6 +3100,7 @@
     renderAll();
     if (a >= 0) fxRing(a, id === 'rock' ? 'boom' : 'blue');
     snd(id === 'rock' || id === 'hammer' ? 'capture' : 'gold');
+    ouTiaraToast(s, n);
     afterAction();
   }
   function doRewind() {
@@ -3083,39 +3124,35 @@
     finish({ over: true, result: 'draw', reason: 'hourglass' }, true);
     setTimeout(() => startMode('run'), 60);
   }
-  /* The relics that act in a battle, at the start of the player's turn: The Finisher (the enemy General alone: won),
-     the Bodyguard horn (the King alone: a Queen joins him, once), the Spiked shield (the first unit of yours taken by
-     anything but a king: the taker is destroyed, once), the Alarm bell (the King in danger: a warning). True when the
-     battle ended. */
-  function ouRelics() {
-    const run = ouroRun(), s = live(), me = G.cfg.side;
-    if (!runGame() || s.turn !== me || G.over) return false;
-    const has = (id) => Ouro.has(run, id), mine = [], theirs = [];
-    s.board.forEach((p, q) => { if (p) (R.colorOf(p) === me ? mine : theirs).push(q); });
-    if (has('finisher') && theirs.length && theirs.every((q) => R.isRoyal(s.board[q])) && mine.some((q) => !R.isRoyal(s.board[q]))) {
-      finish({ over: true, result: me, reason: 'finisher' });
-      return true;
+  // the board once the move before has slid into place (unless something else has drawn it since)
+  function ouRedraw() { const game = G, at = live(); setTimeout(() => { if (game === G && live() === at) renderAll(); }, settings.anim ? 200 : 0); }
+  /* The relics that act in a battle at the start of a turn, for whichever side has them (the player's relics, or the
+     enemy's with the Enemy relics boon and in Infinity): the Spiked shield (the first unit taken by anything but a
+     king: the taker is destroyed, once) and the Bodyguard horn (the King alone: a Queen joins him, once), played as
+     entries of their own (R.ouRelicStep); The Finisher (the other General alone: won) is a rule (R.status); the Alarm
+     bell (the player's King in danger: a warning). The bot's relics act before it thinks. True when the battle ended.
+     again: a relic has just acted, so the battle may be over now (The Finisher once the shield has struck). */
+  function ouRelics(again) {
+    const run = ouroRun(), s = live(), me = G.cfg.side, c = s.turn, foe = c !== me;
+    if (!runGame() || G.over) return false;
+    if (again) { const st = G.B.status(s, G.legal); if (st.over) { finish(st); return true; } }
+    const has = (id) => Ouro.has(run, id), last = G.log[G.log.length - 1];
+    const r = R.ouRelicStep(s, G.cfg, last && last.by !== c && last.m ? last.m : null);
+    if (r && r.spike != null) {
+      pushState(r.n, { by: c, spike: r.spike, spiked: r.spiked, san: '\u2736' + sqLabel(r.spike), removed: [{ sq: r.spike, p: r.spiked }] });
+      ouRedraw();
+      fxRing(r.spike, 'boom'); snd('capture');
+      const what = Ouro.title(r.spiked).toLowerCase();
+      toast(foe ? 'Enemy\'s Spiked shield: your ' + what + ' that took its unit is destroyed' : 'Spiked shield: the ' + what + ' that took your unit is destroyed');
+      return ouRelics(true);
     }
-    const last = G.log[G.log.length - 1];
-    if (has('spiked') && !G.log.some((e) => e.spike != null) && last && last.by !== me && last.m && last.m.cap && R.colorOf(last.m.cap) === me && !R.isRoyal(last.m.piece)) {
-      const at = s.board[last.m.to] === last.m.piece ? last.m.to : s.board[last.m.from] === last.m.piece ? last.m.from : -1;
-      if (at >= 0) {
-        const taken = s.board[at];
-        pushState(ouEdit(G.B, s, at, '', false), { by: me, spike: at, spiked: taken, san: '\u2736' + sqLabel(at), removed: [{ sq: at, p: taken }] });
-        fxRing(at, 'boom'); snd('capture');
-        toast('Spiked shield: the ' + Ouro.title(taken).toLowerCase() + ' that took your unit is destroyed');
-        return ouRelics();
-      }
+    if (r && r.horn != null) {
+      pushState(r.n, { by: c, horn: r.horn, san: '+Q' + sqLabel(r.horn), removed: [] });
+      ouRedraw();
+      fxRing(r.horn, 'glint'); snd('gold');
+      toast(foe ? 'Enemy\'s Bodyguard horn: a Queen comes to the General\'s side' : 'Bodyguard horn: a Queen comes to your King\'s side');
     }
-    if (has('horn') && !G.log.some((e) => e.horn != null) && mine.length === 1 && R.isRoyal(s.board[mine[0]])) {
-      const k = mine[0], r0 = Math.floor(k / 8), f0 = k % 8, cand = [];
-      [[-1, 0], [-1, -1], [-1, 1], [0, -1], [0, 1], [1, 0], [1, -1], [1, 1]].forEach((d) => { const r = r0 + d[0], f = f0 + d[1]; if (r >= 0 && r < 8 && f >= 0 && f < 8 && !s.board[r * 8 + f] && !R.isWall(G.cfg, r * 8 + f, s)) cand.push(r * 8 + f); });
-      if (cand.length) {
-        pushState(ouEdit(G.B, s, cand[0], me === 'w' ? 'Q' : 'q', false), { by: me, horn: cand[0], san: '+Q' + sqLabel(cand[0]), removed: [] });
-        fxRing(cand[0], 'glint'); snd('gold');
-        toast('Bodyguard horn: a Queen comes to your King\'s side');
-      }
-    }
+    if (foe) return false;
     if (has('bell')) {
       const ks = s.board.findIndex((p) => p && R.colorOf(p) === me && R.isRoyal(p));
       const key = G.log.length;
@@ -3205,7 +3242,7 @@
   function ouroBar(bar, s, act) {
     const run = ouroRun(), b = run.battle, left = Ouro.rewardAfter(b, ouroMoves());
     bar.appendChild(h('div', 'prow ou-reward', '<b>Reward</b><span>' + num(left) + ' gold, 4 less a move' + (Ouro.has(run, 'bounty') ? ' (doubled)' : '') + '</span>'));
-    if (b.erelics) bar.appendChild(h('div', 'ou-chips ou-foe', '<span class="gm-lab">Enemy relics</span>' + b.erelics.map(relicChip).join('')));
+    if (b.erelics) bar.appendChild(h('div', 'ou-chips ou-foe', '<span class="gm-lab">Enemy relics</span>' + b.erelics.map(foeChip).join('')));
     const btn = (label, on, enabled, click, text) => {
       const row = h('div', 'prow'), x = h('button', 'btn' + (on ? ' on' : ''), label);
       x.disabled = !enabled; x.onclick = click; x.title = text;
@@ -3235,7 +3272,7 @@
     if (runGame() && !itemsLeft('sphere')) return; // the Sphere of protection
     const s = live(), n = G.B.shield(s, sq);
     if (!n) return;
-    if (runGame()) useItem('sphere');
+    if (runGame()) { useItem('sphere'); ouTiara(G, n, s.turn); ouTiaraToast(s, n); }
     n.fx = null;
     pushState(n, { by: s.turn, shield: sq, san: '\u26e8' + sqLabel(sq), removed: [] });
     ui.sel = null; ui.mode = null; ui.hintArrow = null;
@@ -3248,7 +3285,7 @@
     if (runGame() && !itemsLeft('shackles')) return; // Shackles
     const s = live(), n = G.B.freeze(s, sq);
     if (!n) return;
-    if (runGame()) useItem('shackles');
+    if (runGame()) { useItem('shackles'); ouTiara(G, n, s.turn); ouTiaraToast(s, n); }
     n.fx = null;
     pushState(n, { by: s.turn, freeze: sq, san: '❄' + sqLabel(sq), removed: [] });
     ui.sel = null; ui.mode = null; ui.hintArrow = null;
@@ -5048,7 +5085,8 @@
     if (ui.info != null && A.B.kind === 'std' && s.board[ui.info]) info.appendChild(pieceCard(s.board[ui.info], A.cfg, s));
     if (A.B.dice && (s.dice || s.rolled || (A.B.unrolled && A.B.unrolled(s)))) info.appendChild(diceRow(s, s.turn === 'w' ? 'White' : 'Black', { B: A.B, legal: A.legal, cfg: A.cfg, canRoll: !!(A.B.unrolled && A.B.unrolled(s)) && !A.term, analysis: true, id: 'diceBoxA' }));
     const tpw = pwOf(A.cfg, s.turn);
-    const letters = s.pockets ? s.pockets[s.turn] : (tpw && tpw.drops ? (A.B.kind === 'std' ? s[R.pocketKey(A.cfg, s.turn)] : s.pocket) : []);
+    const own = A.B.kind === 'std' ? s[R.pocketKey(A.cfg, s.turn)] || [] : [];
+    const letters = s.pockets ? s.pockets[s.turn] : (tpw && tpw.drops ? (A.B.kind === 'std' ? own : s.pocket) : own.filter((t) => R.isFairy(t) && R.fairyOf(t).shogi));
     if (letters && letters.length) info.appendChild(pocketRow('Pocket', letters, s.turn, true, canAnalyse(), A.legal, A.glyphs));
     if (A.std) {
       const sans = [];
@@ -5102,6 +5140,12 @@
   function commit(cands) {
     if (cands.some((c) => c.swap)) { showChooser(cands); return; } // asked first: a click on your own rook is easily meant as a selection
     if (cands.length === 1) { dispatch(cands[0]); return; }
+    if (cands.some((c) => c.promo === '+') && curB().kind !== 'fairy') {
+      // a shogi piece in the zone: promote or not ("Always promote" in Settings takes the promotion)
+      const up = cands.find((c) => c.promo === '+');
+      if (settings.autoQueen || cands.length === 1) dispatch(up); else showShogiPromo(cands);
+      return;
+    }
     if (cands.some((c) => c.promo)) {
       const queen = cands.find((c) => c.promo === 'q');
       if (settings.autoQueen && queen) dispatch(queen);
@@ -6222,6 +6266,7 @@
     botBrain.fresh(); evalBrain.fresh();
     snd('start');
     setTab('play');
+    if (kind === 'run' && live().turn !== G.cfg.side) toast('Enemy\'s Camouflage: the enemy moves first');
     afterAction(true);
   }
   // Back to the unfinished game: the same start, every action replayed (the dice are seeded, so they fall the same).
@@ -6233,7 +6278,10 @@
     let g;
     starting = true;
     try {
-      g = await createGame(JSON.parse(JSON.stringify(p.spec)));
+      const spec = JSON.parse(JSON.stringify(p.spec)), run = ouroRun();
+      // a battle begun before The Finisher, the Spiked shield and the Bodyguard horn were rules: the player's relics as they are now
+      if (p.kind === 'run' && run && run.battle && spec.powers) { const ou = Ouro.battleFlags(run); if (ou) spec.powers.ou = Object.assign({}, ou, spec.powers.ou || {}); }
+      g = await createGame(spec);
       replay(g, p.actions || []);
     } catch (e) {
       starting = false;
@@ -6511,7 +6559,11 @@
     ['dy_win', 'Daily duty', 'Win a Daily Challenge', () => Object.keys(daily).some((k) => daily[k].r === 'w')],
     ['dy_week', 'A whole week', 'Win the Daily Challenge 7 days in a row', () => dailyStreak() >= 7],
     ['hx_win', 'Six sides', 'Win a game of Hexagonal Chess', () => (MS.hex.won || 0) >= 1],
-    ['db_ten', 'Weakness is strength', 'Win 10 games of Drawback Chess', () => (MS.drawback.won || 0) >= 10]
+    ['db_ten', 'Weakness is strength', 'Win 10 games of Drawback Chess', () => (MS.drawback.won || 0) >= 10],
+    ['rz_20', 'Rush hour', 'Solve 20 puzzles in a 3 or 5 minute Puzzle Rush', () => Math.max(prof.rush[3] || 0, prof.rush[5] || 0) >= 20],
+    ['rz_streak', 'Steady hand', 'Solve 15 puzzles in a row in Streak', () => (prof.rush.k || 0) >= 15],
+    ['rz_daily', 'Daily rush', 'Play the Daily Rush on 3 different days', () => Object.keys(prof.rushDaily || {}).length >= 3],
+    ['rz_power', 'Powered up', 'Solve 10 puzzles in a Power-up Rush', () => (prof.rush.p || 0) >= 10]
   ];
   function checkAch() {
     if (!PBM || !SKM) return;
@@ -6628,7 +6680,8 @@
   };
   const OU_COLOR = { recruit: '#5c8f3a', upgrade: '#9a6a2c', ruins: '#6a5f8f', shop: '#b08a2a', obelisk: '#4f7688', boss: '#9c3030', manor: '#555', fight: '#7a4a3a' };
   const ouIcon = (type, size) => '<svg class="ou-ic" viewBox="0 0 24 24" width="' + (size || 18) + '" height="' + (size || 18) + '" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + OU_ICON[type] + '</svg>';
-  const relicChip = (id) => { const r = Ouro.RELICS[id]; return '<span class="ou-chip relic' + (r.premium ? ' prem' : '') + '" title="' + r.text + '">' + r.name + '</span>'; };
+  const relicChip = (id, foe) => { const r = Ouro.RELICS[id]; return '<span class="ou-chip relic' + (r.premium ? ' prem' : '') + '" title="' + (foe === true && r.etext ? r.etext : r.text) + '">' + r.name + '</span>'; };
+  const foeChip = (id) => relicChip(id, true); // an enemy's relic: what it does to you, where that reads differently
   const itemChip = (id, n) => { const it = Ouro.ITEMS[id]; return '<span class="ou-chip item" title="' + it.text + '">' + it.name + (n > 1 ? ' x' + n : '') + '</span>'; };
   // the act's map, as an SVG: Ouroboros Manor at the bottom, the rows above it, the boss on top
   function ouroMap(run) {
@@ -6692,7 +6745,7 @@
       html += '<div class="ou-battle"><div class="ou-place">' + ouIcon(b.boss ? 'boss' : b.type, 22) + '<b>' + (b.boss ? Ouro.ACTS[b.act].boss : pl.name) + '</b></div>' +
         '<h3>' + b.title + '</h3><p>' + (b.black.length - 1) + ' enemy units and the General. The bot plays at ' + lab.elo + (b.terrain ? '. With boulders' + (b.terrain.portals.length ? ' and portals' : '') : '') + '.</p>' +
         '<p>' + (pl ? pl.text + '. ' : '') + 'The battle pays ' + b.reward + ' gold, 4 less with every move.</p>' +
-        (b.erelics ? '<div class="ou-chips ou-foe"><span class="gm-lab">Enemy relics</span>' + b.erelics.map(relicChip).join('') + '</div>' : '') +
+        (b.erelics ? '<div class="ou-chips ou-foe"><span class="gm-lab">Enemy relics</span>' + b.erelics.map(foeChip).join('') + '</div>' : '') +
         (p ? '<p class="gm-block">Finish or give up the unfinished game first.</p>' : '<button class="btn green gm-wide" data-gm="fight">Fight</button>') + '</div>';
     } else {
       const opts = Ouro.options(run), sel = ouSel && opts.indexOf(ouSel) >= 0 ? Ouro.place(run, ouSel) : null;
@@ -7064,6 +7117,7 @@
       else if (e.e === 'heir') { toast('An heir takes the throne'); fxRing(e.sq, 'boom'); }
       else if (e.e === 'hat') { if (e.sq >= 0) { fxTracer(e.from, e.sq); fxRing(e.sq, 'boom'); toast('The jester\'s hat passes on'); } else toast('The jester\'s hat is gone'); }
       else if (e.e === 'fool') toast('Fool Companion: an extra turn');
+      else if (e.e === 'dynasty') { const nm = e.torn.map((id) => SKM.CARD[id].name); toast(nm.length > 1 ? nm[0] + ' and ' + nm[1] + ' are torn up: the White King rules again' : nm[0] + ' is torn up: the White King rules again'); }
       else if (e.e === 'countdown') toast('Final Countdown: ' + e.n + ' turns to finish the floor');
       else if (e.e === 'scare' || e.e === 'stun' || e.e === 'shield' || e.e === 'immune' || e.e === 'heal' || e.e === 'bleed') fxRing(e.sq, 'boom');
       else if (e.e === 'leave') skDamage(e.sq, 0, 'fall');
@@ -7341,7 +7395,7 @@
     plumed: ['hp', 'A knight: +3 HP, diagonals'], prison: ['shield', 'Near rooks: jailed'], mother: ['eye', 'Queen dies: all scared'], saboteur: ['arc', '1 pellet: double spread'],
     sanctity: ['souls', 'No bishop souls'], redbook: ['move', 'Bishops move straight too'], heir: ['leader', 'An heir takes the throne'], heirKing: ['leader', 'The heir becomes a king'],
     undead: ['all', 'Dead pieces rise as pawns'], vampire: ['hp', 'Leader, queens drink blood'], vendetta: ['spd', 'Kills rouse their kind'],
-    jester: ['hat', 'A jester pawn: diagonals, +2 Speed'], hat: ['hat', 'The hat passes to the next pawn'], fool: ['hat', 'Jesters move any way, stay by their king'], foolTurn: ['turn', 'Extra turn per jester kill']
+    dynasty: ['leader', 'Floor 12: the White King rules again'], jester: ['hat', 'A jester pawn: diagonals, +2 Speed'], hat: ['hat', 'The hat passes to the next pawn'], fool: ['hat', 'Jesters move any way, stay by their king'], foolTurn: ['turn', 'Extra turn per jester kill']
   };
   const SK_FLIP_TEXT = { pawnKilled: 'Flips when a pawn dies', reload: 'Flips when you reload', promote: 'Flips when a pawn promotes', queenKilled: 'Flips when a queen dies', bishopAt15: 'Flips: bishop alive at turn 15' };
   const SK_OFF_TEXT = { notEdge: 'Only on the edge', adjacent: 'Off with a piece next to you', noRook: 'Off without rooks', noPawn: 'Off without pawns', noBishop: 'Off without bishops', onlyQueens: 'Off with only queens left', notStealth: 'Only while stealthy' };
@@ -7449,6 +7503,7 @@
     if (st.jump) more.push('Jumps left: ' + Math.max(0, st.jump - (F.jumps || 0)) + ' of ' + st.jump + '.');
     if ((F.allies || []).length) more.push('Allies: ' + F.allies.length + '.');
     if (F.pentaFp) more.push('Pentagrams: +' + F.pentaFp + ' Pellets.');
+    if (run.fallen && run.floor === SKM.BOSS_FLOOR) more.push('Fallen Dynasty: the old rulers are gone, the White King leads.');
     if (more.length) html += '<div class="sk-row small">' + more.join(' ') + '</div>';
     if (check) html += '<div class="sk-warn">Check: get out of the attack or kill the attacker this turn.</div>';
     if (F.disrupt) {
@@ -7505,7 +7560,9 @@
   function skOwned(run) {
     const ids = Object.keys(run.cards).filter((k) => run.cards[k] > 0);
     if (!ids.length) return '';
-    const chip = (id) => { const c = SKM.CARD[id]; return '<span class="sk-chip ' + c.color + '" title="' + c.text + '">' + c.name + (run.cards[id] > 1 ? ' x' + run.cards[id] : '') + skCardIcons(c).replace('class="skv"', 'class="skv mini"') + '</span>'; };
+    // Fallen Dynasty: a torn card, its tooltip says what it took the place of
+    const tip = (id) => SKM.CARD[id].text + (id === 'dynasty' && run.fallen ? '. Torn up: ' + run.fallen.map((x) => SKM.CARD[x].name).join(', ') : '');
+    const chip = (id) => { const c = SKM.CARD[id]; return '<span class="sk-chip ' + c.color + (id === 'dynasty' ? ' torn' : '') + '" title="' + tip(id) + '">' + c.name + (run.cards[id] > 1 ? ' x' + run.cards[id] : '') + skCardIcons(c).replace('class="skv"', 'class="skv mini"') + '</span>'; };
     return '<div class="sk-owned">' + ids.filter((k) => SKM.CARD[k].color === 'black').map(chip).join('') + ids.filter((k) => SKM.CARD[k].color === 'white').map(chip).join('') + '</div>';
   }
   function skHoverInfo() {
@@ -9129,13 +9186,19 @@
   }
 
   /* Puzzle Rush: as many as possible before the clock runs out or the third mistake. */
-  function pzRushStart(modeKey) {
-    pz.rush = { mode: modeKey, on: true, k: 0, score: 0, strikes: 0, used: {}, results: [], end: Puzzles.RUSH[modeKey].secs ? Date.now() + Puzzles.RUSH[modeKey].secs * 1000 : 0, best: false };
+  /* The Daily Rush draws its puzzles from the date (everyone gets the same row, rated by a fresh profile so it
+     does not depend on yours); the Power-up Rush draws from the power-up puzzles. */
+  async function pzRushStart(modeKey) {
+    const M = Puzzles.RUSH[modeKey];
+    if (M.power) { await pzPowerReady(); if (!pz.power || !pz.power.length) { toast('The power-up puzzles could not be loaded'); return; } if (ui.tab !== 'puzzles' || pz.view !== 'rush') return; }
+    const day = M.daily ? dayKeyOf(new Date()) : null;
+    pz.rush = { mode: modeKey, on: true, k: 0, score: 0, strikes: 0, used: {}, results: [], end: M.secs ? Date.now() + M.secs * 1000 : 0, best: false,
+      list: M.power ? pz.power : pz.list, p: M.power ? profP : M.daily ? Puzzles.fresh() : prof, rand: day ? dayRandom(day, 'rush') : null, day: day };
     snd('start');
     pzRushNext();
   }
   function pzRushNext() {
-    const rs = pz.rush, item = Puzzles.rushNext(pz.list, rs.k, rs.used, prof);
+    const rs = pz.rush, item = Puzzles.rushNext(rs.list || pz.list, rs.k, rs.used, rs.p || prof, rs.rand);
     if (!item) { pzRushEnd(); return; }
     rs.used[item.id] = 1; rs.k++;
     pzStart(item, 'rush');
@@ -9156,7 +9219,13 @@
     if (!rs || !rs.on) return;
     rs.on = false;
     if (rs.score > (prof.rush[rs.mode] || 0)) { prof.rush[rs.mode] = rs.score; rs.best = true; }
+    if (rs.day) {
+      // the Daily Rush: the first try of the day and the best one
+      const all = prof.rushDaily = prof.rushDaily || {}, o = all[rs.day];
+      all[rs.day] = o ? { first: o.first, best: Math.max(o.best, rs.score), tries: o.tries + 1 } : { first: rs.score, best: rs.score, tries: 1 };
+    }
     prof.rushRuns.unshift({ m: rs.mode, s: rs.score, d: Date.now() });
+    saveModes(); // the Records page: a Rush can earn an achievement
     if (prof.rushRuns.length > 100) prof.rushRuns.length = 100;
     pzSave();
     if (pz.cur && pz.cur.kind === 'rush') { pz.cur.status = pz.cur.status === 'play' ? 'lost' : pz.cur.status; pz.cur.busy = false; }
@@ -9348,6 +9417,10 @@
         }
         html += '<h3>Puzzle Rush</h3><p class="sub">The puzzles start easy and get harder. Three mistakes end a run, in Streak the first one does.</p>';
         ['3', '5', 's', 'k'].forEach((k) => { html += '<button class="pz-row" data-rush="' + k + '"><b>' + Puzzles.RUSH[k].name + '</b><span>Best ' + (prof.rush[k] || 0) + '</span></button>'; });
+        const today = (prof.rushDaily || {})[dayKeyOf(new Date())];
+        html += '<h3>Daily and power-ups</h3><p class="sub">The Daily Rush is the same row of puzzles for everyone today, 3 minutes. The Power-up Rush is 3 minutes of puzzles that need a power-up to solve.</p>';
+        html += '<button class="pz-row" data-rush="d"><b>Daily Rush</b><span>' + (today ? 'Today: first ' + today.first + ', best ' + today.best : 'Not played today') + '</span></button>';
+        html += '<button class="pz-row" data-rush="p"><b>Power-up Rush</b><span>Best ' + (prof.rush.p || 0) + '</span></button>';
         // the best runs so far
         const runs = prof.rushRuns.slice().sort((a, b) => b.s - a.s || b.d - a.d).slice(0, 10);
         if (runs.length) {

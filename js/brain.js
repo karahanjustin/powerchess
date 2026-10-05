@@ -88,6 +88,11 @@
   var PASSED = [0, 6, 12, 26, 50, 85, 135];
   var MOB = [0, 4, 4, 2, 1], MOB_E = [0, 4, 4, 4, 2], MOB_BASE = [0, 4, 6, 7, 13];
 
+  // the letters a hand can hold: the chess pieces (Reinforcements) and the unpromoted shogi pieces (always)
+  var POCKET_LETTERS = 'pnbrq\u047d\u0479\u0473\u046f\u046d\u0469\u0465';
+  function POCKET_IDX(t) { return POCKET_LETTERS.indexOf(t); }
+  // a piece in hand: a shogi piece is always worth its value there, another one only with Reinforcements
+  function pocketVal(t, pw) { var d = R.FAIRY[t]; return d && d.shogi ? d.value : pw.drops ? VAL[t] || 0 : 0; }
   function moveKey(m) {
     return (m.duck ? 'Q' + m.duck : m.spawn ? 'P' : m.shot ? 'G' : m.reload ? 'L' : m.storm ? 'S' : m.drop ? 'D' + m.drop : m.snipe ? 'X' : m.blast ? 'V' : m.pass ? 'Z' : 'n') + ':' + m.from + ':' + m.to + ':' + (m.promo || '');
   }
@@ -95,7 +100,7 @@
   var C_GILD = 1000000000, C_FREEZE = 1100000000, C_CONVERT = 1200000000, C_STOP = 1300000000, C_SHIELD = 1400000000;
   function codeOf(m) {
     var kind = m.snipe ? 1 : m.drop ? 2 : m.storm ? 3 : m.swap ? 4 : m.duck === 'y' ? 5 : m.duck === 'b' ? 6 : m.spawn ? 7 : m.shot ? 8 : m.reload ? 9 : 0;
-    var extra = m.promo ? 'qnrb'.indexOf(m.promo) + 1 : m.drop ? 'pnbrq'.indexOf(m.drop) + 1 : m.blast ? 9 : m.pass ? 8 : 0; // a vest going up: from = to, extra 9; a pass (Tempo): extra 8
+    var extra = m.promo === '+' ? 5 : m.promo ? 'qnrb'.indexOf(m.promo) + 1 : m.drop ? POCKET_IDX(m.drop) + 10 : m.blast ? 9 : m.pass ? 8 : 0; // a vest going up: from = to, extra 9; a pass (Tempo): extra 8; a shogi promotion 5
     // room for 676 squares: kind * 1e8 + (from + 1) * 1e5 + (to + 1) * 100 + extra; free actions sit above 1e9
     return kind * 100000000 + (m.from + 1) * 100000 + (m.to + 1) * 100 + extra;
   }
@@ -244,9 +249,38 @@
     return v;
   }
 
+  /* A bare king (only royal pieces left, nothing in hand): the other side wins by driving it to the edge and closing
+     in. Without this the search, which sees no mate within its depth, shuffles until the 50 move rule (three golds
+     against a king, fairy pieces in general). Pushes the lone king outward and the hunters (king and pieces) towards
+     it; small next to the material, so it only decides between otherwise equal moves. */
+  function bareKing(s) {
+    var b = s.board, W = s.W || 8, H = s.H || 8, roy = [[], []], men = [[], []], i, p, w;
+    for (i = 0; i < b.length; i++) {
+      p = b[i]; if (!p || p === 'x' || p === 'X') continue;
+      w = p === p.toUpperCase() && p !== p.toLowerCase() ? 0 : 1;
+      (R.isRoyal(p) ? roy : men)[w].push(i);
+    }
+    var weak = men[0].length && !men[1].length && roy[1].length ? 1 : men[1].length && !men[0].length && roy[0].length ? 0 : -1;
+    if (weak < 0 || (weak ? s.pocket2 : s.pocket).length || (weak ? s.pocket : s.pocket2).length > 4) return 0;
+    var k = roy[weak][0], kr = Math.floor(k / W), kf = k % W, v = 0;
+    var cd = Math.abs(kr - (H - 1) / 2) + Math.abs(kf - (W - 1) / 2);          // the further out the better
+    v += cd * 18;
+    var hunters = roy[1 - weak].concat(men[1 - weak]);
+    for (i = 0; i < hunters.length; i++) {
+      var q = hunters[i], dist = Math.max(Math.abs(Math.floor(q / W) - kr), Math.abs(q % W - kf));
+      v -= dist * (R.isRoyal(b[q]) ? 6 : 4);                                  // close in
+    }
+    // the free squares around the lone king: every one is a way out
+    for (var dr = -1; dr <= 1; dr++) for (var df = -1; df <= 1; df++) {
+      if (!dr && !df) continue;
+      var rr = kr + dr, ff = kf + df;
+      if (rr >= 0 && rr < H && ff >= 0 && ff < W && !b[rr * W + ff]) v -= 6;
+    }
+    return weak ? v : -v; // white-positive
+  }
   function evaluate(s, cfg) {
     if (s.checkers) return checkersEval(s);
-    var v = evaluateCore(s, cfg);
+    var v = evaluateCore(s, cfg) + bareKing(s);
     if (s.sg) v += shotgunTerms(s);
     if ((s.helmets && s.helmets.length) || (s.vests && s.vests.length)) v += wearTerms(s);
     return v;
@@ -501,8 +535,8 @@
     score += mg * phase + eg * (1 - phase);
     // pieces waiting in the pocket
     var kw = R.pocketKey(cfg, 'w'), kb = R.pocketKey(cfg, 'b');
-    if (pws[0].drops) for (i = 0; i < s[kw].length; i++) score += VAL[s[kw][i]] * 0.9;
-    if (pws[1].drops) for (i = 0; i < s[kb].length; i++) score -= VAL[s[kb][i]] * 0.9;
+    for (i = 0; i < s[kw].length; i++) score += pocketVal(s[kw][i], pws[0]) * 0.9;
+    for (i = 0; i < s[kb].length; i++) score -= pocketVal(s[kb][i], pws[1]) * 0.9;
     // an unused Time Stop or Turncoat is worth keeping for a real gain
     if (pws[0].timestop && s.stopUsed.indexOf('w') < 0) score += 130;
     if (pws[1].timestop && s.stopUsed.indexOf('b') < 0) score -= 130;
@@ -563,8 +597,8 @@
     if (s.stopUsed) for (i = 0; i < s.stopUsed.length; i++) { k = Z_STOP + (s.stopUsed[i] === 'w' ? 0 : 1); a ^= Z1[k]; c ^= Z2[k]; }
     if (s.turned) for (i = 0; i < s.turned.length; i++) { k = Z_TURNED + (s.turned[i] === 'w' ? 0 : 1); a ^= Z1[k]; c ^= Z2[k]; }
     // pockets are bags, so their letters are added, not xored
-    for (i = 0; i < s.pocket.length; i++) { k = Z_POCKET + 'pnbrq'.indexOf(s.pocket[i]); a = (a + Z1[k]) | 0; c = (c + Z2[k]) | 0; }
-    for (i = 0; i < s.pocket2.length; i++) { k = Z_POCKET + 8 + 'pnbrq'.indexOf(s.pocket2[i]); a = (a + Z1[k]) | 0; c = (c + Z2[k]) | 0; }
+    for (i = 0; i < s.pocket.length; i++) { k = Z_POCKET + POCKET_IDX(s.pocket[i]); a = (a + Z1[k]) | 0; c = (c + Z2[k]) | 0; }
+    for (i = 0; i < s.pocket2.length; i++) { k = Z_POCKET + 16 + POCKET_IDX(s.pocket2[i]); a = (a + Z1[k]) | 0; c = (c + Z2[k]) | 0; }
     // three-dice chess: the dice still to be used this turn (a bag, so added up)
     if (s.dice && s.dice.length < 4) for (i = 0; i < s.dice.length; i++) { k = Z_DICE + (s.dice[i].charCodeAt(0) & 63); a = (a + Z1[k]) | 0; c = (c + Z2[k]) | 0; }
     if (s.fairy) {
@@ -589,6 +623,8 @@
     if (s.bottle || s.knife || s.boomer || s.glide) { var it = (s.bottle ? 'bnr'.indexOf(s.bottle) + 1 : 0) + (s.knife ? 4 : 0) + (s.boomer ? 8 : 0) + (s.glide ? 16 : 0); a ^= Math.imul(Z1[Z_MOVES + 5], 61 + it); c ^= Math.imul(Z2[Z_MOVES + 5], 67 + it); }
     if (s.ouLock >= 0) { k = Z_UP + 4 * MAXN + s.ouLock; a ^= Math.imul(Z1[k], 71); c ^= Math.imul(Z2[k], 73); }
     if (s.ouTurns) { a ^= Math.imul(Z1[Z_MOVES + 6], 79 + (s.ouTurns % 3)); c ^= Math.imul(Z2[Z_MOVES + 6], 83 + (s.ouTurns % 3)); }
+    // relics used up (the Spiked shield, the Bodyguard horn), the Magic tiara's turn, Marching boots still to come
+    if (s.ouDone || s.ouSafe || s.ouBoots) { var od = (s.ouDone || '') + '/' + (s.ouSafe || '') + '/' + (s.ouBoots || ''); for (i = 0; i < od.length; i++) { a ^= Math.imul(Z1[Z_MOVES + 6], 89 + i * 97 + od.charCodeAt(i)); c ^= Math.imul(Z2[Z_MOVES + 6], 101 + i * 103 + od.charCodeAt(i)); } }
     // ducks and the duck part of a turn, devils asleep, demons spawned this turn (the same keys, mixed apart)
     if (s.ducks) for (i = 0; i < s.ducks.length; i++) { k = Z_GOLD + s.ducks[i]; a ^= Math.imul(Z1[k], 7); c ^= Math.imul(Z2[k], 11); }
     if (s.bducks) for (i = 0; i < s.bducks.length; i++) { k = Z_GOLD + s.bducks[i]; a ^= Math.imul(Z1[k], 13); c ^= Math.imul(Z2[k], 19); }
@@ -768,6 +804,10 @@
     if (this.db && !DBX) DBX = typeof require !== 'undefined' ? require('./drawbacks.js') : root.Drawbacks;
     var selfS = this;
     this.play = this.db ? function (st, m, c) { return DBX.play(st, m, c, selfS.db); } : R.play;
+    /* The Ouroboros King: the Spiked shield and the Bodyguard horn act at the start of a turn (the app plays them as
+       entries of their own), so here right after the move that ends the turn; The Finisher wins a line at once. */
+    if (R.ouTurnOn(cfg)) { var basePlay = this.play; this.play = function (st, m, c) { return R.ouTurnRelics(st, m, basePlay(st, m, c), c); }; }
+    this.ouFin = R.ouFinisherOn(cfg);
     this.rootTurn = 'w';
     this.maxPly = 12;
     this.sig = sigOf(cfg);
@@ -917,6 +957,7 @@
     this.nodes++;
     if (s.lost) return blast(s, ply);
     if (s.kingless && R.wiped(s, s.turn)) return -MATE + ply; // no king and nothing left: lost
+    if (this.ouFin && R.ouFinisher(s, this.cfg)) return MATE - ply; // The Finisher
     if (this.db) { var dl = this.dbLost(s); if (dl) return dl === s.turn ? -MATE + ply : MATE - ply; }
     if (unrolled(s, this.cfg)) return chanceValue(s, this.cfg);
     var cfg = this.cfg, me = s.turn, stand = (me === 'w' ? 1 : -1) * evaluate(s, cfg) + (this.db ? this.dbScore(s, me) : 0);
@@ -967,6 +1008,7 @@
     var cfg = this.cfg, me = s.turn, foe = me === 'w' ? 'b' : 'w';
     if (s.lost) { this.nodes++; return blast(s, ply); }
     if (s.kingless && R.wiped(s, me)) { this.nodes++; return -MATE + ply; } // no king and nothing left: lost
+    if (this.ouFin && R.ouFinisher(s, cfg)) { this.nodes++; return MATE - ply; } // The Finisher: the other General stands alone
     if (this.db) { var dl = this.dbLost(s); if (dl) { this.nodes++; return dl === me ? -MATE + ply : MATE - ply; } }
     if (unrolled(s, cfg)) { this.nodes++; return chanceValue(s, cfg); } // the next throw is not known to anyone
     var inChk = R.inCheck(s, me, cfg);
