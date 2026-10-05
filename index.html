@@ -235,15 +235,16 @@ body[data-theme="pawnbarian"]{--sq-light:#69758f; --sq-dark:#545e7b}
 .pb-acts{display:flex;align-items:center;gap:2px}.pb-acts u{width:12px;height:16px;background:#e8b33a;clip-path:polygon(0 0,55% 0,100% 50%,55% 100%,0 100%,45% 50%)}.pb-acts em{font-style:normal;font-size:12px;color:#8d8a94}
 .pb-tag{font-size:12px;padding:2px 7px;border-radius:10px;background:#3a3842;color:#ddd}.pb-tag.red{background:#6b1d24;color:#ffd0d0}
 .pb-hand{display:flex;gap:8px;margin:8px 0 4px}
-.pb-card{position:relative;flex:1 1 0;max-width:110px;min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px;padding:20px 4px 7px;border-radius:9px;background:#ece7da;color:#222;border:3px solid transparent;font:inherit;cursor:pointer;box-shadow:0 2px 0 rgba(0,0,0,.35)}
+.pb-card{position:relative;flex:1 1 0;max-width:140px;min-width:0;display:flex;flex-direction:column;align-items:center;gap:3px;padding:26px 6px 9px;border-radius:9px;background:#ece7da;color:#222;border:3px solid transparent;font:inherit;cursor:pointer;box-shadow:0 2px 0 rgba(0,0,0,.35)}
 .pb-card:hover{transform:translateY(-2px)}
 .pb-card.on{border-color:#e8b33a;transform:translateY(-4px);box-shadow:0 0 0 2px rgba(232,179,58,.35),0 4px 0 rgba(0,0,0,.35)}
 .pb-card.promo{background:#f6e2b0}
 .pb-card.dead{opacity:.55}
-.pb-card>i{width:62px;height:62px;background:center/contain no-repeat}
-.pb-card b{font-family:Georgia,serif;font-variant:small-caps;font-size:12.5px;line-height:1.1;text-align:center}
-.pb-card .pb-ups{position:absolute;top:3px;left:0;right:0;display:flex;justify-content:center;gap:2px}
-.pb-card kbd{position:absolute;right:6px;bottom:5px;font:700 10px/1 system-ui,sans-serif;color:#000;opacity:.35;background:none;border:0;padding:0}
+.pb-card>i{width:70px;height:70px;background:center/contain no-repeat}
+.pb-card b{font-family:Georgia,serif;font-variant:small-caps;font-size:16px;line-height:1.15;text-align:center}
+.pb-card .pb-cup{display:flex;flex-wrap:wrap;justify-content:center;gap:2px 6px;font-size:12px;line-height:1.2;color:#5a4c33;font-weight:600}
+.pb-card .pb-ups{position:absolute;top:5px;left:0;right:0;display:flex;justify-content:center;gap:3px}.pb-card .pb-ups .pb-up{width:19px;height:19px}
+.pb-card kbd{position:absolute;right:7px;top:6px;font:700 11px/1 system-ui,sans-serif;color:#000;opacity:.35;background:none;border:0;padding:0}
 #pbHover.pb-hov{display:flex;flex-direction:column;align-items:flex-start;text-align:left;gap:3px;min-height:18px}
 .pb-hov b{color:#eee}.pb-hov .pb-dmg{color:#ff9a8a}.pb-hov .pb-imm{color:#ffd35a}.pb-hov .pb-atk{color:#d9d4c8}
 #pbHover b{font-family:Georgia,serif;font-variant:small-caps;font-size:14px}
@@ -1362,7 +1363,7 @@ body.touch .keyskeys,body.touch .keyshead{display:none}
   body[data-tab=modes][data-gm=pb]{--S:min(calc(100vw - 20px), 44dvh)}
   body[data-tab=modes][data-gm=pb] .pbar{display:none}
   .pb-heroes{grid-template-columns:repeat(3,minmax(0,1fr))}
-  .pb-card{padding:16px 3px 5px}.pb-card>i{width:46px;height:46px}
+  .pb-card{padding:24px 3px 7px}.pb-card>i{width:54px;height:54px}.pb-card b{font-size:15px}.pb-card .pb-cup{font-size:11px}
   .pb-chains{grid-template-columns:repeat(6,minmax(0,1fr))!important}
   /* the Game Modes list needs no board */
   body[data-tab=modes][data-gm=home] #boardcol,body[data-tab=modes][data-gm=records] #boardcol{display:none}
