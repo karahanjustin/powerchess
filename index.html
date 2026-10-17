@@ -325,33 +325,83 @@ body[data-tab=modes][data-gm=pb][data-pbpulse=board] #board{box-shadow:0 0 0 3px
 .rec-run em{font-style:normal;color:#8d8a84;font-size:11.5px}.rec-run span{color:#bdb8ad;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rec-run i{font-style:normal;color:#e88a7a;font-weight:700}.rec-run.won i{color:#9fd47a}
 @media (max-width:700px){.rec-run{grid-template-columns:60px 1fr auto}.rec-run span{display:none}}
-/* The Gilded Crown: the world in the board's place, the box of what is said over it */
-#worldview{display:none;position:relative;width:calc(var(--S) + 30px);height:var(--S);border-radius:6px;overflow:hidden;background:#15120f;touch-action:none;user-select:none;-webkit-user-select:none}
-body[data-tab=modes][data-gm=crown] #worldview{display:block}
-body[data-tab=modes][data-gm=crown] #boardview,body[data-tab=modes][data-gm=crown] #evalbar,body[data-tab=modes][data-gm=crown] #zoombar,body[data-tab=modes][data-gm=crown] .pbar{display:none!important}
-#worldCanvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:pointer}
-#worldFade{position:absolute;inset:0;background:#000;opacity:0;pointer-events:none}
-#worldFade.on{animation:wfade .5s ease-out}
-@keyframes wfade{0%{opacity:1}100%{opacity:0}}
-#worldBanner{position:absolute;left:50%;top:7%;transform:translateX(-50%);padding:8px 22px;border-radius:4px;background:rgba(10,9,8,.72);color:#e9e2cf;font:600 18px/1.2 Georgia,"Times New Roman",serif;font-variant:small-caps;letter-spacing:.06em;opacity:0;pointer-events:none;white-space:nowrap}
-#worldBanner.on{animation:wbanner 2.6s ease-out}
-@keyframes wbanner{0%{opacity:0;transform:translate(-50%,-6px)}15%,70%{opacity:1;transform:translate(-50%,0)}100%{opacity:0}}
-#worldDlg{position:absolute;left:3%;right:3%;bottom:3%;display:none}
-#worldDlg.on{display:block}
-.wd-box{position:relative;display:flex;gap:12px;align-items:flex-start;padding:12px 34px 14px 12px;border-radius:6px;background:rgba(14,12,10,.9);box-shadow:inset 0 0 0 1px rgba(214,196,150,.35),0 6px 20px rgba(0,0,0,.45);color:#ece6d6;cursor:pointer}
-.wd-box.narr{justify-content:center;text-align:center;padding:16px 34px;font-style:italic}
-.wd-pic{flex:none;width:52px;height:52px;border-radius:5px;background:#3a3329 center/86% no-repeat;box-shadow:inset 0 0 0 1px rgba(214,196,150,.3)}
-.wd-txt{display:flex;flex-direction:column;gap:4px;min-width:0}
-.wd-txt b{font:600 14px/1.2 Georgia,serif;font-variant:small-caps;letter-spacing:.04em;color:#d9c48a}
-.wd-txt p{margin:0;font:15.5px/1.45 Georgia,"Times New Roman",serif}
-.wd-more{position:absolute;right:12px;bottom:10px;font-size:11px;color:#d9c48a;animation:wmore 1s ease-in-out infinite}
-@keyframes wmore{50%{opacity:.35}}
-.gm-card.crown .gm-head h2{font-family:Georgia,serif;font-variant:small-caps;letter-spacing:.03em}
-.crown-intro{font:italic 15px/1.5 Georgia,serif;color:#d8d1c0;margin:6px 0 10px}
-.crown-where{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-radius:8px;background:#2a2926;margin:6px 0}
-.crown-where b{font:600 16px Georgia,serif;font-variant:small-caps}.crown-where span{font-size:12px;color:#a9a59d}
+/* The Ninth Rank: the game over the whole page */
+#realmOverlay{display:none;position:fixed;inset:0;z-index:60;background:#0b0d12;overflow:hidden}
+#realmOverlay.on{display:block}
+body.realm-on{overflow:hidden}
+.realm-gl{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;user-select:none;-webkit-user-select:none}
+.realm-hud{position:absolute;inset:0;pointer-events:none;font-family:-apple-system,"Segoe UI",system-ui,sans-serif;color:#efe9dc}
+.realm-hud button{pointer-events:auto}
+.rh-top{position:absolute;left:14px;right:14px;top:12px;display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.rh-hearts{display:flex;gap:4px;padding:6px 8px;border-radius:8px;background:rgba(8,8,12,.45)}
+.rh-hearts i{width:22px;height:22px;background:url(pieces/pawnbarian/i_heartoff.svg) center/contain no-repeat}
+.rh-hearts i.on{background-image:url(pieces/pawnbarian/i_heart.svg);filter:drop-shadow(0 0 4px rgba(255,80,60,.6))}
+.rh-hearts.hurt{animation:rhhurt .7s ease-out}
+@keyframes rhhurt{0%{transform:scale(1)}18%{transform:scale(1.35);background:rgba(200,30,20,.75)}100%{transform:scale(1)}}
+.rh-mid{display:flex;flex-direction:column;align-items:center;gap:6px}
+.rh-region{font:600 15px/1 Georgia,serif;font-variant:small-caps;letter-spacing:.08em;color:#e9dcb8;text-shadow:0 1px 3px #000}
+.rh-check{display:none;padding:5px 14px;border-radius:999px;background:rgba(200,30,30,.85);color:#fff;font:800 13px/1 system-ui;letter-spacing:.08em;text-transform:uppercase;animation:rhpulse .9s ease-in-out infinite}
+.rh-check.on{display:block}
+@keyframes rhpulse{50%{transform:scale(1.08);box-shadow:0 0 18px rgba(255,60,40,.7)}}
+.rh-right{display:flex;flex-direction:column;align-items:flex-end;gap:4px;font-size:13px;text-shadow:0 1px 3px #000}
+.rh-right span:first-child{color:#f0c050;font-weight:700}
+.rh-banner{position:absolute;left:50%;top:22%;transform:translateX(-50%);text-align:center;opacity:0;pointer-events:none;white-space:nowrap}
+.rh-banner b{display:block;font:600 34px/1.1 Georgia,"Times New Roman",serif;font-variant:small-caps;letter-spacing:.1em;color:#f3e6c4;text-shadow:0 2px 12px rgba(0,0,0,.8)}
+.rh-banner span{display:block;margin-top:6px;font:italic 15px Georgia,serif;color:#e0d6c0;text-shadow:0 1px 6px #000}
+.rh-banner.on{animation:rhbanner 3.4s ease-out}
+@keyframes rhbanner{0%{opacity:0;transform:translate(-50%,8px)}12%,75%{opacity:1;transform:translate(-50%,0)}100%{opacity:0}}
+.rh-msgs{position:absolute;left:50%;bottom:118px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:4px;pointer-events:none;width:min(92vw,640px)}
+.rh-msgs div{padding:6px 12px;border-radius:6px;background:rgba(8,8,12,.6);font-size:13.5px;text-align:center;transition:opacity .6s}
+.rh-msgs div.out{opacity:0}
+.rh-flash{position:absolute;inset:0;background:radial-gradient(ellipse at center,rgba(255,40,30,0) 40%,rgba(255,30,20,.9) 100%);opacity:0;pointer-events:none}
+.rh-fade{position:absolute;inset:0;background:#000;opacity:0;pointer-events:none}
+.rh-text{display:none;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(90vw,520px);padding:22px 24px 16px;border-radius:8px;background:rgba(14,10,22,.94);box-shadow:inset 0 0 0 1px rgba(154,108,255,.5),0 10px 40px rgba(0,0,0,.6);pointer-events:auto;text-align:center}
+.rh-text.on{display:block}
+.rh-text p{margin:0 0 14px;font:italic 17px/1.5 Georgia,serif;color:#e8dfff}
+.rh-text .btn{height:36px;width:auto;padding:0 20px;font-size:14px}
+.rh-bottom{position:absolute;left:14px;right:14px;bottom:14px;display:flex;align-items:flex-end;justify-content:space-between;gap:10px;pointer-events:none}
+.rh-forms{display:flex;gap:6px}
+.rh-form{position:relative;width:58px;height:66px;border-radius:9px;border:2px solid rgba(255,255,255,.15);background:rgba(10,10,16,.6);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:#eee;cursor:pointer;transition:transform .12s}
+.rh-form i{width:36px;height:36px;background:center/contain no-repeat;filter:drop-shadow(0 1px 2px #000)}
+.rh-form b{font-size:12px}
+.rh-form.on{border-color:#f0c050;background:rgba(60,45,15,.75);transform:translateY(-3px)}
+.rh-form.none{opacity:.4}
+.rh-form.N.on{border-color:#72d060}.rh-form.B.on{border-color:#4ad0ff}.rh-form.R.on{border-color:#ffa040}.rh-form.Q.on{border-color:#d060ff}
+.rh-acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.rh-acts button{height:36px;padding:0 12px;border-radius:7px;border:1px solid rgba(255,255,255,.15);background:rgba(10,10,16,.6);color:#eee;font:600 13px system-ui;cursor:pointer}
+.rh-acts button:hover{background:rgba(40,40,56,.8)}
+.rh-radar{position:absolute;right:14px;bottom:62px;width:170px;height:170px;border-radius:50%;box-shadow:0 0 0 2px rgba(255,255,255,.18),0 4px 16px rgba(0,0,0,.5);opacity:.9;pointer-events:none}
+.rh-map{display:none;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);padding:12px;border-radius:10px;background:rgba(8,8,12,.92);box-shadow:0 10px 40px rgba(0,0,0,.6);pointer-events:auto}
+.rh-map.on{display:block}
+.rh-map canvas{display:block;width:min(92vw,calc(100vh - 120px),940px);height:min(92vw,calc(100vh - 120px),940px);border-radius:6px}
+.rh-mapkey{margin-top:8px;font-size:12px;color:#bdb8ad;text-align:center}
+.rh-help{display:none;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(92vw,560px);max-height:86vh;overflow:auto;padding:22px 26px;border-radius:10px;background:rgba(10,10,16,.94);box-shadow:inset 0 0 0 1px rgba(240,192,80,.4),0 10px 40px rgba(0,0,0,.6);pointer-events:auto}
+.rh-help.on{display:block}
+.rh-help h3{margin:0 0 8px;font:600 26px Georgia,serif;font-variant:small-caps;letter-spacing:.08em;color:#f3e6c4}
+.rh-help p,.rh-help li{font-size:14px;line-height:1.55;color:#ddd6c8}
+.rh-help ul{padding-left:18px;margin:8px 0 14px}
+.rh-help .btn{height:40px}
+.rh-credit{font-size:11.5px;color:#8d8a84;margin:0 0 10px}
+.rh-end{display:none;position:absolute;inset:0;align-items:center;justify-content:center;background:radial-gradient(ellipse at center,rgba(60,40,10,.6),rgba(0,0,0,.85));pointer-events:auto}
+.rh-end.on{display:flex}
+.rh-endbox{width:min(90vw,520px);padding:30px;border-radius:12px;background:rgba(12,10,8,.9);box-shadow:inset 0 0 0 1px rgba(240,192,80,.6);text-align:center}
+.rh-endbox h2{margin:0 0 10px;font:600 40px Georgia,serif;font-variant:small-caps;letter-spacing:.1em;color:#f0c050}
+.rh-endbox p{font:italic 16px/1.5 Georgia,serif;color:#e8dfc8}
+.rh-stats{font-style:normal!important;color:#bdb8ad!important;font-size:14px!important}
+.realm-card .gm-head h2{font-family:Georgia,serif;font-variant:small-caps;letter-spacing:.04em}
+.realm-intro{font:italic 15px/1.5 Georgia,serif;color:#d8d1c0;margin:6px 0 10px}
+.realm-state{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-radius:8px;background:#2a2926;margin:6px 0}
+.realm-state b{font:600 16px Georgia,serif;font-variant:small-caps}.realm-state span{font-size:12.5px;color:#a9a59d}
 .crown-help{margin:10px 0 4px;padding:0 0 0 18px;font-size:12.5px;color:#bdb8ad;line-height:1.7}
-.crown-help b{color:#e0dacb}
+@media (max-width:700px){
+  .rh-form{width:48px;height:56px}.rh-form i{width:28px;height:28px}
+  .rh-radar{width:96px;height:96px;bottom:150px;right:10px}
+  .rh-acts button{height:34px;padding:0 9px;font-size:12px}
+  .rh-bottom{flex-direction:column;align-items:stretch}
+  .rh-forms{justify-content:center}
+  .rh-banner b{font-size:24px}
+  .rh-msgs{bottom:160px}
+}
 /* Shotgun King */
 .piece .skhp{position:absolute;left:16%;right:16%;top:3%;height:4%;background:rgba(0,0,0,.28);border-radius:2px;overflow:hidden;pointer-events:none}
 .piece .skhp b{position:absolute;left:0;top:0;bottom:0;background:#e5503d}
@@ -1400,10 +1450,6 @@ body.touch .keyskeys,body.touch .keyshead{display:none}
   .pb-chains{grid-template-columns:repeat(6,minmax(0,1fr))!important}
   /* the Game Modes list needs no board */
   body[data-tab=modes][data-gm=home] #boardcol,body[data-tab=modes][data-gm=records] #boardcol{display:none}
-  /* The Gilded Crown on a phone: the world a little taller, the box text smaller */
-  body[data-tab=modes][data-gm=crown]{--S:min(calc(100vw - 12px), 58dvh)}
-  body[data-tab=modes][data-gm=crown] #worldview{width:calc(100vw - 12px);height:58dvh}
-  .wd-txt p{font-size:14px}.wd-pic{width:40px;height:40px}
   body[data-tab=modes][data-gm=records] #panel{margin-top:0;border-radius:0}
   .rec-ach{grid-template-columns:1fr!important}
   body[data-tab=modes][data-gm=home] #panel{margin-top:0;border-radius:0}
@@ -1514,7 +1560,6 @@ body.touch .keyskeys,body.touch .keyshead{display:none}
             </div>
           </div>
         </div></div>
-        <div id="worldview"><canvas id="worldCanvas"></canvas><div id="worldFade"></div><div id="worldBanner"></div><div id="worldDlg"></div></div>
         <div id="zoombar"><button id="zoomIn" title="Zoom in (Ctrl or Cmd and the mouse wheel)">+</button><button id="zoomOut" title="Zoom out">&minus;</button><button id="zoomFit" title="The whole board">Fit</button><button id="zoomStd" title="Squares as big as on the normal board">1:1</button><span id="zoomPct"></span></div>
       </div>
       <div class="pbar" id="barBot"></div>
@@ -1790,8 +1835,10 @@ body.touch .keyskeys,body.touch .keyshead{display:none}
 <script src="js/coach.js"></script>
 <script src="js/puzzles.js"></script>
 <script src="js/brain.js"></script>
-<script src="js/world_maps.js"></script>
-<script src="js/world.js"></script>
+<script src="js/three.min.js"></script>
+<script src="js/realm.js"></script>
+<script src="js/realm_models.js"></script>
+<script src="js/realm_view.js"></script>
 <script src="js/ouro.js"></script>
 <script src="js/modes.js"></script>
 <script src="js/hex.js"></script>
@@ -1807,6 +1854,7 @@ body.touch .keyskeys,body.touch .keyshead{display:none}
 <script src="js/drawbacks/goals.js"></script>
 <script src="js/presets_more.js"></script>
 <script src="js/presets_checkers.js"></script>
+<div id="realmOverlay"></div>
 <script src="js/app.js"></script>
 </body>
 </html>

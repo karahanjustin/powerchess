@@ -19,13 +19,17 @@
       arp: [0, 1, 2, 3, 2, 1, 0, 1], bass: [0, -1, 0, -1, 0, 0, -1, 0], drums: 'k...s...k.k.s.hh', pad: 0.045, arpVol: 0.04, wave: 'square', cut: 1500, bell: true },
     ouro: { bpm: 76, root: 52, chords: [[0, 7, 12, 15], [-4, 3, 8, 12], [-2, 5, 10, 14], [-5, 2, 7, 10]], steps: 8,
       arp: [0, 1, 2, 3, 2, 1, -1, -1], bass: [0, -1, -1, -1, -1, -1, -1, -1], drums: '........k.......', pad: 0.04, arpVol: 0.05, wave: 'sine', cut: 3000, drone: true },
-    // The Gilded Crown: the open land (slow, wide, a little sad), the inside of houses (warm, quiet), the lake
-    cfield: { bpm: 66, root: 50, chords: [[0, 7, 14, 15], [-2, 5, 12, 14], [-4, 3, 10, 12], [-5, 2, 9, 14]], steps: 8,
-      arp: [0, -1, 2, -1, 1, -1, 3, -1], bass: [0, -1, -1, -1, -1, -1, -1, -1], drums: '................', pad: 0.045, arpVol: 0.04, wave: 'triangle', cut: 2400, drone: true },
-    cinn: { bpm: 72, root: 55, chords: [[0, 4, 7, 11], [-3, 0, 4, 7], [5, 9, 12, 16], [2, 5, 9, 12]], steps: 6,
-      arp: [0, 2, 1, -1, 3, -1], bass: [0, -1, -1, 0, -1, -1], drums: '............', pad: 0.04, arpVol: 0.035, wave: 'sine', cut: 2000 },
-    clake: { bpm: 58, root: 52, chords: [[0, 7, 12, 16], [5, 9, 12, 16], [-3, 4, 9, 12], [-1, 4, 7, 11]], steps: 8,
-      arp: [0, -1, 1, -1, 2, -1, -1, -1], bass: [0, -1, -1, -1, -1, -1, -1, -1], drums: '................', pad: 0.04, arpVol: 0.04, wave: 'sine', cut: 3000, drone: true },
+    // The Ninth Rank: a mood per land, slow and wide, the court heavy, the wardens' fights driving
+    rkmeadow: { bpm: 64, root: 50, chords: [[0, 7, 14, 16], [-2, 5, 12, 14], [-4, 3, 10, 12], [-5, 2, 9, 14]], steps: 8, arp: [0, -1, 2, -1, 1, -1, 3, -1], bass: [0, -1, -1, -1, -1, -1, -1, -1], drums: '................', pad: 0.045, arpVol: 0.04, wave: 'triangle', cut: 2400, drone: true },
+    rkfields: { bpm: 80, root: 48, chords: [[0, 4, 7], [5, 9, 12], [-5, -1, 2], [0, 4, 7]], steps: 8, arp: [0, 1, 2, 1, 0, 1, 2, -1], bass: [0, -1, -1, 0, -1, -1, -1, -1], drums: 'k.......k.......', pad: 0.04, arpVol: 0.04, wave: 'triangle', cut: 2000 },
+    rksteppe: { bpm: 96, root: 45, chords: [[0, 3, 7], [-2, 2, 5], [3, 7, 10], [-4, 0, 3]], steps: 8, arp: [0, 2, -1, 1, 0, 2, -1, 1], bass: [0, -1, 0, -1, 0, -1, 0, -1], drums: 'k..k..k.k..k..k.', pad: 0.04, arpVol: 0.045, wave: 'sawtooth', cut: 1400 },
+    rkwoods: { bpm: 60, root: 52, chords: [[0, 3, 7, 10], [-4, 0, 3, 7], [-2, 2, 5, 9], [-7, -4, 0, 3]], steps: 8, arp: [0, -1, -1, 2, -1, 1, -1, -1], bass: [0, -1, -1, -1, -1, -1, -1, -1], drums: '................', pad: 0.05, arpVol: 0.035, wave: 'sine', cut: 2600, drone: true },
+    rkcrossing: { bpm: 72, root: 50, chords: [[0, 5, 7, 12], [-2, 3, 5, 10], [-4, 0, 3, 7], [-5, 0, 2, 7]], steps: 6, arp: [0, 2, 1, 3, 2, 1], bass: [0, -1, -1, 0, -1, -1], drums: 'k.....h.....', pad: 0.04, arpVol: 0.04, wave: 'triangle', cut: 2200 },
+    rkwalls: { bpm: 84, root: 43, chords: [[0, 7, 12], [-1, 6, 11], [-3, 4, 9], [-5, 2, 7]], steps: 8, arp: [0, 1, 0, 2, 0, 1, 0, 2], bass: [0, 0, -1, 0, 0, -1, 0, -1], drums: 'k...s...k...s...', pad: 0.045, arpVol: 0.04, wave: 'square', cut: 1300 },
+    rklake: { bpm: 56, root: 54, chords: [[0, 7, 12, 16], [5, 9, 12, 16], [-3, 4, 9, 12], [-1, 4, 7, 11]], steps: 8, arp: [0, -1, 1, -1, 2, -1, 3, -1], bass: [0, -1, -1, -1, -1, -1, -1, -1], drums: '................', pad: 0.04, arpVol: 0.04, wave: 'sine', cut: 3200, drone: true, bell: true },
+    rkashen: { bpm: 70, root: 41, chords: [[0, 3, 6], [-1, 2, 6], [1, 4, 7], [-2, 1, 4]], steps: 8, arp: [0, -1, 1, -1, 2, -1, 1, -1], bass: [0, -1, -1, -1, 0, -1, -1, -1], drums: 'k.......k.h.....', pad: 0.05, arpVol: 0.04, wave: 'sawtooth', cut: 900, drone: true },
+    rkcourt: { bpm: 66, root: 46, chords: [[0, 3, 7, 10], [-1, 3, 6, 9], [-4, 0, 3, 7], [-6, -2, 1, 5]], steps: 8, arp: [0, 2, 1, 3, 2, 1, 0, 2], bass: [0, -1, 0, -1, 0, -1, 0, 0], drums: 'k...s...k..ks...', pad: 0.05, arpVol: 0.045, wave: 'square', cut: 1500, bell: true },
+    rkboss: { bpm: 118, root: 45, chords: [[0, 3, 7], [1, 4, 8], [-1, 2, 6], [-2, 2, 5]], steps: 8, arp: [0, 1, 2, 3, 2, 1, 0, 1], bass: [0, 0, -1, 0, 0, -1, 0, 0], drums: 'k.h.s.h.k.khs.hh', pad: 0.045, arpVol: 0.05, wave: 'sawtooth', cut: 1600 },
     ouroboss: { bpm: 104, root: 52, chords: [[0, 3, 7], [-4, 0, 3], [-2, 2, 5], [-5, -1, 2]], steps: 8,
       arp: [0, 2, 1, 2, 0, 2, 1, 3], bass: [0, -1, 0, -1, 0, -1, 0, 0], drums: 'k.h.k.h.s.h.k.hh', pad: 0.045, arpVol: 0.045, wave: 'triangle', cut: 2200, drone: true }
   };
