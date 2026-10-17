@@ -5,7 +5,7 @@
 (function (root) {
   'use strict';
   function create(ctx) {
-    var T3 = ctx.T3, scene = ctx.scene, topY = ctx.topY, level = ctx.level || 'full';
+    var T3 = ctx.T3, scene = ctx.scene, topY = ctx.topY, level = ctx.level || 'full', toon = ctx.toon || function (o) { return new T3.MeshStandardMaterial(o); };
     var budget = level === 'full' ? 1 : level === 'balanced' ? 0.55 : 0.3;
     var time = 0, fires = [], emitters = [], puffs = [];
     var V = new T3.Vector3();
@@ -17,8 +17,8 @@
     var flameTex = tex(64, function (g, n) { g.clearRect(0, 0, n, n); var gr = g.createRadialGradient(n / 2, n * 0.62, 2, n / 2, n * 0.55, n * 0.45); gr.addColorStop(0, 'rgba(255,250,200,1)'); gr.addColorStop(0.35, 'rgba(255,180,60,0.95)'); gr.addColorStop(0.7, 'rgba(230,80,20,0.6)'); gr.addColorStop(1, 'rgba(200,40,10,0)'); g.fillStyle = gr; g.beginPath(); g.moveTo(n / 2, 2); g.bezierCurveTo(n * 0.95, n * 0.45, n * 0.85, n * 0.95, n / 2, n * 0.98); g.bezierCurveTo(n * 0.15, n * 0.95, n * 0.05, n * 0.45, n / 2, 2); g.fill(); });
 
     /* ---------- fires, torches, springs ---------- */
-    var logMat = new T3.MeshStandardMaterial({ color: 0x4a3020, roughness: 1 }), stoneMat = new T3.MeshStandardMaterial({ color: 0x6a6660, roughness: 0.9, flatShading: true });
-    var postMat = new T3.MeshStandardMaterial({ color: 0x3a2a1a, roughness: 0.9 }), ironMat = new T3.MeshStandardMaterial({ color: 0x33333a, roughness: 0.5, metalness: 0.6 });
+    var logMat = toon({ color: 0x6a4028 }), stoneMat = toon({ color: 0x7a7670 });
+    var postMat = toon({ color: 0x4a3222 }), ironMat = toon({ color: 0x33333a });
     function flame(scale) {
       var g = new T3.Group();
       for (var i = 0; i < 2; i++) { var m = new T3.Mesh(new T3.PlaneGeometry(0.5 * scale, 0.8 * scale), new T3.MeshBasicMaterial({ map: flameTex, transparent: true, depthWrite: false, blending: T3.AdditiveBlending, side: T3.DoubleSide })); m.rotation.y = i * Math.PI / 2; m.position.y = 0.4 * scale; g.add(m); }
@@ -33,7 +33,7 @@
       for (var i = 0; i < 7; i++) { var st = new T3.Mesh(new T3.DodecahedronGeometry(0.07, 0), stoneMat); var a = i / 7 * Math.PI * 2; st.position.set(Math.cos(a) * 0.36, 0.04, Math.sin(a) * 0.36); st.scale.y = 0.7; g.add(st); }
       for (var j = 0; j < 3; j++) { var lg = new T3.Mesh(new T3.CylinderGeometry(0.04, 0.05, 0.5, 6), logMat); lg.rotation.z = Math.PI / 2; lg.rotation.y = j * 1.05; lg.position.y = 0.06 + (j === 2 ? 0.07 : 0); g.add(lg); }
       var fl = flame(opts.big ? 1.2 : 0.8); fl.position.y = 0.08; g.add(fl);
-      var light = new T3.PointLight(0xff9a3a, 1.6, opts.big ? 7 : 5, 1.6); light.position.y = 0.7; g.add(light);
+      var light = new T3.PointLight(0xff9a3a, 1.6, opts.big ? 7 : 5, 1.6); light.position.set(x + 0.5, top + 0.7, y + 0.5);
       scene.add(g);
       var h = { g: g, flame: fl, light: light, base: 1.6, smoke: 0, x: x, y: y, lit: true, kind: 'fire' };
       fires.push(h);
@@ -45,7 +45,7 @@
       var post = new T3.Mesh(new T3.CylinderGeometry(0.05, 0.06, 1.1, 6), postMat); post.position.y = 0.55; g.add(post);
       var cup = new T3.Mesh(new T3.CylinderGeometry(0.12, 0.07, 0.16, 7), ironMat); cup.position.y = 1.12; g.add(cup);
       var fl = flame(0.5); fl.position.y = 1.14; g.add(fl);
-      var light = new T3.PointLight(0xffb860, 1.1, 4.5, 1.8); light.position.y = 1.5; g.add(light);
+      var light = new T3.PointLight(0xffb860, 1.1, 4.5, 1.8); light.position.set(x + 0.5, top + 1.5, y + 0.5);
       scene.add(g);
       var h = { g: g, flame: fl, light: light, base: 1.1, smoke: 0, x: x, y: y, lit: true, kind: 'torch' };
       fires.push(h);
@@ -54,9 +54,9 @@
     function spring(x, y) {
       var g = new T3.Group(), top = topY(x, y);
       g.position.set(x + 0.5, top, y + 0.5);
-      var pool = new T3.Mesh(new T3.CylinderGeometry(0.42, 0.42, 0.06, 18), new T3.MeshStandardMaterial({ color: 0x7fd8d0, roughness: 0.1, metalness: 0.2, emissive: 0x2a6a66, emissiveIntensity: 0.5, transparent: true, opacity: 0.9 })); pool.position.y = 0.02; g.add(pool);
+      var pool = new T3.Mesh(new T3.CylinderGeometry(0.42, 0.42, 0.06, 18), toon({ color: 0x7fe0d8, emissive: 0x2a6a66, emissiveIntensity: 0.5, transparent: true, opacity: 0.9 })); pool.position.y = 0.02; g.add(pool);
       var rim = new T3.Mesh(new T3.TorusGeometry(0.42, 0.05, 6, 18), stoneMat); rim.rotation.x = Math.PI / 2; rim.position.y = 0.04; g.add(rim);
-      var light = new T3.PointLight(0x9fe8e0, 0.6, 3.5); light.position.y = 0.5; g.add(light);
+      var light = new T3.PointLight(0x9fe8e0, 0.6, 3.5); light.position.set(x + 0.5, top + 0.5, y + 0.5);
       scene.add(g);
       var h = { g: g, x: x, y: y, steam: 0, kind: 'spring', light: light };
       emitters.push(h);
@@ -119,7 +119,6 @@
       // fires flicker, breathe smoke
       fires.forEach(function (f) {
         if (!f.lit) { f.light.intensity = 0; f.flame.visible = false; return; }
-        if (!f.light.visible) { f.flame.visible = Math.abs(f.x - p.x) <= 16 && Math.abs(f.y - p.y) <= 16; return; }
         var ph = f.flame.userData.phase || 0, fl = 0.82 + Math.sin(time * 11 + ph) * 0.08 + Math.sin(time * 23.7 + ph * 1.7) * 0.06 + (Math.random() - 0.5) * 0.08;
         f.light.intensity = f.base * fl;
         f.flame.scale.set(0.9 + fl * 0.2, 0.85 + fl * 0.35, 0.9 + fl * 0.2);

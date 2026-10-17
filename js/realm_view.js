@@ -12,7 +12,10 @@
   var COL = { road: 0xb9a37a, arena: 0x5c5a66, dais: 0xc9a84a, promo: 0xf0c04a, bridge: 0x8a6a42, ivory: 0xf2e8d5, gold: 0xf0c050, red: 0xe0352b, green: 0x72d060, cyan: 0x4ad0ff, violet: 0x9a6cff, ice: 0xc4e4f6, iceDark: 0x9cc6e0 };
 
   /* ---------- the chessmen: Jarlan Perez's low-poly set (CC-BY 4.0, js/realm_models.js) and a turned king ---------- */
-  var GEO = {}, PS = 1.45, PH = {}, KS = 1.36, GOLD = null, SMOOTH = {};
+  var GEO = {}, PS = 1.45, PH = {}, KS = 1.36, GOLD = null, SMOOTH = {}, GRAD = null, OUTLINE = null;
+  /* The look is a cartoon's: toon shading in three bands, saturated colours, a dark outline round every piece (the
+     same mesh turned inside out and a touch bigger), round trees, bold edges on the squares. */
+  function toon(o) { return new T3.MeshToonMaterial(Object.assign({ gradientMap: GRAD }, o || {})); }
   function lathe(pts, seg) { return new T3.LatheGeometry(pts.map(function (p) { return new T3.Vector2(p[0], p[1]); }), seg || 48); }
   function foot(R, top, neck) {
     var pts = [[0, 0], [R, 0], [R, 0.035], [R * 0.97, 0.06], [R * 0.9, 0.085], [R * 0.82, 0.1], [R * 0.76, 0.115], [R * 0.68, 0.14], [R * 0.6, 0.17]];
@@ -24,6 +27,8 @@
   function smoothOf(m) { if (!SMOOTH[m.uuid]) { var c = m.clone(); c.flatShading = false; c.needsUpdate = true; SMOOTH[m.uuid] = c; } return SMOOTH[m.uuid]; }
   function buildGeos() {
     var RM = root.RealmModels;
+    if (!GRAD) { GRAD = new T3.DataTexture(new Uint8Array([70, 70, 70, 255, 160, 160, 160, 255, 255, 255, 255, 255]), 3, 1, T3.RGBAFormat); GRAD.minFilter = GRAD.magFilter = T3.NearestFilter; GRAD.needsUpdate = true; }
+    OUTLINE = OUTLINE || new T3.MeshBasicMaterial({ color: 0x15121c, side: T3.BackSide });
     var Kg = foot(0.33, 0.54, 0.115); Kg.push([0.14, 0.6], [0.16, 0.68], [0.2, 0.76], [0.225, 0.82], [0.225, 0.85], [0.17, 0.86], [0.11, 0.88], [0.08, 0.91], [0.08, 0.93], [0, 0.95]);
     GEO.K = lathe(Kg); GEO.K.scale(KS, KS, KS); PH.K = 1.1 * KS;
     GEO.cross = new T3.BoxGeometry(0.05 * KS, 0.17 * KS, 0.05 * KS);
@@ -51,8 +56,9 @@
     var g = new T3.Group(), m = new T3.Mesh(GEO[t] || GEO.P, mat);
     m.castShadow = true; m.receiveShadow = false;
     g.add(g.userData.body = m);
+    var ol = new T3.Mesh(GEO[t] || GEO.P, OUTLINE); ol.scale.set(1.05, 1.03, 1.05); ol.position.y = -0.005; g.add(ol); g.userData.outline = ol;
     if (t === 'K') {
-      GOLD = GOLD || new T3.MeshStandardMaterial({ color: 0xf0c050, roughness: 0.3, metalness: 0.75, emissive: 0x6a4410, emissiveIntensity: 0.35 });
+      GOLD = GOLD || toon({ color: 0xf0c050, emissive: 0x6a4410, emissiveIntensity: 0.35 });
       var c1 = new T3.Mesh(GEO.cross, mat), c2 = new T3.Mesh(GEO.crossBar, mat), band = new T3.Mesh(GEO.collar, GOLD);
       c1.position.y = 1.02 * KS; c2.position.y = 1.05 * KS; band.rotation.x = Math.PI / 2; band.position.y = 0.54 * KS;
       c1.castShadow = c2.castShadow = true;
@@ -112,8 +118,8 @@
     var tr = (function () { var sd = 1234567; return function () { sd = (sd * 1103515245 + 12345) & 0x7fffffff; return sd / 0x7fffffff; }; })();
     function grain(g, size, n, dark, light, rmin, rmax) { for (var i = 0; i < n; i++) { var v = tr(); g.fillStyle = 'rgba(' + (v < 0.5 ? dark : light) + ',' + (0.04 + tr() * 0.08) + ')'; g.beginPath(); g.arc(tr() * size, tr() * size, rmin + tr() * (rmax - rmin), 0, 7); g.fill(); } }
     var TEX = {
-      tile: canvasTex(128, function (g, n) { g.fillStyle = '#ffffff'; g.fillRect(0, 0, n, n); grain(g, n, 900, '0,0,0', '255,255,255', 1, 4); var e = g.createRadialGradient(n / 2, n / 2, n * 0.3, n / 2, n / 2, n * 0.74); e.addColorStop(0, 'rgba(0,0,0,0)'); e.addColorStop(1, 'rgba(0,0,0,0.26)'); g.fillStyle = e; g.fillRect(0, 0, n, n); g.strokeStyle = 'rgba(0,0,0,0.22)'; g.lineWidth = 2; g.strokeRect(1, 1, n - 2, n - 2); }),
-      water: canvasTex(128, function (g, n) { g.fillStyle = '#6fb6d8'; g.fillRect(0, 0, n, n); for (var y = 0; y < n; y += 2) for (var x = 0; x < n; x += 2) { var v = Math.sin(x / 9 + Math.sin(y / 7) * 2) * 0.5 + Math.sin((x + y) / 13) * 0.5; g.fillStyle = 'rgba(255,255,255,' + (0.05 + Math.max(0, v) * 0.22) + ')'; g.fillRect(x, y, 2, 2); } }, 1),
+      tile: canvasTex(128, function (g, n) { g.fillStyle = '#ffffff'; g.fillRect(0, 0, n, n); grain(g, n, 220, '0,0,0', '255,255,255', 2, 5); g.fillStyle = 'rgba(255,255,255,0.18)'; g.fillRect(8, 8, n - 16, n * 0.3); g.strokeStyle = 'rgba(20,14,30,0.5)'; g.lineWidth = 5; g.strokeRect(2.5, 2.5, n - 5, n - 5); }),
+      water: canvasTex(128, function (g, n) { g.fillStyle = '#5fb4e0'; g.fillRect(0, 0, n, n); g.strokeStyle = 'rgba(255,255,255,0.75)'; g.lineWidth = 4; g.lineCap = 'round'; for (var i = 0; i < 6; i++) { var y = 12 + i * 20, x = (i % 2) * 30; g.beginPath(); g.moveTo(x + 10, y); g.quadraticCurveTo(x + 26, y - 9, x + 42, y); g.stroke(); } }, 1),
       lava: canvasTex(128, function (g, n) { g.fillStyle = '#2a1510'; g.fillRect(0, 0, n, n); g.strokeStyle = '#ffb24a'; g.lineWidth = 2.5; for (var i = 0; i < 9; i++) { g.beginPath(); var x = tr() * n, y = tr() * n; g.moveTo(x, y); for (var k = 0; k < 6; k++) { x += (tr() - 0.5) * 40; y += (tr() - 0.5) * 40; g.lineTo(x, y); } g.stroke(); } g.strokeStyle = 'rgba(255,230,120,0.8)'; g.lineWidth = 1; for (var j = 0; j < 9; j++) { g.beginPath(); var x2 = tr() * n, y2 = tr() * n; g.moveTo(x2, y2); for (var k2 = 0; k2 < 6; k2++) { x2 += (tr() - 0.5) * 40; y2 += (tr() - 0.5) * 40; g.lineTo(x2, y2); } g.stroke(); } }, 1),
       ice: canvasTex(128, function (g, n) { g.fillStyle = '#dff0fa'; g.fillRect(0, 0, n, n); grain(g, n, 300, '120,170,200', '255,255,255', 1, 3); g.strokeStyle = 'rgba(120,170,210,0.55)'; g.lineWidth = 1.2; for (var i = 0; i < 7; i++) { g.beginPath(); var x = tr() * n, y = tr() * n; g.moveTo(x, y); for (var k = 0; k < 4; k++) { x += (tr() - 0.5) * 50; y += (tr() - 0.5) * 50; g.lineTo(x, y); } g.stroke(); } }, 1),
       bark: canvasTex(64, function (g, n) { g.fillStyle = '#5a4030'; g.fillRect(0, 0, n, n); for (var i = 0; i < 40; i++) { g.fillStyle = 'rgba(' + (tr() < 0.5 ? '30,18,10' : '110,80,55') + ',0.5)'; g.fillRect(tr() * n, 0, 1 + tr() * 3, n); } }),
@@ -136,7 +142,7 @@
     var M4 = new T3.Matrix4(), V3 = new T3.Vector3(), Q4 = new T3.Quaternion(), SC = new T3.Vector3(), CC = new T3.Color();
     var topY = function (x, y) { return (w.h[Rm.idx(x, y)] + 1) * STEP; };
     var biomeAt = function (x, y) { return BIO[w.regions[Rm.regionOf(x, y)].biome]; };
-    var ground = new T3.InstancedMesh(new T3.BoxGeometry(1, 1, 1), new T3.MeshStandardMaterial({ roughness: 0.9, metalness: 0.02, map: TEX.tile }), N);
+    var ground = new T3.InstancedMesh(new T3.BoxGeometry(1, 1, 1), toon({ map: TEX.tile }), N);
     ground.receiveShadow = true; ground.castShadow = false;
     var waterTiles = [], lavaTiles = [], treeTiles = [], snowTreeTiles = [], rockTiles = [], wallTiles = [], pillarTiles = [], iceTiles = [], tentTiles = [];
     function groundColor(x, y) {
@@ -153,7 +159,9 @@
       else if (kk === KD.shrine) c = dark ? 0x8a8ea0 : 0xc8ccd8;
       else if (kk === KD.campfire) c = 0x5a4a3c;
       else if (kk === KD.spring) c = 0x4a8a84;
-      return c;
+      // a cartoon's colours: more saturated than the paper ones
+      CC.setHex(c); var hsl = {}; CC.getHSL(hsl); CC.setHSL(hsl.h, Math.min(1, hsl.s * 1.4 + 0.04), hsl.l);
+      return CC.getHex();
     }
     (function layGround() {
       for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) {
@@ -181,33 +189,40 @@
       return m;
     }
     var dim = w.regions.every(function (r) { return r.dim; });
-    var waterMat = new T3.MeshStandardMaterial({ color: dim ? 0x1f3a4a : 0x3f86a8, map: TEX.water, transparent: true, opacity: 0.82, roughness: 0.15, metalness: 0.2, emissive: 0x0a2a3a });
+    var waterMat = toon({ color: dim ? 0x2a4a60 : 0x4fa0d0, map: TEX.water, transparent: true, opacity: 0.88, emissive: 0x0a2a3a });
     var water = instanced(waterTiles, new T3.BoxGeometry(1, 0.1, 1), waterMat, function (x, y, i, m) { m.compose(V3.set(x + 0.5, 0.33, y + 0.5), Q4.identity(), SC.set(1, 1, 1)); });
     if (water) water.castShadow = false;
-    var lavaMat = new T3.MeshStandardMaterial({ color: 0xffffff, map: TEX.lava, emissive: 0xffffff, emissiveMap: TEX.lava, emissiveIntensity: 1.1, roughness: 0.7 });
+    var lavaMat = toon({ color: 0xffffff, map: TEX.lava, emissive: 0xffffff, emissiveMap: TEX.lava, emissiveIntensity: 1.1 });
     instanced(lavaTiles, new T3.BoxGeometry(1, 0.1, 1), lavaMat, function (x, y, i, m) { m.compose(V3.set(x + 0.5, 0.33, y + 0.5), Q4.identity(), SC.set(1, 1, 1)); });
     var Phys = T3.MeshPhysicalMaterial || T3.MeshStandardMaterial;
-    var iceMat = new Phys({ color: 0xdff2ff, map: TEX.ice, roughness: 0.08, metalness: 0.05, clearcoat: 1, clearcoatRoughness: 0.05, transparent: true, opacity: 0.92, emissive: 0x204060, emissiveIntensity: 0.15 });
+    var iceMat = toon({ color: 0xcfeeff, map: TEX.ice, transparent: true, opacity: 0.92, emissive: 0x204060, emissiveIntensity: 0.15 });
     var ice = instanced(iceTiles, new T3.BoxGeometry(1, 0.12, 1), iceMat, function (x, y, i, m) { m.compose(V3.set(x + 0.5, (w.h[i] + 1) * STEP - 0.04, y + 0.5), Q4.identity(), SC.set(1, 1, 1)); });
     if (ice) ice.castShadow = false;
-    var treeMat = new T3.MeshStandardMaterial({ color: w.cold ? 0x4f7a68 : dim ? 0x5a6a50 : 0x7f9a70, map: TEX.leaf, roughness: 0.95, flatShading: true }), trunkMat = new T3.MeshStandardMaterial({ map: TEX.bark, roughness: 1 });
+    var treeMat = toon({ color: w.cold ? 0x3f7a62 : dim ? 0x5a7a50 : 0x5fb050 }), trunkMat = toon({ color: 0x6a4a30 });
     var seedAt = function (i, k) { var n = (i * 374761393 + k * 668265263) | 0; n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; };
     var treeSize = function (i) { return 0.85 + seedAt(i, 1) * 0.4; };
-    instanced(treeTiles, new T3.ConeGeometry(0.42, 1.1, 7), treeMat, function (x, y, i, m) { var s = treeSize(i); m.compose(V3.set(x + 0.5 + (seedAt(i, 2) - 0.5) * 0.3, topY(x, y) + 0.55 * s + 0.15, y + 0.5 + (seedAt(i, 3) - 0.5) * 0.3), Q4.setFromEuler(new T3.Euler(0, seedAt(i, 4) * 6, 0)), SC.set(s, s, s)); });
+    // round cartoon crowns in the warm lands, pines in the cold; each with its outline
+    var treeGeo = w.cold ? new T3.ConeGeometry(0.42, 1.1, 7) : new T3.IcosahedronGeometry(0.55, 1);
+    var treeAt = function (x, y, i, m, k) { var s = treeSize(i) * (k || 1); m.compose(V3.set(x + 0.5 + (seedAt(i, 2) - 0.5) * 0.3, topY(x, y) + 0.55 * treeSize(i) + 0.15, y + 0.5 + (seedAt(i, 3) - 0.5) * 0.3), Q4.setFromEuler(new T3.Euler(0, seedAt(i, 4) * 6, 0)), SC.set(s, s, s)); };
+    instanced(treeTiles, treeGeo, treeMat, function (x, y, i, m) { treeAt(x, y, i, m, 1); });
+    var treeOl = instanced(treeTiles, treeGeo, OUTLINE, function (x, y, i, m) { treeAt(x, y, i, m, 1.07); }); if (treeOl) treeOl.castShadow = false;
     instanced(treeTiles, new T3.CylinderGeometry(0.07, 0.09, 0.3, 6), trunkMat, function (x, y, i, m) { m.compose(V3.set(x + 0.5 + (seedAt(i, 2) - 0.5) * 0.3, topY(x, y) + 0.15, y + 0.5 + (seedAt(i, 3) - 0.5) * 0.3), Q4.identity(), SC.set(1, 1, 1)); });
     // snow on the trees of the cold lands: a white cap
-    instanced(snowTreeTiles, new T3.ConeGeometry(0.3, 0.5, 7), new T3.MeshStandardMaterial({ color: 0xf4f8ff, roughness: 1, flatShading: true }), function (x, y, i, m) { var s = treeSize(i); m.compose(V3.set(x + 0.5 + (seedAt(i, 2) - 0.5) * 0.3, topY(x, y) + 0.55 * s + 0.15 + 0.32 * s, y + 0.5 + (seedAt(i, 3) - 0.5) * 0.3), Q4.setFromEuler(new T3.Euler(0, seedAt(i, 4) * 6, 0)), SC.set(s, s, s)); });
-    var rockMat = new T3.MeshStandardMaterial({ map: TEX.rock, color: w.cold ? 0xbfc8d0 : 0xffffff, roughness: 0.9, flatShading: true });
-    instanced(rockTiles, new T3.DodecahedronGeometry(0.42, 0), rockMat, function (x, y, i, m) { var s = 0.8 + seedAt(i, 5) * 0.5; m.compose(V3.set(x + 0.5, topY(x, y) + 0.25 * s, y + 0.5), Q4.setFromEuler(new T3.Euler(seedAt(i, 6) * 3, seedAt(i, 7) * 6, 0)), SC.set(s, s * 0.8, s)); });
-    var wallMat = new T3.MeshStandardMaterial({ map: TEX.stone, color: w.cold ? 0xd8e4ee : 0xffffff, roughness: 0.85 });
+    instanced(snowTreeTiles, new T3.ConeGeometry(0.3, 0.5, 7), toon({ color: 0xf4f8ff }), function (x, y, i, m) { var s = treeSize(i); m.compose(V3.set(x + 0.5 + (seedAt(i, 2) - 0.5) * 0.3, topY(x, y) + 0.55 * s + 0.15 + 0.32 * s, y + 0.5 + (seedAt(i, 3) - 0.5) * 0.3), Q4.setFromEuler(new T3.Euler(0, seedAt(i, 4) * 6, 0)), SC.set(s, s, s)); });
+    var rockMat = toon({ color: w.cold ? 0xb8c8d8 : 0x8a8a98 });
+    var rockGeo = new T3.DodecahedronGeometry(0.42, 0);
+    var rockAt = function (x, y, i, m, k) { var s = (0.8 + seedAt(i, 5) * 0.5) * (k || 1); m.compose(V3.set(x + 0.5, topY(x, y) + 0.25 * (0.8 + seedAt(i, 5) * 0.5), y + 0.5), Q4.setFromEuler(new T3.Euler(seedAt(i, 6) * 3, seedAt(i, 7) * 6, 0)), SC.set(s, s * 0.8, s)); };
+    instanced(rockTiles, rockGeo, rockMat, function (x, y, i, m) { rockAt(x, y, i, m, 1); });
+    var rockOl = instanced(rockTiles, rockGeo, OUTLINE, function (x, y, i, m) { rockAt(x, y, i, m, 1.08); }); if (rockOl) rockOl.castShadow = false;
+    var wallMat = toon({ map: TEX.stone, color: w.cold ? 0xd8e4ee : 0xffffff });
     instanced(wallTiles, new T3.BoxGeometry(1, 1, 1), wallMat, function (x, y, i, m) { var hh = w.h[i], base = STEP, hgt = (hh + 1) * STEP - base + 0.3; m.compose(V3.set(x + 0.5, base + hgt / 2, y + 0.5), Q4.identity(), SC.set(1.0, hgt, 1.0)); });
-    var pillarMat = new T3.MeshStandardMaterial({ color: 0x2a2630, roughness: 0.5, metalness: 0.2, emissive: 0x2a1040, emissiveIntensity: 0.6 });
+    var pillarMat = toon({ color: 0x2a2630, emissive: 0x2a1040, emissiveIntensity: 0.6 });
     instanced(pillarTiles, new T3.CylinderGeometry(0.22, 0.3, 1, 8), pillarMat, function (x, y, i, m) { var mono = w.k[i] === KD.monolith, hgt = mono ? 1.6 : 2.4; m.compose(V3.set(x + 0.5, STEP + hgt / 2, y + 0.5), Q4.setFromEuler(new T3.Euler(0, mono ? 0.4 : 0, 0)), SC.set(mono ? 0.9 : 1.2, hgt, mono ? 0.5 : 1.2)); });
-    var tentMat = new T3.MeshStandardMaterial({ map: TEX.cloth, roughness: 0.95, flatShading: true });
+    var tentMat = toon({ map: TEX.cloth, color: 0xd0a070 });
     instanced(tentTiles, new T3.ConeGeometry(0.62, 0.8, 4), tentMat, function (x, y, i, m) { m.compose(V3.set(x + 0.5, topY(x, y) + 0.4, y + 0.5), Q4.setFromEuler(new T3.Euler(0, Math.PI / 4, 0)), SC.set(1, 1, 1)); });
 
     /* ---------- the living light: fires, torches, springs, weather ---------- */
-    var fx2 = root.RealmFX.create({ T3: T3, scene: scene, topY: topY, level: en });
+    var fx2 = root.RealmFX.create({ T3: T3, scene: scene, topY: topY, level: en, toon: toon });
     var campFires = {}; // camp id -> fire handle
     Object.keys(w.objs).forEach(function (key) {
       var o = w.objs[key];
@@ -219,21 +234,24 @@
     fx2.setWeather(S.weather.kind);
     /* The light budget: a shader holds only so many point lights, and a world has dozens of fires, torches, shrines
        and portals. Only the nearest few shine; the rest wait unlit until the King comes near. */
-    var managedLights = [], LIGHT_BUDGET = en === 'full' ? 8 : en === 'balanced' ? 5 : 3, lightT = 1;
+    var managedLights = [], LIGHT_BUDGET = en === 'full' ? 8 : en === 'balanced' ? 5 : 3, lightT = 1, lightSlots = [];
+    for (var lsi = 0; lsi < LIGHT_BUDGET; lsi++) { var slot = new T3.PointLight(0xffffff, 0, 5); scene.add(slot); lightSlots.push(slot); }
+    // the sources are not in the scene; the nearest few are copied into the slots (the count of lights never changes)
     function budgetLights() {
       var p = S.p;
       managedLights.forEach(function (m) { m.d = Math.max(Math.abs(m.x - p.x), Math.abs(m.y - p.y)); });
       managedLights.sort(function (a, b) { return a.d - b.d; });
-      managedLights.forEach(function (m, i) { m.light.visible = i < LIGHT_BUDGET && m.d <= 14; });
+      lightSlots.forEach(function (slot, i) { var m = managedLights[i]; slot.userData.src = m && m.d <= 14 ? m.light : null; if (!slot.userData.src) slot.intensity = 0; });
     }
+    function copyLights() { lightSlots.forEach(function (slot) { var src = slot.userData.src; if (!src) return; slot.position.copy(src.position); slot.color.copy(src.color); slot.distance = src.distance; slot.decay = src.decay; slot.intensity = src.intensity; }); }
 
     /* ---------- the things of the world ---------- */
     var things = {};
-    var shrineMat = new T3.MeshStandardMaterial({ color: 0xbfc4d4, roughness: 0.6 }), beamMat = new T3.MeshBasicMaterial({ color: 0x9fe0ff, transparent: true, opacity: 0.22, depthWrite: false, blending: T3.AdditiveBlending });
-    var goldMat = new T3.MeshStandardMaterial({ color: COL.gold, roughness: 0.3, metalness: 0.7, emissive: 0x7a5010, emissiveIntensity: 0.4 });
-    var ironMat = new T3.MeshStandardMaterial({ color: 0x3b3b44, roughness: 0.5, metalness: 0.6 });
+    var shrineMat = toon({ color: 0xbfc4d4 }), beamMat = new T3.MeshBasicMaterial({ color: 0x9fe0ff, transparent: true, opacity: 0.22, depthWrite: false, blending: T3.AdditiveBlending });
+    var goldMat = toon({ color: COL.gold, emissive: 0x7a5010, emissiveIntensity: 0.4 });
+    var ironMat = toon({ color: 0x3b3b44 });
     var portalMat = new T3.MeshBasicMaterial({ color: COL.cyan, transparent: true, opacity: 0.9 });
-    var chestMat = new T3.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 0.8 });
+    var chestMat = toon({ color: 0x8a5a2b });
     var flagMats = { camp: new T3.MeshBasicMaterial({ color: 0x9a2a2a, side: T3.DoubleSide }), ours: new T3.MeshBasicMaterial({ color: 0xf0e0b0, side: T3.DoubleSide }), raid: new T3.MeshBasicMaterial({ color: 0xe0352b, side: T3.DoubleSide }) };
     function banner3d(mat) { var g = new T3.Group(); var pole = new T3.Mesh(GEO.flagPole, ironMat); pole.position.y = 0.6; g.add(pole); var fl = new T3.Mesh(GEO.flag, mat); fl.position.set(0.21, 1.05, 0); g.add(fl); g.userData.flag = fl; return g; }
     Object.keys(w.objs).forEach(function (key) {
@@ -242,13 +260,13 @@
       if (o.kind === 'shrine') {
         var ring = new T3.Mesh(new T3.TorusGeometry(0.38, 0.06, 8, 24), shrineMat); ring.rotation.x = Math.PI / 2; ring.position.y = 0.04; g.add(ring);
         var beam = new T3.Mesh(new T3.CylinderGeometry(0.22, 0.3, 3.2, 12, 1, true), beamMat); beam.position.y = 1.6; g.add(beam); g.userData.beam = beam;
-        var gem = new T3.Mesh(new T3.OctahedronGeometry(0.14), new T3.MeshStandardMaterial({ color: 0x9fe0ff, emissive: 0x3aa0ff, emissiveIntensity: 1.2 })); gem.position.y = 0.7; g.add(gem); g.userData.gem = gem;
-        var sl = new T3.PointLight(0x7fc8ff, 0.5, 4); sl.position.y = 0.8; g.add(sl); managedLights.push({ light: sl, x: x, y: y });
+        var gem = new T3.Mesh(new T3.OctahedronGeometry(0.14), toon({ color: 0x9fe0ff, emissive: 0x3aa0ff, emissiveIntensity: 1.2 })); gem.position.y = 0.7; g.add(gem); g.userData.gem = gem;
+        var sl = new T3.PointLight(0x7fc8ff, 0.5, 4); sl.position.set(x + 0.5, top + 0.8, y + 0.5); managedLights.push({ light: sl, x: x, y: y });
       } else if (o.kind === 'cage') {
         var frame = new T3.LineSegments(new T3.EdgesGeometry(new T3.BoxGeometry(0.8, 1.0, 0.8)), new T3.LineBasicMaterial({ color: 0x5a5a66 })); frame.position.y = 0.5; g.add(frame);
         for (var bi = 0; bi < 4; bi++) { var bar = new T3.Mesh(new T3.CylinderGeometry(0.02, 0.02, 1.0, 5), ironMat); bar.position.set(bi < 2 ? -0.4 : 0.4, 0.5, bi % 2 ? -0.4 : 0.4); g.add(bar); }
         [[-0.4, 0], [0.4, 0], [0, -0.4], [0, 0.4]].forEach(function (p) { for (var bb = -1; bb <= 1; bb += 2) { var bar2 = new T3.Mesh(new T3.CylinderGeometry(0.015, 0.015, 1.0, 5), ironMat); bar2.position.set(p[0] || bb * 0.2, 0.5, p[1] || bb * 0.2); g.add(bar2); } });
-        var captive = pieceMesh(o.ally, new T3.MeshStandardMaterial({ color: 0x9a948a, roughness: 0.7, flatShading: true })); captive.scale.set(0.7, 0.7, 0.7); g.add(captive); g.userData.captive = captive;
+        var captive = pieceMesh(o.ally, toon({ color: 0x9a948a })); captive.scale.set(0.7, 0.7, 0.7); g.add(captive); g.userData.captive = captive;
         if (S.used[i]) { g.children.forEach(function (c) { if (c !== captive) c.visible = false; }); captive.visible = false; }
       } else if (o.kind === 'chest') {
         var box = new T3.Mesh(new T3.BoxGeometry(0.6, 0.36, 0.42), chestMat); box.position.y = 0.18; box.castShadow = true; g.add(box);
@@ -258,7 +276,7 @@
       } else if (o.kind === 'portal') {
         var tor = new T3.Mesh(new T3.TorusGeometry(0.42, 0.05, 10, 32), portalMat); tor.position.y = 0.55; g.add(tor); g.userData.ring = tor;
         var disc = new T3.Mesh(new T3.CircleGeometry(0.38, 24), new T3.MeshBasicMaterial({ color: 0x1a4a70, transparent: true, opacity: 0.7, side: T3.DoubleSide })); disc.position.y = 0.55; g.add(disc); g.userData.disc = disc;
-        var pl = new T3.PointLight(COL.cyan, 0.9, 4); pl.position.y = 0.6; g.add(pl); managedLights.push({ light: pl, x: x, y: y });
+        var pl = new T3.PointLight(COL.cyan, 0.9, 4); pl.position.set(x + 0.5, top + 0.6, y + 0.5); managedLights.push({ light: pl, x: x, y: y });
       } else if (o.kind === 'monolith') {
         for (var ri = 0; ri < 3; ri++) { var rune = new T3.Mesh(new T3.BoxGeometry(0.46, 0.04, 0.26), new T3.MeshBasicMaterial({ color: COL.violet })); rune.position.set(0, 0.6 + ri * 0.35, 0); rune.rotation.y = 0.4; g.add(rune); }
       } else if (o.kind === 'campfire' && o.camp) {
@@ -282,12 +300,12 @@
     })();
 
     /* ---------- the pieces ---------- */
-    var ivory = new Phys({ color: COL.ivory, roughness: 0.34, metalness: 0.0, clearcoat: 0.5, clearcoatRoughness: 0.3, flatShading: true });
-    var obsidian = new Phys({ color: 0x4a4452, roughness: 0.42, metalness: 0.12, clearcoat: 0.5, clearcoatRoughness: 0.3, emissive: 0x0a0810, emissiveIntensity: 0.3, flatShading: true });
-    var obsidianAwake = new Phys({ color: 0x564048, roughness: 0.42, metalness: 0.12, clearcoat: 0.5, clearcoatRoughness: 0.3, emissive: 0x6a1414, emissiveIntensity: 0.32, flatShading: true });
-    var wardenMat = new Phys({ color: 0x4a3038, roughness: 0.3, metalness: 0.4, clearcoat: 0.9, emissive: 0x8a2010, emissiveIntensity: 0.45, flatShading: true });
-    var grandMat = new Phys({ color: 0x3a2a48, roughness: 0.3, metalness: 0.5, clearcoat: 0.9, emissive: 0x6a20a8, emissiveIntensity: 0.7, flatShading: true });
-    var captainMat = new Phys({ color: 0x5a3a2a, roughness: 0.35, metalness: 0.35, clearcoat: 0.8, emissive: 0x8a3a10, emissiveIntensity: 0.4, flatShading: true });
+    var ivory = toon({ color: 0xfff4de });
+    var obsidian = toon({ color: 0x5a5470, emissive: 0x0a0810, emissiveIntensity: 0.3 });
+    var obsidianAwake = toon({ color: 0x6a4458, emissive: 0x6a1414, emissiveIntensity: 0.35 });
+    var wardenMat = toon({ color: 0x7a3040, emissive: 0x8a2010, emissiveIntensity: 0.45 });
+    var grandMat = toon({ color: 0x4a2a68, emissive: 0x6a20a8, emissiveIntensity: 0.7 });
+    var captainMat = toon({ color: 0x7a4a2a, emissive: 0x8a3a10, emissiveIntensity: 0.4 });
     var TYPECOL = { P: 0xc8c0b0, N: 0x72d060, B: 0x9a6cff, R: 0xf0a040, Q: 0xe0352b, K: 0xf0c050, A: 0xff5ad0 }, TYPEMAT = {};
     var silverMat = new T3.MeshBasicMaterial({ color: 0xdfe4f0, transparent: true, opacity: 0.8, depthWrite: false });
     var stunMat = new T3.MeshBasicMaterial({ color: 0xffe070 });
@@ -395,31 +413,41 @@
 
     /* ---------- effects ---------- */
     var fx = [];
-    var shardMats = { w: new T3.MeshStandardMaterial({ color: COL.ivory, roughness: 0.5 }), b: new T3.MeshStandardMaterial({ color: 0x2a2430, roughness: 0.4, emissive: 0x5a1010, emissiveIntensity: 0.5 }) };
+    var shardMats = { w: toon({ color: COL.ivory }), b: toon({ color: 0x2a2430, emissive: 0x5a1010, emissiveIntensity: 0.5 }) }, shardColMats = {};
+    /* The lights of the effects come from a small pool that is always in the scene: adding a light to a scene makes
+       three.js recompile every lit shader, and that was the lag on a capture. */
+    var fxLights = [], fxLightAt = 0;
+    for (var fli = 0; fli < (en === 'full' ? 3 : en === 'balanced' ? 2 : 1); fli++) { var fl0 = new T3.PointLight(0xffffff, 0, 6); fl0.position.set(S.p.x + 0.5, 1, S.p.y + 0.5); scene.add(fl0); fxLights.push(fl0); }
+    function flash(x, y, col, intensity, life) {
+      var fl = fxLights[fxLightAt++ % fxLights.length];
+      fl.color.setHex(col); fl.intensity = intensity; fl.position.set(x + 0.5, topY(x, y) + 0.6, y + 0.5);
+      fx.push({ m: fl, t: 0, life: life || 0.35, kind: 'light', i0: intensity });
+    }
     function burst(x, y, side, n, big, col) {
       var top = topY(x, y);
+      if (col && !shardColMats[col]) shardColMats[col] = toon({ color: col, emissive: col, emissiveIntensity: 0.6 });
       for (var i = 0; i < n; i++) {
-        var m = new T3.Mesh(GEO.shard, col ? new T3.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.6 }) : (shardMats[side] || shardMats.b)), a = Math.random() * Math.PI * 2, sp = 2 + Math.random() * 3 * (big ? 1.6 : 1);
+        var m = new T3.Mesh(GEO.shard, col ? shardColMats[col] : (shardMats[side] || shardMats.b)), a = Math.random() * Math.PI * 2, sp = 2 + Math.random() * 3 * (big ? 1.6 : 1);
         m.position.set(x + 0.5, top + 0.3 + Math.random() * 0.5, y + 0.5);
         m.scale.setScalar(0.7 + Math.random() * (big ? 1.4 : 0.8));
         scene.add(m);
         fx.push({ m: m, v: new T3.Vector3(Math.cos(a) * sp, 2.5 + Math.random() * 3, Math.sin(a) * sp), r: new T3.Vector3(Math.random() * 8, Math.random() * 8, Math.random() * 8), t: 0, life: 1.1 + Math.random() * 0.5, kind: 'shard', floor: top });
       }
-      var fl = new T3.PointLight(col || (side === 'w' ? 0xfff0c0 : 0xff6a40), 3, 6); fl.position.set(x + 0.5, top + 0.6, y + 0.5); scene.add(fl);
-      fx.push({ m: fl, t: 0, life: 0.35, kind: 'light' });
+      flash(x, y, col || (side === 'w' ? 0xfff0c0 : 0xff6a40), 3, 0.35);
     }
     var essCol = { N: 0x72d060, B: 0x4ad0ff, R: 0xffa040, Q: 0xd060ff, K: 0xffe070 };
     function orb(x, y, t) {
       var m = new T3.Mesh(GEO.orb, new T3.MeshBasicMaterial({ color: essCol[t] || 0xffffff, transparent: true, opacity: 0.95 }));
       m.position.set(x + 0.5, topY(x, y) + 0.5, y + 0.5);
-      var halo = new T3.PointLight(essCol[t] || 0xffffff, 1.2, 3); m.add(halo);
       scene.add(m);
       fx.push({ m: m, t: 0, life: 1.1, kind: 'orb', from: m.position.clone() });
     }
+    var puffGeo = new T3.SphereGeometry(0.08, 6, 5), puffMats = {};
     function puff(x, y, col, n) {
-      var top = topY(x, y);
+      var top = topY(x, y), key = col || 0xd8d0c0;
+      if (!puffMats[key]) puffMats[key] = new T3.MeshBasicMaterial({ color: key, transparent: true, opacity: 0.8 });
       for (var i = 0; i < (n || 10); i++) {
-        var m = new T3.Mesh(new T3.SphereGeometry(0.06 + Math.random() * 0.06, 6, 5), new T3.MeshBasicMaterial({ color: col || 0xd8d0c0, transparent: true, opacity: 0.8 }));
+        var m = new T3.Mesh(puffGeo, puffMats[key].clone()); m.scale.setScalar(0.75 + Math.random() * 0.75);
         var a = Math.random() * Math.PI * 2;
         m.position.set(x + 0.5 + Math.cos(a) * 0.2, top + 0.1, y + 0.5 + Math.sin(a) * 0.2);
         scene.add(m);
@@ -454,12 +482,12 @@
         var f = fx[i]; f.t += dt;
         var k = f.t / f.life;
         if (f.kind === 'shard') { f.v.y -= 9.8 * dt; f.m.position.addScaledVector(f.v, dt); f.m.rotation.x += f.r.x * dt; f.m.rotation.y += f.r.y * dt; if (f.m.position.y < f.floor + 0.04) { f.m.position.y = f.floor + 0.04; f.v.y *= -0.35; f.v.x *= 0.7; f.v.z *= 0.7; } if (k > 0.7) f.m.scale.multiplyScalar(0.93); }
-        else if (f.kind === 'light') f.m.intensity = 3 * (1 - k);
+        else if (f.kind === 'light') f.m.intensity = (f.i0 || 3) * (1 - k);
         else if (f.kind === 'orb') { var tgt = player.position; if (k < 0.35) f.m.position.y = f.from.y + k * 1.5; else { var kk = (k - 0.35) / 0.65, ee = kk * kk; f.m.position.lerpVectors(f.from.clone().setY(f.from.y + 0.52), new T3.Vector3(tgt.x, tgt.y + 0.8, tgt.z), ee); } f.m.scale.setScalar(1 + Math.sin(f.t * 20) * 0.15); }
         else if (f.kind === 'puff') { f.m.position.addScaledVector(f.v, dt); f.v.multiplyScalar(0.92); f.m.material.opacity = 0.8 * (1 - k); f.m.scale.multiplyScalar(1.03); }
         else if (f.kind === 'ghost') f.m.traverse(function (o) { if (o.isMesh) o.material.opacity = 0.35 * (1 - k); });
         else if (f.kind === 'rise') { f.m.scale.setScalar(Math.min(1, k) * (f.s || 1)); f.m.position.y = f.y0 + (1 - Math.min(1, k)) * -0.6; }
-        if (f.t >= f.life) { scene.remove(f.m); if (f.kind === 'rise') { f.m.scale.setScalar(f.s || 1); f.m.position.y = f.y0; scene.add(f.m); } fx.splice(i, 1); }
+        if (f.t >= f.life) { if (f.kind === 'light') f.m.intensity = 0; else scene.remove(f.m); if (f.kind === 'rise') { f.m.scale.setScalar(f.s || 1); f.m.position.y = f.y0; scene.add(f.m); } if (f.kind === 'puff') f.m.material.dispose(); fx.splice(i, 1); }
       }
     }
 
@@ -1006,6 +1034,7 @@
       dayNight(dt);
       fx2.update(dt, { x: S.p.x, y: S.p.y, h: player.position.y }, nightNow);
       lightT += dt; if (lightT > 0.3) { lightT = 0; budgetLights(); }
+      copyLights();
       updateLabels(dt);
       var rdt = dt / ui.scale;
       if (ui.flash > 0) { ui.flash = Math.max(0, ui.flash - rdt * 1.6); $('#rhFlash').style.opacity = ui.flash * 0.6; }
