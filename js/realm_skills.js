@@ -21,7 +21,7 @@
     // Crown: the King's own body
     { id: 'skin', branch: 'crown', tier: 1, name: 'Thick Skin', text: 'One more heart, and all of them full.', max: 3 },
     { id: 'wind', branch: 'crown', tier: 2, name: 'Second Wind', needs: 'skin', text: 'The blow that would fell you leaves you one heart instead. Once every 60 moves.', max: 1 },
-    { id: 'hearth', branch: 'crown', tier: 2, name: 'Hearth King', needs: 'skin', text: 'Four more warmth, and the cold bites half as hard.', max: 2 },
+    { id: 'hearth', branch: 'crown', tier: 2, name: 'Hearth King', needs: 'skin', text: 'Eight more warmth, and the cold bites half as hard.', max: 2 },
     { id: 'bulwark', branch: 'crown', tier: 3, name: 'Bulwark', needs: 'wind', text: 'The first strike in every 20 moves glances off.', max: 1 },
     { id: 'bond', branch: 'crown', tier: 3, name: 'Shrine Bond', needs: 'hearth', text: 'Shrines and fires also give two essence of every kind.', max: 1 },
     { id: 'iron', branch: 'crown', tier: 4, name: 'Iron Crown', needs: 'bulwark', text: 'A strike no longer pushes you off your square.', max: 1 },

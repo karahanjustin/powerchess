@@ -20,7 +20,7 @@
   var VALUE = { P: 1, N: 3, B: 3, R: 5, Q: 9, K: 20, A: 30 };
   var ORTH = [[1, 0], [-1, 0], [0, 1], [0, -1]], DIAG = [[1, 1], [1, -1], [-1, 1], [-1, -1]], ALL8 = ORTH.concat(DIAG);
   var KN = [[1, 2], [2, 1], [-1, 2], [-2, 1], [1, -2], [2, -1], [-1, -2], [-2, -1]];
-  var SHARDS_NEEDED = 5, REACH = 7, HEAT_RANGE = 2, WARMTH = 16;
+  var SHARDS_NEEDED = 5, REACH = 7, HEAT_RANGE = 2, WARMTH = 30; // thirty moves of cold between fires, a blizzard halves that
   var dist = function (ax, ay, bx, by) { return Math.max(Math.abs(ax - bx), Math.abs(ay - by)); };
 
   /* ---------- the state of a game ---------- */
@@ -41,7 +41,7 @@
       stats: { ambush: 0, frostWalk: 0, formKills: {}, chests: 0, reads: 0, frees: 0, raids: 0, camps: 0, wardens: 0, levelsHere: 0 } };
     S.world = world;
     S.p.maxHearts = 3 + sk(S, 'skin'); S.p.hearts = S.p.maxHearts;
-    S.p.maxWarmth = WARMTH + 4 * sk(S, 'hearth'); S.p.warmth = S.p.maxWarmth;
+    S.p.maxWarmth = WARMTH + 8 * sk(S, 'hearth'); S.p.warmth = S.p.maxWarmth;
     if (opts.carry) { if (opts.carry.ess) Object.keys(S.p.ess).forEach(function (t) { S.p.ess[t] = Math.min(essMax(S), opts.carry.ess[t] || 0); }); if (opts.carry.maxHearts) { S.p.maxHearts = Math.max(S.p.maxHearts, opts.carry.maxHearts); S.p.hearts = S.p.maxHearts; } }
     for (var i = 0; i < 3; i++) drawBounty(S, null);
     meta.worlds = (meta.worlds || 0) + 1;
@@ -537,7 +537,7 @@
   function coldTurn(S, ev) {
     var p = S.p, cold = isCold(S, p.x, p.y), heat = nearHeat(S, p.x, p.y);
     if (!regionAt(S, p.x, p.y).cold && !heat) { p.warmth = Math.min(p.maxWarmth, p.warmth + 2); p.chill = 0; S.stats.frostWalk = 0; return; }
-    if (heat) { p.warmth = Math.min(p.maxWarmth, p.warmth + 4); p.chill = 0; if (regionAt(S, p.x, p.y).cold) ev.push({ e: 'cold', warmth: p.warmth, max: p.maxWarmth, warming: true }); return; }
+    if (heat) { p.warmth = Math.min(p.maxWarmth, p.warmth + 6); p.chill = 0; if (regionAt(S, p.x, p.y).cold) ev.push({ e: 'cold', warmth: p.warmth, max: p.maxWarmth, warming: true }); return; }
     var drain = S.weather.kind === 'blizzard' ? 2 : 1;
     if (sk(S, 'hearth')) drain = S.weather.kind === 'blizzard' ? 1 : (S.turn % 2 ? 1 : 0);
     p.warmth = Math.max(0, p.warmth - drain);
@@ -616,7 +616,7 @@
   function takeSkill(S, id) {
     if (!SK.take(S.meta, id)) return false;
     if (id === 'skin') { S.p.maxHearts++; S.p.hearts = S.p.maxHearts; }
-    if (id === 'hearth') { S.p.maxWarmth += 4; S.p.warmth = S.p.maxWarmth; }
+    if (id === 'hearth') { S.p.maxWarmth += 8; S.p.warmth = S.p.maxWarmth; }
     if (id === 'veteran') S.allies.forEach(function (a) { a.hp = Math.max(a.hp, 2); });
     return true;
   }
