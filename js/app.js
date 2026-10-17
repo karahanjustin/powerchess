@@ -582,12 +582,19 @@
   const engine = new Engine();
   let engineReady = false;
   // A dropped request during page load can kill the first attempt, so try a few times.
-  async function bootEngine() {
-    for (let i = 0; i < 3 && !engineReady; i++) {
+  let engineBooting = false;
+  async function bootEngine(tries) {
+    engineBooting = true;
+    for (let i = 0; i < tries && !engineReady; i++) {
       try { await engine.init(); engineReady = true; } catch (e) { console.warn('Stockfish start failed, attempt ' + (i + 1), e); await sleep(800); }
     }
+    engineBooting = false;
+    try { renderEngineBox(); } catch (e) { /* the page is not built yet */ }
   }
-  const enginePromise = bootEngine();
+  let enginePromise = bootEngine(3);
+  // a worker lost during play (the tab in the background, memory short on a phone): the engine box says so
+  engine.onDeath = (e) => { console.warn('Stockfish worker lost:', e && e.message); try { renderEngineBox(); } catch (err) { /* not built yet */ } };
+  engine.onRevive = () => { try { renderEngineBox(); } catch (err) { /* not built yet */ } };
   let fairyEngine = null, fairyPromise = null;
   function getFairy() {
     if (!fairyPromise) {
@@ -645,10 +652,18 @@
     if (setup.kcPreset) return { on: true, why: 'The position is a preset from The Ouroboros King, and that game is played this way.' };
     return { on: false, why: '' };
   }
+  let engineRetryAt = 0;
   function engineByKind(kind) {
     if (kind === 'fairy') return getFairy().catch((e) => { console.error(e); return null; });
-    return enginePromise.then(() => (engineReady ? engine : null));
+    // a start that failed (a slow first load on a phone) is tried once more when the engine is next wanted, at most
+    // once a minute, so a phone that cannot run it does not wait out a start timeout before every bot move
+    return enginePromise.then(() => {
+      if (!engineReady && !engineBooting && Date.now() >= engineRetryAt) { engineRetryAt = Date.now() + 60000; enginePromise = bootEngine(1); }
+      return enginePromise.then(() => (engineReady ? engine : null));
+    });
   }
+  // A search for a bot move: an engine that fails (no answer even from a fresh worker) gives null instead of throwing.
+  function botSearch(E, job) { return E.search(job).catch((e) => { console.warn('Engine search failed:', e && e.message); return null; }); }
   function engineFor(game) { return engineByKind(game.engine); }
   function stopEngines() {
     engine.stop();
@@ -1481,7 +1496,9 @@
     box.classList.toggle('bad', !engineReady);
     let html = engineReady
       ? '<b>' + engine.label + '</b>' + (engine.kind === 'full' ? useThreads(engine) + ' threads, ' + Math.min(engine.hash, energy().hash) + ' MB hash' : 'single thread fallback')
-      : '<b>Engine failed</b>Open the app through its server';
+      : engineBooting ? '<b>Engine starting</b>Stockfish is loading'
+      : window.PC_WEB ? '<b>Engine failed</b>Stockfish did not start, the app\'s own search plays' : '<b>Engine failed</b>Open the app through its server';
+    if (engineReady && !engine.w) html += '<br>Restarting after a lost worker';
     if (fairyEngine) html += '<b style="margin-top:6px">Fairy-Stockfish</b>' + useThreads(fairyEngine) + ' threads, for variants';
     if (energyMode() !== 'full') html += '<span class="engine-energy">' + (energyMode() === 'saver' ? 'Battery saver' : 'Balanced') + '</span>';
     $('#engineText').innerHTML = html;
@@ -3719,11 +3736,12 @@
     if (!clean || near.length < 2) return best.act;
     let think = bot.max ? Math.max(300, thinkMs(game) - ms) : Math.min(bot.ms || 300, 400);
     if (game.clock.on) think = Math.min(think, Math.max(100, game.clock[me] / 80));
-    const r = await E.search({
+    const r = await botSearch(E, {
       position: 'fen ' + game.B.fen(s), go: (bot.depth ? 'depth ' + bot.depth : 'movetime ' + Math.round(think)) + ' searchmoves ' + near.map((x) => game.B.uci(x.act.m)).join(' '),
       options: Object.assign(variantOpts(game, E, kind), strength(bot, E, kind === 'fairy'))
     });
-    if (!r || r.cancelled) return null;
+    if (!r) { engineHiccup(); return best.act; } // the engine failed: the search's own first choice
+    if (r.cancelled) return null;
     const pick = r.best && near.find((x) => game.B.uci(x.act.m) === r.best);
     return (pick || best).act;
   }
@@ -3756,11 +3774,12 @@
     if (normal.length < 2 || Math.abs(best.a.score) > 50000) return (normal[0] || best).act;
     let think = bot.max ? Math.max(300, thinkMs(game) - ms) : Math.min(bot.ms || 300, 500);
     if (game.clock.on) think = Math.min(think, Math.max(100, game.clock[me] / 80));
-    const r = await E.search({
+    const r = await botSearch(E, {
       position: 'fen ' + B.fen(s), go: (bot.depth ? 'depth ' + bot.depth : 'movetime ' + Math.round(think)) + ' searchmoves ' + normal.map((x) => B.uci(x.act.m)).join(' '),
       options: Object.assign(variantOpts(game, E, 'fairy'), strength(bot, E, true)), onInfo: (i) => { if (game === G && live() === s) setEval(i, s.turn); }
     });
-    if (!r || r.cancelled) return null;
+    if (!r) { engineHiccup(); return normal[0].act; } // the engine failed: the search's own first choice
+    if (r.cancelled) return null;
     const pick = r.best && normal.find((x) => B.uci(x.act.m) === r.best);
     return (pick || normal[0]).act;
   }
@@ -3786,8 +3805,8 @@
       }
     }
     const width = { attack: 70, gambit: 90, solid: 45, endgame: 45, clock: 25 }[bot.style] || 40;
-    const r = await E.search({ position: B.position(s, game.log), go: go, options: Object.assign({}, options, { MultiPV: 4 }) });
-    if (!r || r.cancelled) return null;
+    const r = await botSearch(E, { position: B.position(s, game.log), go: go, options: Object.assign({}, options, { MultiPV: 4 }) });
+    if (!r || r.cancelled) return null; // a failed engine: engineTurn falls back
     const lines = Object.keys(r.lines || {}).map((k) => r.lines[k]).filter((l) => l && l.pv && l.pv.length && l.score);
     if (!lines.length) return r.best ? B.find(pool, r.best) : null;
     const num = (sc) => (sc.mate != null ? (sc.mate > 0 ? 100000 - sc.mate : -100000 - sc.mate) : sc.cp);
@@ -3851,6 +3870,25 @@
   }
   // How long a full-strength bot thinks: the setting, except in a game mode, which keeps its own fixed rules.
   const thinkMs = (game) => Math.min(energy().botMs, game && game.spec && game.spec.gameMode ? 3000 : settings.thinkMs);
+  // The engine gave no answer for a bot move: said once per game, the move comes from the app's own search.
+  function engineHiccup() {
+    if (!G || G.engineNote) return;
+    G.engineNote = true;
+    toast('Stockfish did not answer, so the app\'s own search made this move.');
+  }
+  /* The bot move when the engine is lost: the power-up search (js/brain.js) on a standard board, held to the moves
+     allowed here, with a short look. Null when it cannot play the board either (a variant without power-ups). */
+  async function brainFallback(game, s, pool, bot) {
+    engineHiccup();
+    if (game.B.kind !== 'std' && game.B.kind !== 'hex') return null;
+    let res = null;
+    try {
+      const ms = Math.min(1500, bot.max ? thinkMs(game) : 300 + (bot.lv || 1) * 100);
+      res = await botBrain.think(s, brainCfg(game.cfg, s.turn, false), { ms: ms, maxDepth: bot.max ? 6 : Math.max(2, BRAIN_DEPTH[Math.max(0, (bot.lv || 1) - 1)] || 2), margin: 0, allow: pool.map(moveKey), free: false, seen: seenKeys(game) });
+    } catch (e) { res = null; }
+    const a = res && res.actions ? res.actions.map((x) => keyToAct(x.key, pool)).find((x) => x.m) : null;
+    return a ? a.m : null;
+  }
   async function engineTurn() {
     const game = G, s = live(), legal = G.legal, t0 = performance.now();
     // In a bot match each side has its own engine and level.
@@ -3859,9 +3897,16 @@
     renderGame();
     const E = await engineByKind(P.engine);
     if (game !== G || live() !== s || G.over) return;
-    if (!E) { ui.thinking = false; renderGame(); toast('The engine could not be started. Reload the page.'); return; }
     const banned = G.banned[G.states.length - 1] || []; // moves the player has vetoed here
     const pool = kingSafety(game, s, banned.length ? legal.filter((m) => banned.indexOf(moveKey(m)) < 0) : legal);
+    if (!E) {
+      // no engine at all (it did not start): the app's own search plays, the game goes on
+      const m = await brainFallback(game, s, pool, bot);
+      if (game !== G || live() !== s || G.over) return;
+      ui.thinking = false;
+      applyMove(m || pool[Math.floor(Math.random() * pool.length)]);
+      return;
+    }
     let move = null;
     // a weak bot's blind move: in Dice Chess only to start a turn, never in the middle of one (see diceBotPick)
     if (bot.random && Math.random() < bot.random && !(newDice(game.cfg) && !diceTurnStart(s))) move = pool[Math.floor(Math.random() * pool.length)];
@@ -3902,15 +3947,19 @@
       const options = Object.assign(variantOpts(game, E, P.engine), strength(bot, E, fairy));
       if (bot.style) move = await styledMove(game, s, pool, bot, E, go, options);
       if (game !== G || live() !== s || G.over) return;
+      let r = null;
       if (!move) {
         // On the standard rules with power-ups this engine is blind to them, so its verdict stays off the eval bar.
-        const r = await E.search({ position: G.B.position(s, G.log), go: go, options: options, onInfo: (i) => { if (game === G && live() === s && !brainGame(game.B, game.cfg)) setEval(i, s.turn); } });
-        if (game !== G || live() !== s || G.over || r.cancelled) return;
-        move = r.best && G.B.find(pool, r.best);
+        r = await botSearch(E, { position: G.B.position(s, G.log), go: go, options: options, onInfo: (i) => { if (game === G && live() === s && !brainGame(game.B, game.cfg)) setEval(i, s.turn); } });
+        if (game !== G || live() !== s || G.over || (r && r.cancelled)) return;
+        move = r && r.best && G.B.find(pool, r.best);
       }
       if (!move) {
-        console.warn('The engine gave no usable move for', G.B.fen(s), r.best);
-        move = pool[Math.floor(Math.random() * pool.length)];
+        // no engine (dead even after a fresh worker): the app's own search plays this move; else a legal move it is
+        if (!r) move = await brainFallback(game, s, pool, bot);
+        else console.warn('The engine gave no usable move for', G.B.fen(s), r.best);
+        if (game !== G || live() !== s || G.over) return;
+        if (!move) move = pool[Math.floor(Math.random() * pool.length)];
       }
     }
     const wait = 450 - (performance.now() - t0);
@@ -3953,7 +4002,7 @@
     engineFor(game).then((E) => {
       if (!E || game !== G || live() !== s || G.over) return null;
       const options = Object.assign(variantOpts(game, E), FULL);
-      return E.search({ position: position, go: go, options: options, onInfo: (i) => { if (game === G && live() === s) setEval(i, s.turn); } });
+      return E.search({ position: position, go: go, options: options, onInfo: (i) => { if (game === G && live() === s) setEval(i, s.turn); } }).catch(() => null);
     }).then((r) => {
       if (!r || r.cancelled || game !== G || live() !== s) return;
       G.analysis = { state: s, best: r.best };
@@ -4159,8 +4208,8 @@
           const r = await E.search({
             position: 'fen ' + game.B.fen(s), go: 'movetime ' + (every ? Math.round(reviewMs() * 1.5) + ' searchmoves ' + every.join(' ') : reviewMs() + (only ? ' searchmoves ' + only.join(' ') : '')),
             options: Object.assign(variantOpts(game, E), FULL, { MultiPV: every ? Math.max(2, Math.min(every.length, 60)) : 2 })
-          });
-          if (rv !== my || G !== game || r.cancelled) { if (rv === my) { rv = null; renderReview(); } return; }
+          }).catch(() => null); // a lost engine ends the review like a cancelled one
+          if (rv !== my || G !== game || !r || r.cancelled) { if (rv === my) { rv = null; renderReview(); } return; }
           let l1 = r.lines[1] || { score: r.score, pv: r.pv }, l2 = r.lines[2];
           if (every) {
             rec.moveEvs = {}; rec.allowed = only || []; rec.nAll = every.length;
@@ -4738,7 +4787,7 @@
     engineFor(game).then((E) => {
       if (!E || rv !== my || my.trial !== tr) return null;
       return E.search({ position: 'fen ' + G.B.fen(n), go: 'movetime 900' + (only ? ' searchmoves ' + only.join(' ') : ''), options: Object.assign(variantOpts(game, E), FULL) });
-    }).then((r) => { if (r && !r.cancelled) done(evWhite(r.score, n.turn) || rec.ev); });
+    }).then((r) => { if (r && !r.cancelled) done(evWhite(r.score, n.turn) || rec.ev); }, () => done(rec.ev));
   }
   // Moves on the board go to the game, or to the review's side board.
   /* The Shotgun King in a normal game plays as in the Game Mode: select it, the cone follows the mouse, a click on a
@@ -5005,7 +5054,7 @@
           if (rank === 1) A.depth = entry.depth;
           if (!aTimer) aTimer = setTimeout(() => { aTimer = 0; if (A === my && ui.tab === 'analysis') { renderLines(); renderEval(); renderArrows(); } }, 220);
         }
-      }).then(() => { if (A === my && A.cur === node) { A.searching = false; renderLines(); } });
+      }).then(() => { if (A === my && A.cur === node) { A.searching = false; renderLines(); } }, () => { if (A === my && A.cur === node) { A.searching = false; renderLines(); } });
     });
   }
   function aPvSan(ucis) {
@@ -6661,7 +6710,7 @@
     const big = (tab, img, name, line, stat) => '<button class="gm-big" data-gmtab="' + tab + '"><i class="gm-art" style="background-image:' + img + '"></i><span class="gm-txt"><b>' + name + '</b><span>' + line + '</span></span><em>' + stat + '</em></button>';
     const tile = (tab, name, stat) => '<button class="gm-tile" data-gmtab="' + tab + '"><i class="gm-ic">' + GM_ICON[tab] + '</i><b>' + name + '</b><span>' + stat + '</span></button>';
     let html = '<div class="gm-home">';
-    if (RM) html += '<h3 class="gm-cat">Adventure</h3>' + big('realm', 'url(' + pieceUrl('K') + ')', 'The Ninth Rank', 'A king alone on a world-sized board, in 3D', realmData() ? (realmData().over ? 'Won' : RM.REGIONS[RM.regionOf(realmData().p.x, realmData().p.y)].name) : 'New');
+    if (RM) html += '<h3 class="gm-cat">Adventure</h3>' + big('realm', 'url(' + pieceUrl('K') + ')', 'The Ninth Rank', 'A king alone on a world-sized board, in 3D', realmData() && realmData().seed ? (realmData().over ? 'Rank ' + (realmData().rank || 1) + ' won' : (realmData().where || 'Rank ' + (realmData().rank || 1))) : 'New');
     html += '<h3 class="gm-cat">Runs</h3>';
     html += big('run', 'url(pieces/fairy/w_wyrm.svg)', 'Ouroboros King', 'Grow an army, stage by stage', ouroRun() ? (ouroRun().inf ? 'Infinity ' + ouroRun().inf.level : 'Act ' + Math.min(4, ouroRun().act + 1)) : MS.runs.best ? 'Best ' + MS.runs.best : '');
     html += big('sk', 'url(pieces/fairy/b_shotgunking.svg)', 'Shotgun King', 'One king, one shotgun', skr && skr.phase !== 'lost' && skr.phase !== 'won' ? 'Floor ' + Math.min(skr.floor, 12) : 'Rank ' + Math.min(skUi.rank, sk.maxRank));
@@ -8276,17 +8325,22 @@
     clearTimeout(realmSaveT);
     realmSaveT = setTimeout(() => { saveModes(); }, 300);
   }
-  function realmOpen(fresh) {
+  // what the King keeps between worlds (experience, skills, the rank reached) lives in the save as meta
+  const realmMeta = () => (MS.realm && MS.realm.meta) || (realmS && realmS.meta) || null;
+  function realmOpen(fresh, opts) {
     if (!RM || typeof RealmView === 'undefined' || typeof THREE === 'undefined') { toast('The Ninth Rank could not load its 3D library'); return; }
-    if (fresh || !MS.realm) realmS = RM.fresh(fresh ? undefined : (MS.realm && MS.realm.seed));
-    else { realmS = RM.fromSave(MS.realm) || RM.fresh(); }
+    opts = opts || {};
+    const meta = realmMeta() || RM.skills.freshMeta();
+    if (fresh || !MS.realm) realmS = RM.fresh({ rank: opts.rank || 1, meta: meta, carry: opts.carry });
+    else { realmS = RM.fromSave(MS.realm) || RM.fresh({ rank: 1, meta: meta }); }
     const ov = $('#realmOverlay');
     ov.classList.add('on');
     document.body.classList.add('realm-on');
     const hooks = {
       el: ov, touch: !!(window.PWA && PWA.touch), energy: energyMode, pieceUrl: pieceUrl,
       snd: (k, d) => snd(k, d), save: realmSave, music: (mood) => { realmMood = mood; updateMusic(); },
-      exit: realmClose, newWorld: () => { realmClose(); realmOpen(true); }
+      exit: realmClose, newWorld: () => { realmClose(); realmOpen(true); },
+      nextRank: () => { const S = realmS, carry = { ess: Object.assign({}, S.p.ess), maxHearts: S.p.maxHearts }, rank = S.rank + 1; S.meta.rank = rank; realmClose(); MS.realm = { meta: S.meta }; realmOpen(true, { rank: rank, carry: carry }); }
     };
     realmView = RealmView.open(realmS, hooks);
     realmSave();
@@ -8305,22 +8359,25 @@
   function realmCard() {
     if (!RM) return '<section class="gm-card"><p>The Ninth Rank did not load.</p></section>';
     const d = realmData();
-    let html = '<section class="gm-card realm-card"><div class="gm-head"><h2>The Ninth Rank</h2>' + (d ? '<div class="gm-credits"><b>' + (d.p.shards || 0) + '/' + RM.SHARDS_NEEDED + '</b><span>shards</span></div>' : '') + '</div>';
-    html += '<p class="realm-intro">A king alone on a board the size of a kingdom. The world moves when you move. Take a piece and move as it moves. Seven wardens, five crown shards, one gate, and the Grand Queen beyond it.</p>';
-    if (d && !d.over) {
-      const reg = RM.REGIONS[RM.regionOf(d.p.x, d.p.y)];
-      html += '<div class="realm-state"><b>' + reg.name + '</b><span>Move ' + d.turn + ', ' + d.p.hearts + ' of ' + d.p.maxHearts + ' hearts, ' + d.p.kills + ' pieces taken' + (d.p.deaths ? ', ' + d.p.deaths + (d.p.deaths === 1 ? ' fall' : ' falls') : '') + '.</span></div>';
+    const meta = realmMeta(), SKL = RM.skills, lvl = meta ? SKL.levelOf(meta.xp || 0) : 0;
+    const old = d && d.v !== 2; // a world from before the skill tree: it cannot come back
+    let html = '<section class="gm-card realm-card"><div class="gm-head"><h2>The Ninth Rank</h2>' + (d && !old ? '<div class="gm-credits"><b>' + (d.p.shards || 0) + '/' + RM.SHARDS_NEEDED + '</b><span>shards</span></div>' : '') + '</div>';
+    html += '<p class="realm-intro">A king alone on a board the size of a kingdom. The world moves when you move. Take a piece and move as it moves. Camps, patrols and raids; the cold, the ice; experience and a skill tree that stays with you. Seven wardens, five crown shards, one gate, and beyond the Grand Queen the next rank.</p>';
+    if (meta && (meta.xp || meta.worlds > 1)) html += '<div class="realm-state"><b>Level ' + lvl + (meta.bestRank > 1 ? ', rank ' + meta.bestRank + ' reached' : '') + '</b><span>' + (meta.xp || 0) + ' experience, ' + SKL.spent(meta) + ' skills taken' + (SKL.pointsLeft(meta) ? ', ' + SKL.pointsLeft(meta) + ' points to spend' : '') + ', ' + (meta.kills || 0) + ' pieces taken in all.</span></div>';
+    if (d && !old && !d.over) {
+      html += '<div class="realm-state"><b>' + (d.where || '') + '</b><span>' + (d.kindName || '') + ', rank ' + (d.rank || 1) + '. Move ' + d.turn + ', ' + d.p.hearts + ' of ' + d.p.maxHearts + ' hearts, ' + d.p.kills + ' pieces taken' + (d.p.deaths ? ', ' + d.p.deaths + (d.p.deaths === 1 ? ' fall' : ' falls') : '') + '.</span></div>';
       html += '<div class="gm-row"><button class="btn green" data-gm="realmgo">Continue</button><button class="btn" data-gm="realmnew">A new world</button></div>';
-    } else if (d && d.over) {
-      html += '<div class="sk-end won"><b>The Ninth Rank is yours.</b><span>' + d.over.turn + ' moves, ' + d.over.kills + ' pieces taken, ' + d.over.deaths + (d.over.deaths === 1 ? ' fall.' : ' falls.') + '</span></div>' +
-        '<div class="gm-row"><button class="btn green" data-gm="realmgo">Walk the world on</button><button class="btn" data-gm="realmnew">A new world</button></div>';
-    } else html += '<button class="btn green gm-wide" data-gm="realmgo">Begin</button>';
-    html += '<ul class="crown-help realm-help"><li>Click or tap a lit square to move. WASD or the arrows step as the King.</li><li>1 to 5 pick a form, Space waits a turn, V looks through the King\'s eyes, M opens the map.</li><li>Drag to turn the camera, the wheel zooms. Esc leaves; the world is saved as you go.</li></ul>';
+    } else if (d && !old && d.over) {
+      html += '<div class="sk-end won"><b>Rank ' + (d.rank || 1) + ' is yours.</b><span>' + d.over.turn + ' moves, ' + d.over.kills + ' pieces taken, ' + d.over.deaths + (d.over.deaths === 1 ? ' fall.' : ' falls.') + '</span></div>' +
+        '<div class="gm-row"><button class="btn green" data-gm="realmnext">Rank ' + ((d.rank || 1) + 1) + '</button><button class="btn" data-gm="realmgo">Walk the world on</button><button class="btn" data-gm="realmnew">A new world</button></div>';
+    } else html += (old ? '<p class="realm-intro">The world you walked before the skill tree cannot be loaded. A new one begins.</p>' : '') + '<button class="btn green gm-wide" data-gm="realmgo">Begin</button>';
+    html += '<ul class="crown-help realm-help"><li>Click or tap a lit square to move. WASD or the arrows step as the King; on a phone, the pad.</li><li>1 to 5 pick a form, Space waits a turn, K opens the skill tree, V looks through the King\'s eyes, M opens the map.</li><li>Drag to turn the camera, the wheel zooms. Esc leaves; the world is saved as you go.</li></ul>';
     return html + '</section>';
   }
   function realmAct(k) {
-    if (k === 'realmgo') { realmOpen(false); return true; }
-    if (k === 'realmnew') { if (!MS.realm || confirm('Leave this world and begin a new one? The old one is gone for good.')) { MS.realm = null; realmOpen(true); } return true; }
+    if (k === 'realmgo') { if (MS.realm && MS.realm.v !== 2) { const m = MS.realm.meta || null; MS.realm = m ? { meta: m } : null; } realmOpen(false); return true; }
+    if (k === 'realmnext') { const d = MS.realm; if (!d || !d.over) return true; const m = d.meta || RM.skills.freshMeta(); m.rank = (d.rank || 1) + 1; MS.realm = { meta: m }; realmOpen(true, { rank: m.rank, carry: { ess: d.p.ess, maxHearts: d.p.maxHearts } }); return true; }
+    if (k === 'realmnew') { if (!MS.realm || !MS.realm.seed || confirm('Leave this world and begin a new one? The old one is gone for good. Your level and skills stay.')) { const m = realmMeta(); MS.realm = m ? { meta: m } : null; realmOpen(true); } return true; }
     return false;
   }
   function wireModes(box) {

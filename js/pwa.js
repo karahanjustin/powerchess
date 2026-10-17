@@ -108,13 +108,17 @@
       });
     }).catch(function (e) { console.warn('service worker', e); });
     root.navigator.serviceWorker.addEventListener('controllerchange', function () { if (PWA.updated) swapped = true; });
-    // the first visit: the worker is not in charge yet, so the page is not isolated. Once it is, reload once.
+    /* the first visit: the worker is not in charge yet, so the page is not isolated. Once it is, reload once.
+       Once only: the mark is kept in sessionStorage and in window.name (which survives a reload even where storage
+       is refused), so a browser that never isolates the page does not reload it over and over. */
     if (!root.crossOriginIsolated) {
       var once = false;
       try { once = sessionStorage.getItem('pc_coi') === '1'; } catch (e) { /* no storage */ }
+      try { once = once || /\bpc_coi\b/.test(root.name || ''); } catch (e) { /* no name */ }
       if (!once) root.navigator.serviceWorker.ready.then(function () {
         if (root.crossOriginIsolated) return;
         try { sessionStorage.setItem('pc_coi', '1'); } catch (e) { /* no storage */ }
+        try { root.name = (root.name || '') + ' pc_coi'; } catch (e) { /* no name */ }
         root.location.reload();
       });
     }

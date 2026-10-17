@@ -388,6 +388,67 @@ body.realm-on{overflow:hidden}
 .rh-endbox h2{margin:0 0 10px;font:600 40px Georgia,serif;font-variant:small-caps;letter-spacing:.1em;color:#f0c050}
 .rh-endbox p{font:italic 16px/1.5 Georgia,serif;color:#e8dfc8}
 .rh-stats{font-style:normal!important;color:#bdb8ad!important;font-size:14px!important}
+.rh-left{display:flex;flex-direction:column;gap:5px;align-items:flex-start}
+.rh-warm{display:none;position:relative;width:150px;height:16px;border-radius:8px;background:rgba(8,8,12,.55);overflow:hidden;box-shadow:inset 0 0 0 1px rgba(159,224,255,.35)}
+.rh-warm.on{display:block}
+.rh-warm i{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,#4ad0ff,#ffb24a);transition:width .4s}
+.rh-warm.low i{background:linear-gradient(90deg,#4ad0ff,#7fb8ff)}
+.rh-warm.frozen{animation:rhpulse .9s ease-in-out infinite;box-shadow:inset 0 0 0 1px #9fe0ff}
+.rh-warm b{position:absolute;inset:0;font:700 10.5px/16px system-ui;letter-spacing:.06em;text-transform:uppercase;text-align:center;color:#fff;text-shadow:0 1px 2px #000}
+.rh-xp{position:relative;width:150px;height:14px;border-radius:7px;background:rgba(8,8,12,.55);overflow:hidden;box-shadow:inset 0 0 0 1px rgba(240,192,80,.3)}
+.rh-xp i{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,#b08030,#f0c050);transition:width .5s}
+.rh-xp b{position:absolute;inset:0;font:700 10px/14px system-ui;text-align:center;color:#fff;text-shadow:0 1px 2px #000}
+.rh-weather{display:none;padding:3px 10px;border-radius:999px;background:rgba(159,224,255,.22);font:700 11px/1 system-ui;letter-spacing:.08em;text-transform:uppercase;color:#e8f4ff}
+.rh-weather.on{display:block}
+.rh-bounties{margin-top:6px;display:flex;flex-direction:column;gap:3px;align-items:flex-end;max-width:220px}
+.rh-bhead{font:700 10px/1 system-ui;letter-spacing:.1em;text-transform:uppercase;color:#bdb8ad;margin-bottom:2px}
+.rh-bounty{display:flex;gap:8px;align-items:center;padding:3px 8px;border-radius:6px;background:rgba(8,8,12,.5);font-size:12px}
+.rh-bounty b{font-weight:600;color:#f3e6c4}.rh-bounty span{color:#f0c050;font-weight:700;font-variant-numeric:tabular-nums}
+.rh-frost{position:absolute;inset:0;background:radial-gradient(ellipse at center,rgba(200,235,255,0) 35%,rgba(200,235,255,.9) 100%);opacity:0;transition:opacity .6s;pointer-events:none;mix-blend-mode:screen}
+.rh-float{position:absolute;transform:translate(-50%,-50%);font:800 15px system-ui;color:#fff;text-shadow:0 1px 3px #000,0 0 10px rgba(0,0,0,.6);pointer-events:none;white-space:nowrap}
+.rh-float.xp{color:#ffe070}.rh-float.gold{color:#f0c050;font-size:17px}.rh-float.red{color:#ff6a6a}
+.rh-acts button.badge{position:relative;border-color:#f0c050;color:#ffe070}
+.rh-acts button.badge::after{content:attr(data-n);position:absolute;top:-7px;right:-7px;min-width:18px;height:18px;border-radius:9px;background:#f0c050;color:#1a1408;font:800 11px/18px system-ui;text-align:center;padding:0 4px}
+.rh-acts button.pulse{animation:rhpulse .9s ease-in-out infinite}
+.rh-acts button:disabled{opacity:.45;cursor:default}
+.rh-forms.transmute .rh-form{border-color:#d060ff;box-shadow:0 0 12px rgba(208,96,255,.5)}
+.rh-maptitle{margin:0 0 8px;font:600 15px Georgia,serif;font-variant:small-caps;letter-spacing:.06em;color:#f3e6c4;text-align:center}
+.rh-skills{display:none;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(96vw,760px);max-height:92vh;overflow:auto;padding:18px 20px;border-radius:12px;background:rgba(10,10,16,.95);box-shadow:inset 0 0 0 1px rgba(240,192,80,.4),0 10px 40px rgba(0,0,0,.7);pointer-events:auto}
+.rh-skills.on{display:block}
+.rh-skhead{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:12px}
+.rh-skhead h3{margin:0;font:600 24px Georgia,serif;font-variant:small-caps;letter-spacing:.08em;color:#f3e6c4}
+.rh-skhead div{font-size:13px;color:#ddd6c8;flex:1}.rh-skhead div b{color:#ffe070}
+.rh-x{height:32px;padding:0 12px;border-radius:7px;border:1px solid rgba(255,255,255,.2);background:rgba(40,40,56,.6);color:#eee;font:600 13px system-ui;cursor:pointer}
+.rh-skcols{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.rh-skcol{display:flex;flex-direction:column;gap:6px;padding:10px;border-radius:10px;background:rgba(255,255,255,.04)}
+.rh-skcol h4{margin:0 0 4px;font:600 15px Georgia,serif;font-variant:small-caps;letter-spacing:.08em;text-align:center}
+.rh-skcol.crown h4{color:#ffb070}.rh-skcol.essence h4{color:#9fe0ff}.rh-skcol.dominion h4{color:#b8f090}
+.rh-node{display:flex;justify-content:space-between;align-items:center;gap:6px;padding:7px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.12);background:rgba(20,20,28,.8);color:#ddd;font:600 12.5px system-ui;cursor:pointer;text-align:left;margin-left:calc((var(--tier) - 1) * 6px)}
+.rh-node span{font-size:11px;color:#9a968c;font-variant-numeric:tabular-nums}
+.rh-node.off{opacity:.45}
+.rh-node.can{border-color:#f0c050;box-shadow:0 0 10px rgba(240,192,80,.25)}
+.rh-node.on{border-color:rgba(240,192,80,.6);background:rgba(60,45,15,.6);color:#ffe9b0}
+.rh-node.full{border-color:#f0c050;background:rgba(80,60,20,.75);color:#fff}
+.rh-node.sel{outline:2px solid #fff}
+.rh-skfoot{margin-top:12px;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.05);min-height:64px;font-size:13.5px;color:#ddd6c8;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+.rh-skfoot b{font-size:16px;color:#f3e6c4}.rh-skbr{font-size:12px;color:#9a968c}.rh-skfoot p{margin:0;flex-basis:100%;line-height:1.5}
+.rh-sknote{color:#f0c050!important;font-size:12.5px!important}
+.rh-skfoot .btn{height:36px;width:auto;padding:0 18px;font-size:14px}
+.rh-reset{margin-left:auto;opacity:.9}.rh-reset:disabled{opacity:.35}
+.rh-dpad{position:absolute;left:12px;bottom:112px;display:grid;grid-template-columns:repeat(3,52px);grid-template-rows:repeat(3,52px);gap:4px;pointer-events:none}
+.rh-dpad button{pointer-events:auto;border-radius:10px;border:1px solid rgba(255,255,255,.18);background:rgba(10,10,16,.55);color:#eee;font:600 12px system-ui;position:relative;touch-action:none}
+.rh-dpad button:active{background:rgba(240,192,80,.5)}
+.rh-dpad button[data-d]::after{content:'';position:absolute;left:50%;top:50%;width:14px;height:14px;border-right:3px solid #f0c050;border-top:3px solid #f0c050;transform:translate(-50%,-50%) rotate(var(--r,0deg))}
+.rh-dpad button[data-d="0,1"]::after{--r:-45deg}.rh-dpad button[data-d="1,1"]::after{--r:0deg}.rh-dpad button[data-d="1,0"]::after{--r:45deg}.rh-dpad button[data-d="1,-1"]::after{--r:90deg}.rh-dpad button[data-d="0,-1"]::after{--r:135deg}.rh-dpad button[data-d="-1,-1"]::after{--r:180deg}.rh-dpad button[data-d="-1,0"]::after{--r:225deg}.rh-dpad button[data-d="-1,1"]::after{--r:270deg}
+.realm-hud.touch .rh-bottom{flex-direction:column;align-items:stretch;gap:8px;left:10px;right:10px;bottom:10px}
+.realm-hud.touch .rh-forms{justify-content:flex-end}
+.realm-hud.touch .rh-acts{justify-content:flex-end}
+.realm-hud.touch .rh-acts button{height:38px;padding:0 11px;font-size:13px}
+.realm-hud.touch .rh-radar{width:110px;height:110px;bottom:auto;top:150px;right:10px}
+.realm-hud.touch .rh-bounties{display:none}
+.realm-hud.touch .rh-msgs{bottom:190px}
+.realm-hud.touch .rh-float{font-size:17px}
+@media (max-width:760px){.rh-skcols{grid-template-columns:1fr}.rh-left{gap:4px}.rh-warm,.rh-xp{width:120px}.rh-right{font-size:12px}.rh-region{font-size:13px}}
 .realm-card .gm-head h2{font-family:Georgia,serif;font-variant:small-caps;letter-spacing:.04em}
 .realm-intro{font:italic 15px/1.5 Georgia,serif;color:#d8d1c0;margin:6px 0 10px}
 .realm-state{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-radius:8px;background:#2a2926;margin:6px 0}
@@ -1836,8 +1897,11 @@ body.touch .keyskeys,body.touch .keyshead{display:none}
 <script src="js/puzzles.js"></script>
 <script src="js/brain.js"></script>
 <script src="js/three.min.js"></script>
+<script src="js/realm_gen.js"></script>
+<script src="js/realm_skills.js"></script>
 <script src="js/realm.js"></script>
 <script src="js/realm_models.js"></script>
+<script src="js/realm_fx.js"></script>
 <script src="js/realm_view.js"></script>
 <script src="js/ouro.js"></script>
 <script src="js/modes.js"></script>
