@@ -182,7 +182,7 @@ $('adjGo').onclick = async () => {
     loadBoardArray(res.board, sideToMove());
     show('boardScreen');
     render();
-    toast('Check the position. Use Edit to fix a square.');
+    toast('Check the position. Edit fixes a square or turns the board.');
   } catch (e) {
     console.error(e); toast('Recognition failed: ' + e.message, 5000);
   }
@@ -279,7 +279,7 @@ function setRaw(r) {
 }
 // the position being shown, as a raw record (for the setup panel)
 function currentRaw() {
-  if (raw && problems(raw).length) return raw;
+  if (raw && (editing || problems(raw).length)) return raw;
   return rawFromFen(game().fen());
 }
 
@@ -302,7 +302,7 @@ const pieceImg = p => 'pieces/' + (p === p.toUpperCase() ? 'w' : 'b') + p.toUppe
 let selected = -1;
 function render() {
   const g = game();
-  const showRaw = raw && problems(raw).length;
+  const showRaw = raw && (editing || problems(raw).length);
   const b = showRaw ? raw.b : boardArray(g.fen());
   const last = !showRaw && ply > 0 ? line[ply - 1] : null;
   const legalTo = new Set();
@@ -353,11 +353,11 @@ function renderSetup() {
     b.disabled = !poss.includes(c);
     b.classList.toggle('on', poss.includes(c) && r.castle.includes(c));
   });
-  const errs = raw && problems(raw).length ? problems(raw) : [];
+  const errs = raw && (editing || problems(raw).length) ? problems(raw) : [];
   $('posWarn').style.display = errs.length ? '' : 'none';
   $('posWarnText').textContent = errs.join('. ') + (errs.length ? '. Use Edit to fix the position.' : '');
-  $('bestBtn').disabled = !!errs.length;
-  $('fenIn').value = errs.length ? rawFen(raw) : game().fen();
+  $('bestBtn').disabled = !!errs.length || editing;
+  $('fenIn').value = raw && (editing || errs.length) ? rawFen(raw) : game().fen();
 }
 
 function renderMoves() {
@@ -497,11 +497,12 @@ for (const p of ['K', 'Q', 'R', 'B', 'N', 'P', 'x', 'k', 'q', 'r', 'b', 'n', 'p'
 // put the remove button in the 7th column, spanning both rows
 pal.querySelector('[data-p="x"]').style.gridColumn = '7'; pal.querySelector('[data-p="x"]').style.gridRow = '1 / span 2';
 function setEditing(on) {
+  if (on && !editing) raw = currentRaw();
   editing = on;
   $('editPanel').style.display = on ? '' : 'none';
   $('editBtn').classList.toggle('on', on);
   pal.classList.toggle('show', on);
-  if (on) { raw = currentRaw(); engine.stop(); analysis = null; pal.querySelector(`[data-p="${editPiece}"]`).click(); }
+  if (on) { engine.stop(); analysis = null; pal.querySelector(`[data-p="${editPiece}"]`).click(); }
   else if (raw) setRaw(raw);
   selected = -1;
   render();
@@ -517,7 +518,12 @@ $('editBtn').onclick = () => setEditing(!editing);
 $('editDone').onclick = () => setEditing(false);
 $('startPos').onclick = () => { raw = rawFromFen(START); render(); };
 $('clearPos').onclick = () => { raw = { b: new Array(64).fill(''), turn: 'w', castle: '' }; render(); };
-$('rotRecog').onclick = () => {
+function turn(times) {
+  for (let i = 0; i < times; i++) turn90();
+}
+$('rot180').onclick = () => turn(2);
+$('rotRecog').onclick = () => turn(1);
+function turn90() {
   const r = raw || currentRaw();
   const nb = new Array(64).fill('');
   for (let sq = 0; sq < 64; sq++) { const f = sq % 8, rk = (sq / 8) | 0; nb[(7 - f) * 8 + rk] = r.b[sq]; }

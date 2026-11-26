@@ -17,11 +17,13 @@ and Stockfish shows the best move and the evaluation. Open `<site>/scan/` on the
 Home screen" in the browser menu. After the first visit it works without a network: every file, the recognition
 models and the engine are cached by `scan/sw.js`.
 
+- Two modes: **Screen** (screenshots and photos of a chess app or website) and **Real board** (a physical set)
 - Camera (or a photo from the gallery) → board corners found automatically, adjustable by dragging → pieces recognised
 - Side to move and castling rights can be set; Edit fixes any square, turns the board, or sets up a position by hand
 - Moves for either side on the board, Back/Forward, best move with up to five lines, live analysis, FEN in and out
-- Recognition models: `scan/models/*.onnx` (MobileNetV3, trained on ChessReD and the chesscog rendered set), run with
-  ONNX Runtime Web (MIT); training code in `scan/tools/train/`
+- Recognition models: `scan/models/*.onnx`, MobileNetV3 based, run with ONNX Runtime Web (MIT):
+  `corners` (board corners, real photos + synthetic screens), `pieces` (real sets, ChessReD + chesscog),
+  `pieces2d` (digital boards, synthetic boards drawn with the Lichess piece sets). Training code in `scan/tools/train/`
 - After changing a file of the app, run `python3 scan/tools/stamp_sw.py` so phones pick up the new version
 
 Datasets used for training: ChessReD (Masouris & van Gemert, CC BY 4.0, https://data.4tu.nl/datasets/99b5c721-280b-450b-b058-b2900b69a90f),
