@@ -12,7 +12,7 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem('scan.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem('scan.' + k, JSON.stringify(v)); } catch (e) { /* private mode */ } }
 };
-const settings = Object.assign({ think: 2000, multipv: 3, arrow: 1 }, store.get('settings', {}));
+const settings = Object.assign({ think: 2000, multipv: 3, arrow: 1, mode: 'screen' }, store.get('settings', {}));
 function saveSettings() { store.set('settings', settings); }
 
 /* ---------------- ui helpers ---------------- */
@@ -83,6 +83,7 @@ async function gotImage(canvas) {
   busy(true, 'Finding the board…');
   try {
     detected = await V.detectCorners(photo);
+    if (detected && settings.mode === 'screen') detected = V.refineCorners(photo, detected);
   } catch (e) {
     console.error(e); detected = null;
     toast('Recognition failed to load: ' + e.message, 5000);
@@ -175,7 +176,7 @@ $('adjGo').onclick = async () => {
   busy(true, 'Reading the pieces…');
   try {
     const cw = V.orderClockwise(corners);
-    const probs = await V.classify(photo, cw);
+    const probs = await V.classify(photo, cw, settings.mode);
     const luma = V.squareLuma(photo, cw);
     const res = V.decide(probs, luma);
     lastRecog = { probs, luma, rot: res.rot, corners: cw };
@@ -669,7 +670,14 @@ $('arrowSel').onchange = e => { settings.arrow = +e.target.value; saveSettings()
 render();
 engine.start().catch(() => {});
 // load the recogniser in the background so the first photo is quick
-setTimeout(() => V.loadModels().catch(e => console.warn('models', e)), 300);
+setTimeout(() => V.loadModels(settings.mode).catch(e => console.warn('models', e)), 300);
+function renderMode() { document.querySelectorAll('#modeSeg button').forEach(b => b.classList.toggle('on', b.dataset.m === settings.mode)); }
+document.querySelectorAll('#modeSeg button').forEach(b => b.onclick = () => {
+  settings.mode = b.dataset.m; saveSettings(); renderMode();
+  V.loadModels(settings.mode).catch(() => {});
+  toast(settings.mode === 'screen' ? 'Screen mode: screenshots and photos of a chess app' : 'Real board mode: photos of a physical chess set');
+});
+renderMode();
 const q = new URLSearchParams(location.search);
 if (q.get('board') != null) show('boardScreen'); else show('camScreen');
 window.__scan = { V, game, engine, gotImage: c => gotImage(c), state: () => ({ startFen, line, ply, raw }) };

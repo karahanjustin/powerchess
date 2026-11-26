@@ -7,7 +7,7 @@ torch.set_num_threads(int(__import__("os").environ.get("NT","4")))
 DATA = '/home/user/data/prep/'
 S, OS = 320, 80
 recs = []
-for f in ('chessred.json', 'chesscog.json'):
+for f in ('chessred.json', 'chesscog.json', 'synth.json'):
     try:
         recs += json.load(open(DATA + f))
     except FileNotFoundError:
@@ -118,7 +118,10 @@ def peaks(hm, k=4):
 if __name__ == '__main__':
     EPOCHS = int(sys.argv[1]) if len(sys.argv) > 1 else 30
     net = Net()
-    dl = torch.utils.data.DataLoader(DS(train, True), batch_size=12, shuffle=True, num_workers=3, drop_last=True, persistent_workers=True)
+    real = sum(r['src'] != 'synth' for r in train); syn = len(train) - real
+    wts = [0.5 / syn if r['src'] == 'synth' else 0.5 / real for r in train]
+    sampler = torch.utils.data.WeightedRandomSampler(wts, num_samples=2 * real, replacement=True)
+    dl = torch.utils.data.DataLoader(DS(train, True), batch_size=12, sampler=sampler, num_workers=3, drop_last=True, persistent_workers=True)
     vdl = torch.utils.data.DataLoader(DS(val, False), batch_size=16, num_workers=3)
     opt = torch.optim.AdamW(net.parameters(), lr=1e-3, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=1.5e-3, total_steps=EPOCHS * len(dl), pct_start=0.08)
@@ -144,6 +147,9 @@ if __name__ == '__main__':
                     d = np.sqrt(((c[:, None] - pk[None]) ** 2).sum(-1)).min(1)
                     errs.append(d.max())
         errs = np.array(errs)
+        nsyn = sum(r['src'] == 'synth' for r in val)
+        es = errs[-nsyn:] if nsyn else errs
+        print(f'   synth val: median {np.median(es):.2f}px >8px {(es > 8).mean():.3f}', flush=True)
         score = np.median(errs) + 10 * fails / len(val) + 5 * (errs > 8).mean()
         print(f'== ep {ep} val maxcorner err median {np.median(errs):.2f}px p90 {np.percentile(errs, 90):.2f} >8px {(errs > 8).mean():.3f} fails {fails} ({time.time() - t:.0f}s)', flush=True)
         if score < best:

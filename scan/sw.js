@@ -1,7 +1,7 @@
 /* Chess Scan service worker: everything offline, plus the cross-origin isolation headers so the recogniser may use
    threads. tools/stamp_sw.py writes the version and file list below. */
-var VERSION = '27502010cbbc';
-var FILES = ["./", ".gitignore", "app.js", "engine.js", "engine/stockfish-19-lite-single.js", "engine/stockfish-19-lite-single.wasm", "icons/icon-192.png", "icons/icon-512.png", "icons/icon-maskable-512.png", "index.html", "lib/chess.js", "lib/ort-wasm-simd-threaded.mjs", "lib/ort-wasm-simd-threaded.wasm", "lib/ort.wasm.min.js", "manifest.webmanifest", "models/corners.onnx", "models/pieces.onnx", "pieces/bB.svg", "pieces/bK.svg", "pieces/bN.svg", "pieces/bP.svg", "pieces/bQ.svg", "pieces/bR.svg", "pieces/wB.svg", "pieces/wK.svg", "pieces/wN.svg", "pieces/wP.svg", "pieces/wQ.svg", "pieces/wR.svg", "vision.js"];
+var VERSION = '3fa92b9670a6';
+var FILES = ["./", ".gitignore", "app.js", "engine.js", "engine/stockfish-19-lite-single.js", "engine/stockfish-19-lite-single.wasm", "icons/icon-192.png", "icons/icon-512.png", "icons/icon-maskable-512.png", "index.html", "lib/chess.js", "lib/ort-wasm-simd-threaded.mjs", "lib/ort-wasm-simd-threaded.wasm", "lib/ort.wasm.min.js", "manifest.webmanifest", "models/corners.onnx", "models/pieces.onnx", "models/pieces2d.onnx", "pieces/bB.svg", "pieces/bK.svg", "pieces/bN.svg", "pieces/bP.svg", "pieces/bQ.svg", "pieces/bR.svg", "pieces/wB.svg", "pieces/wK.svg", "pieces/wN.svg", "pieces/wP.svg", "pieces/wQ.svg", "pieces/wR.svg", "vision.js"];
 
 var CACHE = 'chessscan-' + VERSION;
 self.addEventListener('install', function (e) {

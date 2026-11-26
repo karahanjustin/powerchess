@@ -16,6 +16,10 @@ def export(which, out):
         import train_cls
         net = train_cls.model(); net.load_state_dict(torch.load('/home/user/data/cls.pt'))
         x = torch.rand(64, 3, 128, 64) * 255; dyn = {'x': {0: 'n'}, 'y': {0: 'n'}}
+    elif which == 'pieces2d':
+        import train_cls2d
+        net = train_cls2d.model(); net.load_state_dict(torch.load('/home/user/data/cls2d.pt'))
+        x = torch.rand(64, 3, 64, 64) * 255; dyn = {'x': {0: 'n'}, 'y': {0: 'n'}}
     else:
         import train_corner
         net = train_corner.Net(pretrained=False); net.load_state_dict(torch.load('/home/user/data/corner.pt'))

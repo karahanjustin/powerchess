@@ -8,22 +8,26 @@
 /* global ort */
 
 export const WORK = 1024;
-const S = 320, OS = 80, CW = 64, CH = 128;
+const S = 320, OS = 80;
 export const CLASSES = ['', 'P', 'N', 'B', 'R', 'Q', 'K', 'p', 'n', 'b', 'r', 'q', 'k'];
 
-let sessions = null;
-export async function loadModels(onStatus) {
-  if (sessions) return sessions;
-  ort.env.wasm.wasmPaths = new URL('lib/', document.baseURI).href;
-  ort.env.wasm.numThreads = self.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 2) : 1;
-  onStatus && onStatus('Loading recognition models…');
-  const opt = { executionProviders: ['wasm'], graphOptimizationLevel: 'all' };
-  const [corners, pieces] = await Promise.all([
-    ort.InferenceSession.create('models/corners.onnx', opt),
-    ort.InferenceSession.create('models/pieces.onnx', opt)
-  ]);
-  sessions = { corners, pieces };
-  return sessions;
+const sessions = {};
+let configured = false;
+function session(name) {
+  if (!configured) {
+    ort.env.wasm.wasmPaths = new URL('lib/', document.baseURI).href;
+    ort.env.wasm.numThreads = self.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 2) : 1;
+    configured = true;
+  }
+  if (!sessions[name]) {
+    sessions[name] = ort.InferenceSession.create('models/' + name + '.onnx', { executionProviders: ['wasm'], graphOptimizationLevel: 'all' });
+    sessions[name].catch(() => { delete sessions[name]; });
+  }
+  return sessions[name];
+}
+/* mode: 'screen' (digital boards) or 'real' (a physical set) */
+export function loadModels(mode = 'screen') {
+  return Promise.all([session('corners'), session(mode === 'real' ? 'pieces' : 'pieces2d')]);
 }
 
 /* a canvas with the image at WORK px on the long side */
@@ -48,7 +52,7 @@ function toTensorData(imgData, n, w, h, out, offset) {
 
 /* ---------- corners ---------- */
 export async function detectCorners(img) {
-  const { corners: sess } = await loadModels();
+  const sess = await session('corners');
   const w = img.width, h = img.height, s = S / Math.max(w, h);
   const ox = (S - w * s) / 2, oy = (S - h * s) / 2;
   const c = document.createElement('canvas'); c.width = S; c.height = S;
@@ -223,12 +227,29 @@ export function cropBoxes(corners) {
   return boxes;
 }
 
+/* digital boards: the square itself and 10% around it, 64x64 (same as training) */
+export function cropBoxes2d(corners) {
+  const H = homography(BOARD, corners);
+  const boxes = [];
+  for (let sq = 0; sq < 64; sq++) {
+    const f = sq % 8, r = (sq / 8) | 0;
+    const q = [[f, r], [f + 1, r], [f + 1, r + 1], [f, r + 1]].map(([x, y]) => project(H, x, y));
+    const xs = q.map(p => p[0]), ys = q.map(p => p[1]);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    const mx = (x1 - x0) * 0.1, my = (y1 - y0) * 0.1;
+    boxes.push([x0 - mx, y0 - my, x1 + mx, y1 + my]);
+  }
+  return boxes;
+}
+
 /* ---------- pieces ---------- */
 /* corners: clockwise image quad (any start). Returns per image-square class probabilities, with squares indexed
    as if corners[0] were a1 and corners[1] h1. */
-export async function classify(img, corners) {
-  const { pieces: sess } = await loadModels();
-  const boxes = cropBoxes(corners);
+export async function classify(img, corners, mode = 'screen') {
+  const real = mode === 'real';
+  const sess = await session(real ? 'pieces' : 'pieces2d');
+  const CW = 64, CH = real ? 128 : 64;
+  const boxes = real ? cropBoxes(corners) : cropBoxes2d(corners);
   const c = document.createElement('canvas'); c.width = CW; c.height = CH;
   const g = c.getContext('2d', { willReadFrequently: true });
   g.imageSmoothingQuality = 'high';
@@ -236,7 +257,7 @@ export async function classify(img, corners) {
   boxes.forEach(([x0, y0, x1, y1], i) => {
     g.clearRect(0, 0, CW, CH);
     g.fillStyle = '#000'; g.fillRect(0, 0, CW, CH);
-    drawClipped(g, img, x0, y0, x1, y1);
+    drawClipped(g, img, x0, y0, x1, y1, CW, CH);
     toTensorData(g.getImageData(0, 0, CW, CH), 1, CW, CH, data, i * 3 * CW * CH);
   });
   const res = await sess.run({ [sess.inputNames[0]]: new ort.Tensor('float32', data, [64, 3, CH, CW]) });
@@ -251,7 +272,7 @@ export async function classify(img, corners) {
 }
 
 // draw the source box into the whole canvas; parts outside the image stay black (as in training)
-function drawClipped(g, img, x0, y0, x1, y1) {
+function drawClipped(g, img, x0, y0, x1, y1, CW, CH) {
   const W = img.width, H = img.height;
   const sx0 = Math.max(0, x0), sy0 = Math.max(0, y0), sx1 = Math.min(W, x1), sy1 = Math.min(H, y1);
   if (sx1 <= sx0 || sy1 <= sy0) return;
@@ -351,4 +372,50 @@ function fix(probs) {
 export function boardCorners(corners, k) {
   // rotation k: a1 is image corner k, h1 corner k+1, h8 corner k+2, a8 corner k+3
   return [0, 1, 2, 3].map(i => corners[(i + k) % 4]);
+}
+
+/* ---------- screen boards: snap the grid onto the square edges ----------
+   On a digital board every line between two squares is a sharp light/dark edge. The score is the mean contrast
+   across the nine vertical and nine horizontal grid lines; each corner is moved a little at a time while it rises. */
+export function refineCorners(img, corners) {
+  const W = img.width, H = img.height;
+  const d = img.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, W, H).data;
+  const L = new Float32Array(W * H);
+  for (let i = 0; i < W * H; i++) L[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
+  const at = (x, y) => {
+    if (x < 0 || y < 0 || x >= W - 1 || y >= H - 1) return -1;
+    const xi = x | 0, yi = y | 0, fx = x - xi, fy = y - yi, k = yi * W + xi;
+    return L[k] * (1 - fx) * (1 - fy) + L[k + 1] * fx * (1 - fy) + L[k + W] * (1 - fx) * fy + L[k + W + 1] * fx * fy;
+  };
+  const N = 48, E = 0.07;
+  const score = c => {
+    const Hm = homography(BOARD, c);
+    let s = 0, n = 0;
+    for (let i = 1; i < 8; i++) for (let j = 0; j < N; j++) {
+      const t = (j + 0.5) / N * 8;
+      for (const [a, b] of [[[i - E, t], [i + E, t]], [[t, i - E], [t, i + E]]]) {
+        const p = project(Hm, a[0], a[1]), q = project(Hm, b[0], b[1]);
+        const u = at(p[0], p[1]), v = at(q[0], q[1]);
+        if (u < 0 || v < 0) continue;
+        s += Math.abs(u - v); n++;
+      }
+    }
+    return n ? s / n : 0;
+  };
+  let c = corners.map(p => p.slice());
+  let best = score(c);
+  const sqPx = Math.hypot(c[1][0] - c[0][0], c[1][1] - c[0][1]) / 8;
+  for (const step of [0.2, 0.1, 0.05, 0.025, 0.012]) {
+    const st = step * sqPx;
+    let improved = true, rounds = 0;
+    while (improved && rounds++ < 6) {
+      improved = false;
+      for (let k = 0; k < 4; k++) for (let ax = 0; ax < 2; ax++) for (const sgn of [1, -1]) {
+        const t = c.map(p => p.slice()); t[k][ax] += sgn * st;
+        const s = score(t);
+        if (s > best) { best = s; c = t; improved = true; }
+      }
+    }
+  }
+  return c;
 }
