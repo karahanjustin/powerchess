@@ -82,8 +82,7 @@ async function gotImage(canvas) {
   sizeAdj();
   busy(true, 'Finding the board…');
   try {
-    detected = await V.detectCorners(photo);
-    if (detected && settings.mode === 'screen') detected = V.refineCorners(photo, detected);
+    detected = await V.detectCorners(photo, settings.mode);
   } catch (e) {
     console.error(e); detected = null;
     toast('Recognition failed to load: ' + e.message, 5000);
@@ -178,7 +177,7 @@ $('adjGo').onclick = async () => {
     const cw = V.orderClockwise(corners);
     const probs = await V.classify(photo, cw, settings.mode);
     const luma = V.squareLuma(photo, cw);
-    const res = V.decide(probs, luma);
+    const res = V.decide(probs, luma, null, cw);
     lastRecog = { probs, luma, rot: res.rot, corners: cw };
     loadBoardArray(res.board, sideToMove());
     show('boardScreen');

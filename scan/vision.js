@@ -51,7 +51,7 @@ function toTensorData(imgData, n, w, h, out, offset) {
 }
 
 /* ---------- corners ---------- */
-export async function detectCorners(img) {
+export async function detectCorners(img, mode = 'screen') {
   const sess = await session('corners');
   const w = img.width, h = img.height, s = S / Math.max(w, h);
   const ox = (S - w * s) / 2, oy = (S - h * s) / 2;
@@ -66,11 +66,36 @@ export async function detectCorners(img) {
   const out = res[sess.outputNames[0]].data;
   const hm = new Float32Array(OS * OS), mask = new Float32Array(OS * OS);
   for (let i = 0; i < OS * OS; i++) { hm[i] = 1 / (1 + Math.exp(-out[i])); mask[i] = 1 / (1 + Math.exp(-out[OS * OS + i])); }
-  let quad = pickQuad(hm, mask);
-  if (!quad) return null;
-  // heatmap cells -> work image px
-  quad = quad.map(([x, y]) => [((x * S / OS) - ox) / s, ((y * S / OS) - oy) / s]);
-  return orderClockwise(quad);
+  const toImg = q => orderClockwise(q.map(([x, y]) => [((x * S / OS) - ox) / s, ((y * S / OS) - oy) / s]));
+  const quad = pickQuad(hm, mask);
+  if (mode !== 'screen') return quad ? toImg(quad) : null;
+  // screen boards: try several outlines, snap each onto the grid, keep the best fitting one
+  const cands = [];
+  if (quad) cands.push(toImg(quad));
+  for (const q of topQuads(hm, mask, 3)) cands.push(toImg(q));
+  const mq = maskQuad(mask);
+  if (mq) cands.push(toImg(mq));
+  const more = [];
+  for (const q of cands) {
+    // one corner wrong: complete the parallelogram from the other three
+    for (let i = 0; i < 4; i++) {
+      const a = q[(i + 1) % 4], b = q[(i + 2) % 4], c = q[(i + 3) % 4];
+      const t = q.map(p => p.slice()); t[i] = [a[0] + c[0] - b[0], a[1] + c[1] - b[1]];
+      if (convex(t)) more.push(t);
+    }
+    // the square around it (screenshots: boards are upright squares)
+    const xs = q.map(p => p[0]), ys = q.map(p => p[1]);
+    const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+    const side = Math.min(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+    more.push(orderClockwise([[cx - side / 2, cy + side / 2], [cx + side / 2, cy + side / 2], [cx + side / 2, cy - side / 2], [cx - side / 2, cy - side / 2]]));
+  }
+  let best = null;
+  for (const q of cands.concat(more)) {
+    if (area(q) < 400) continue;
+    const r = gridFit(img, q);
+    if (!best || r.score > best.score) best = r;
+  }
+  return best ? orderClockwise(best.corners) : null;
 }
 
 function peaks(hm) {
@@ -161,6 +186,17 @@ function area(q) {
   let s = 0;
   for (let i = 0; i < 4; i++) { const a = q[i], b = q[(i + 1) % 4]; s += a[0] * b[1] - b[0] * a[1]; }
   return Math.abs(s) / 2;
+}
+
+function topQuads(hm, mask, n) {
+  const pk = peaks(hm), all = [];
+  for (let a = 0; a < pk.length; a++) for (let b = a + 1; b < pk.length; b++) for (let c = b + 1; c < pk.length; c++) for (let d = c + 1; d < pk.length; d++) {
+    const q = orderClockwise([pk[a], pk[b], pk[c], pk[d]]);
+    if (!convex(q) || area(q) < 60) continue;
+    all.push([(pk[a][2] + pk[b][2] + pk[c][2] + pk[d][2]) / 4 + 1.5 * iou(q, mask), q.map(p => [p[0], p[1]])]);
+  }
+  all.sort((x, y) => y[0] - x[0]);
+  return all.slice(0, n).map(x => x[1]);
 }
 
 function pickQuad(hm, mask) {
@@ -309,7 +345,7 @@ export function rotIndex(sq, k) {
 }
 
 /* image-square probabilities + luma -> board (array of 64 piece letters, index rank*8+file) with a chosen rotation */
-export function decide(probs, luma, forceRot) {
+export function decide(probs, luma, forceRot, corners) {
   // 1. parity: squares with (f+r) even under k=0 are a1-coloured. Compare their luma on squares that look empty.
   let even = [], odd = [];
   for (let sq = 0; sq < 64; sq++) {
@@ -341,9 +377,11 @@ export function decide(probs, luma, forceRot) {
     });
     return s;
   };
+  // tie-break: the board drawn the usual way, a1 at the bottom left of the picture
+  const prior = k => corners ? (corners[k][1] - corners[k][0]) / Math.max(1, Math.abs(corners[2][0] - corners[0][0]) + Math.abs(corners[2][1] - corners[0][1])) * 4 : 0;
   let pick;
   if (forceRot != null) pick = results[forceRot];
-  else pick = side(results[cands[0]]) >= side(results[cands[1]]) ? results[cands[0]] : results[cands[1]];
+  else pick = side(results[cands[0]]) + prior(cands[0]) >= side(results[cands[1]]) + prior(cands[1]) ? results[cands[0]] : results[cands[1]];
   return { rot: pick.k, board: fix(pick.probs) };
 }
 
@@ -377,11 +415,20 @@ export function boardCorners(corners, k) {
 /* ---------- screen boards: snap the grid onto the square edges ----------
    On a digital board every line between two squares is a sharp light/dark edge. The score is the mean contrast
    across the nine vertical and nine horizontal grid lines; each corner is moved a little at a time while it rises. */
-export function refineCorners(img, corners) {
+const lumaCache = new WeakMap();
+function lumaOf(img) {
+  let L = lumaCache.get(img);
+  if (L) return L;
   const W = img.width, H = img.height;
   const d = img.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, W, H).data;
-  const L = new Float32Array(W * H);
+  L = new Float32Array(W * H);
   for (let i = 0; i < W * H; i++) L[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
+  lumaCache.set(img, L);
+  return L;
+}
+export function refineCorners(img, corners) { return gridFit(img, corners).corners; }
+export function gridFit(img, corners) {
+  const W = img.width, H = img.height, L = lumaOf(img);
   const at = (x, y) => {
     if (x < 0 || y < 0 || x >= W - 1 || y >= H - 1) return -1;
     const xi = x | 0, yi = y | 0, fx = x - xi, fy = y - yi, k = yi * W + xi;
@@ -417,5 +464,5 @@ export function refineCorners(img, corners) {
       }
     }
   }
-  return c;
+  return { corners: c, score: best };
 }
