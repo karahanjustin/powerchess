@@ -110,7 +110,7 @@
       }).catch(function () {
         clearTimeout(t);
         polling = false;
-        if (!stopped) lost();
+        if (!stopped && O.token) lost(); // signed out: the poll was ended on purpose, the server is still there
       });
     })();
   }

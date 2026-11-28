@@ -10123,6 +10123,7 @@
   var ON = window.PCOnline || null; // var: finish() may ask for it before this line has run
   const onl = { view: 'play', msg: '', err: '', busy: false, history: null, histFor: '', owner: null, users: null, ownerTimer: null, form: { name: '', clock: 300, color: 'r', rated: true, priv: false, to: '' }, code: '', synced: false };
   try { Object.assign(onl.form, JSON.parse(localStorage.getItem('powerchess_onlineset')) || {}); } catch (e) { /* first visit */ }
+  onl.auth = onl.form.name ? 'login' : 'register'; // someone who signed in here before signs in, a new face makes an account
   const ONLINE_CLOCKS = [[0, 'None'], [60, '1 min'], [180, '3 min'], [300, '5 min'], [600, '10 min'], [915, '15 | 10']];
   const escH = (t) => String(t == null ? '' : t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&#39;' }[c]));
   const onErr = (e) => ({
@@ -10359,6 +10360,7 @@
       const hasHc = !!(spec.hc && ['w', 'b'].some((c) => spec.hc[c] && Object.keys(spec.hc[c]).some((k) => spec.hc[c][k] && !(k === 'time' && spec.hc[c][k] === 1)))) || !!(spec.odds && (spec.odds.w || spec.odds.b));
       await ON.seek({ spec: spec, color: onl.form.color, clock: clock, turn0: turn0, rated: onl.form.rated && !hasHc, private: onl.form.priv, to: onl.form.to, label: onlineLabel(spec, spec.clock) });
       onl.msg = onl.form.priv ? 'Challenge posted. Give the code to your friend.' : 'Challenge posted. It starts when someone takes it.';
+      onl.newOpen = false;
     } catch (e) { toast(e && e.error ? onErr(e) : (e.message || 'The game could not be set up')); }
     onl.busy = false; renderOnline();
   }
@@ -10387,16 +10389,27 @@
     if (onl.owner) html += ownerHtml();
     const led = O.status === 'online' ? 'ok' : O.status === 'finding' ? 'wait' : '';
     const stText = O.status === 'online' ? 'Connected to the server' : O.status === 'finding' ? 'Looking for the server' : O.why === 'off' ? 'The server is switched off right now' : 'The server is not reachable right now';
-    html += '<div class="gm-card on-card"><div class="on-status"><i class="on-led ' + led + '"></i><b>' + stText + '</b>' + (O.status === 'offline' ? '<button class="btn sm" data-on="retry">Try again</button>' : '') + '</div>';
-    if (O.status !== 'online') html += '<p class="on-dim">Online games run on the owner\'s computer. When it is on, you can play here. Your games on this device keep working without it.</p>';
-    html += '</div>';
+    if (O.status !== 'online') {
+      html += '<div class="gm-card on-card"><div class="on-status"><i class="on-led ' + led + '"></i><b>' + stText + '</b>' + (O.status === 'offline' ? '<button class="btn sm" data-on="retry">Try again</button>' : '') + '</div>';
+      html += '<p class="on-dim">Online games run on the owner\'s computer. When it is on, you can play here. Your games on this device keep working without it.</p></div>';
+    } else {
+      // connected: one quiet line, the room goes to what can be done
+      html += '<div class="on-conn"><i class="on-led ok"></i><span>' + (me ? 'Signed in as' : 'Connected to the server') + '</span>' + (me ? '<b class="notranslate">' + escH(me.name) + '</b><span class="notranslate">' + me.rating + '</span>' : '') + '</div>';
+    }
     if (O.status === 'online' && !me) {
-      html += '<div class="gm-card on-card"><h3>Sign in</h3><p class="on-dim">An account needs only a name and a password, no mail address. It keeps your games, your rating and your progress.</p>' +
-        '<label class="on-field"><span>Name</span><input id="onName" autocomplete="username" maxlength="20" value="' + escH(onl.form.name) + '"></label>' +
-        '<label class="on-field"><span>Password</span><input id="onPass" type="password" autocomplete="current-password" maxlength="200"></label>' +
+      // two clear ways in: sign in, or make an account (a switch on top, a link at the bottom)
+      const reg = onl.auth === 'register', dis = onl.busy ? ' disabled' : '';
+      html += '<div class="gm-card on-card on-auth"><div class="on-seg"><button class="' + (reg ? '' : 'on') + '" data-onauth="login">Sign in</button><button class="' + (reg ? 'on' : '') + '" data-onauth="register">New account</button></div>' +
+        (reg ? '<h3>Create an account</h3><p class="on-dim">Only a name and a password, no mail address. The account keeps your games, your rating and your progress.</p>' : '<h3>Sign in to your account</h3>') +
+        '<label class="on-field"><span>Name</span><input id="onName" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="20" value="' + escH(onl.form.name) + '"></label>' +
+        (reg ? '<small class="on-hint">A name has 3 to 20 letters, digits, _ or -</small>' : '') +
+        '<label class="on-field"><span>Password</span><input id="onPass" type="password" autocomplete="' + (reg ? 'new-password' : 'current-password') + '" maxlength="200"></label>' +
+        (reg ? '<small class="on-hint">The password needs at least 4 characters</small><label class="on-field"><span>Repeat the password</span><input id="onPass2" type="password" autocomplete="new-password" maxlength="200"></label>' : '') +
         (onl.err ? '<div class="on-err">' + escH(onl.err) + '</div>' : '') +
-        '<div class="on-btns"><button class="btn green" data-on="login"' + (onl.busy ? ' disabled' : '') + '>Sign in</button><button class="btn" data-on="register"' + (onl.busy ? ' disabled' : '') + '>Create account</button></div>' +
-        '<p class="on-dim small">There is no mail address, so a forgotten password cannot be sent to you: the owner of the server can set a new one.</p></div>';
+        '<button class="btn green on-wide" data-on="' + (reg ? 'register' : 'login') + '"' + dis + '>' + (reg ? 'Create account' : 'Sign in') + '</button>' +
+        (reg ? '<p class="on-switch"><span>Already have an account?</span> <a href="#" data-onauth="login">Sign in</a></p>'
+          : '<p class="on-switch"><span>New here?</span> <a href="#" data-onauth="register">Create an account</a></p><p class="on-dim small">Forgot your password? There is no mail address to send it to: the owner of the server can set a new one.</p>') +
+        '</div>';
     }
     if (O.status === 'online' && me) {
       const live = O.liveGame();
@@ -10406,30 +10419,34 @@
       }
       // play
       const tabs = [['play', 'Play'], ['profile', 'Profile'], ['history', 'Games']];
-      html += '<div class="on-tabs">' + tabs.map((t) => '<button class="btn sm' + (onl.view === t[0] ? ' on' : '') + '" data-onv="' + t[0] + '">' + t[1] + '</button>').join('') + '</div>';
+      html += '<div class="on-seg on-tabs">' + tabs.map((t) => '<button class="' + (onl.view === t[0] ? 'on' : '') + '" data-onv="' + t[0] + '">' + t[1] + '</button>').join('') + '</div>';
       if (onl.view === 'play') {
         const mine = (L && L.seeks || []).filter((s) => s.mine), others = (L && L.seeks || []).filter((s) => !s.mine);
-        html += '<div class="gm-card on-card"><h3>New challenge</h3><p class="on-dim">The game is the one set up on New Game (variant, power-ups for White and Black, handicaps, board). <a href="#" data-on="setup">Change it</a></p>' +
-          '<div class="on-sum">' + labelH(onlineLabel(onlineSpecSafe(), onl.form.clock)) + '</div>' +
-          '<div class="on-grid"><label><span>Clock</span><select id="onClock">' + ONLINE_CLOCKS.map((c) => '<option value="' + c[0] + '"' + (onl.form.clock === c[0] ? ' selected' : '') + '>' + c[1] + '</option>').join('') + '</select></label>' +
-          '<label><span>You play</span><select id="onColor"><option value="r"' + (onl.form.color === 'r' ? ' selected' : '') + '>Random</option><option value="w"' + (onl.form.color === 'w' ? ' selected' : '') + '>White</option><option value="b"' + (onl.form.color === 'b' ? ' selected' : '') + '>Black</option></select></label>' +
-          '<label><span>Only for</span><input id="onTo" placeholder="anyone" maxlength="20" value="' + escH(onl.form.to) + '"></label></div>' +
-          '<label class="on-check"><input type="checkbox" id="onRated"' + (onl.form.rated ? ' checked' : '') + '> Rated (not with handicaps)</label>' +
-          '<label class="on-check"><input type="checkbox" id="onPriv"' + (onl.form.priv ? ' checked' : '') + '> Private: not in the list, joined by its code</label>' +
-          '<div class="on-btns"><button class="btn green" data-on="seek"' + (onl.busy || live ? ' disabled' : '') + '>Post challenge</button></div>' +
-          (onl.msg ? '<p class="on-ok">' + escH(onl.msg) + '</p>' : '') + '</div>';
+        if (!onl.newOpen) html += '<button class="btn green on-wide on-newbtn" data-on="newopen"' + (live ? ' disabled' : '') + '>New challenge</button>';
+        else {
+          html += '<div class="gm-card on-card"><div class="on-head"><h3>New challenge</h3><button class="btn sm" data-on="newclose">Close</button></div>' +
+            '<div class="on-sum"><span>' + labelH(onlineLabel(onlineSpecSafe(), onl.form.clock)) + '</span><button class="btn sm" data-on="setup">Change</button></div>' +
+            '<p class="on-dim small">Variant, power-ups, handicaps and board come from New Game.</p>' +
+            '<div class="on-grid"><label><span>Clock</span><select id="onClock">' + ONLINE_CLOCKS.map((c) => '<option value="' + c[0] + '"' + (onl.form.clock === c[0] ? ' selected' : '') + '>' + c[1] + '</option>').join('') + '</select></label>' +
+            '<label><span>You play</span><select id="onColor"><option value="r"' + (onl.form.color === 'r' ? ' selected' : '') + '>Random</option><option value="w"' + (onl.form.color === 'w' ? ' selected' : '') + '>White</option><option value="b"' + (onl.form.color === 'b' ? ' selected' : '') + '>Black</option></select></label>' +
+            '<label class="on-to"><span>Only for</span><input id="onTo" placeholder="anyone" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="20" value="' + escH(onl.form.to) + '"></label></div>' +
+            '<label class="on-check"><input type="checkbox" id="onRated"' + (onl.form.rated ? ' checked' : '') + '> Rated (not with handicaps)</label>' +
+            '<label class="on-check"><input type="checkbox" id="onPriv"' + (onl.form.priv ? ' checked' : '') + '> Private: not in the list, joined by its code</label>' +
+            '<button class="btn green on-wide" data-on="seek"' + (onl.busy || live ? ' disabled' : '') + '>Post challenge</button></div>';
+        }
+        if (onl.msg) html += '<p class="on-ok">' + escH(onl.msg) + '</p>';
         if (mine.length) html += '<div class="gm-card on-card"><h3>Your challenges</h3>' + mine.map((s) => '<div class="on-seek"><div><b>' + labelH(s.label) + '</b><small><span>' + (s.color === 'r' ? 'random colours' : s.color === 'w' ? 'you play White' : 'you play Black') + '</span>' + (s.rated ? ' <span class="chip">Rated</span>' : '') + (s.to ? ', <span>only for</span> ' + nameH(s.to) : '') + (s.private || s.to ? ', <span>code</span> <b class="on-code notranslate">' + escH(s.code) + '</b>' : '') + '</small></div><button class="btn sm" data-oncancel="' + escH(s.id) + '">Cancel</button></div>').join('') + '<p class="on-dim small">Waiting for someone to take it.</p></div>';
         html += '<div class="gm-card on-card"><h3>Open challenges</h3>' + (others.length ? others.map((s) => '<div class="on-seek"><div><b>' + nameH(s.name) + '</b> (' + s.rating + ')<small>' + labelH(s.label) + (s.rated ? ' <span class="chip">Rated</span>' : '') + (s.color === 'w' ? ', <span>plays White</span>' : s.color === 'b' ? ', <span>plays Black</span>' : '') + (s.to ? ', <span>for you</span>' : '') + '</small></div><button class="btn green sm" data-onaccept="' + escH(s.id) + '"' + (live ? ' disabled' : '') + '>Play</button></div>').join('') : '<p class="on-dim">None right now. Post one, or join a friend\'s by its code.</p>') +
-          '<div class="on-join"><input id="onCode" placeholder="Code" maxlength="6" value="' + escH(onl.code) + '"><button class="btn sm" data-on="join"' + (live ? ' disabled' : '') + '>Join</button></div></div>';
+          '<div class="on-join"><input id="onCode" placeholder="Code" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="6" value="' + escH(onl.code) + '"><button class="btn sm" data-on="join"' + (live ? ' disabled' : '') + '>Join</button></div></div>';
         const ppl = (L && L.online) || [];
-        html += '<div class="gm-card on-card"><h3>Online now (' + ppl.length + ')</h3><div class="on-people">' + ppl.map((p) => '<span class="chip' + (p.playing ? ' ai' : '') + '">' + nameH(p.name) + ' <span class="notranslate">' + p.rating + '</span>' + (p.playing ? ' <span>playing</span>' : '') + '</span>').join('') + '</div></div>';
+        html += '<div class="gm-card on-card"><h3>Online now (' + ppl.length + ')</h3><div class="on-people">' + ppl.map((p) => '<span class="chip' + (p.playing ? ' ai' : '') + '">' + nameH(p.name) + '<span class="notranslate on-rt">' + p.rating + '</span>' + (p.playing ? ' <span>playing</span>' : '') + '</span>').join('') + '</div></div>';
       } else if (onl.view === 'profile') {
         const p = onl.profile;
-        html += '<div class="gm-card on-card"><h3>' + nameH(me.name) + '</h3><div class="on-stats"><div><b>' + me.rating + '</b><small>Rating</small></div><div><b>' + me.best + '</b><small>Best</small></div>' +
+        html += '<div class="gm-card on-card"><h3>' + nameH(me.name) + '</h3><div class="on-stats"><div><b>' + me.rating + '</b><small>Rating</small></div><div><b>' + me.best + '</b><small>Peak</small></div>' +
           (p ? '<div><b>' + p.won + '</b><small>Won</small></div><div><b>' + p.drawn + '</b><small>Drawn</small></div><div><b>' + p.lost + '</b><small>Lost</small></div>' : '') + '</div>' +
           '<p class="on-dim">Online games count here. Your games against the bots, the puzzles and the Game Modes are kept with the account too (the cloud save), so another device signed in with it has them.</p>' +
           '<div class="on-btns"><button class="btn" data-on="sync">Sync progress now</button><button class="btn" data-on="logout">Sign out</button></div></div>' +
-          '<div class="gm-card on-card"><h3>Change password</h3><label class="on-field"><span>Old password</span><input id="onOld" type="password" autocomplete="current-password"></label><label class="on-field"><span>New password</span><input id="onNew" type="password" autocomplete="new-password"></label><div class="on-btns"><button class="btn" data-on="pass">Change</button></div></div>';
+          '<details class="gm-card on-card on-fold"><summary>Change password</summary><label class="on-field"><span>Old password</span><input id="onOld" type="password" autocomplete="current-password"></label><label class="on-field"><span>New password</span><input id="onNew" type="password" autocomplete="new-password"></label><div class="on-btns"><button class="btn" data-on="pass">Change</button></div></details>';
       } else {
         const hs = onl.history;
         html += '<div class="gm-card on-card"><h3>Your online games</h3>' + (!hs ? '<p class="on-dim">Loading</p>' : !hs.length ? '<p class="on-dim">No online games yet.</p>' : hs.map((g) => {
@@ -10446,6 +10463,7 @@
     const val = (id) => { const el = $('#' + id); return el ? el.value : ''; };
     const auth = (fn) => {
       const name = val('onName').trim(), pass = val('onPass');
+      if (fn === ON.register && pass !== val('onPass2')) { onl.form.name = name; onl.err = 'The two passwords are not the same'; renderOnline(); const p = $('#onPass'); if (p) p.focus(); return; }
       onl.form.name = name; onlineSaveForm();
       onl.busy = true; onl.err = ''; renderOnline();
       fn(name, pass).then(() => { onl.busy = false; onl.err = ''; onl.view = 'play'; renderOnline(); cloudSync(false); }, (e) => { onl.busy = false; onl.err = onErr(e); renderOnline(); });
@@ -10457,8 +10475,10 @@
         if (k === 'retry') ON.retry();
         else if (k === 'login') auth(ON.login);
         else if (k === 'register') auth(ON.register);
-        else if (k === 'logout') { ON.logout(); onl.profile = null; onl.history = null; renderOnline(); }
+        else if (k === 'logout') { ON.logout(); onl.auth = 'login'; onl.profile = null; onl.history = null; renderOnline(); }
         else if (k === 'seek') onlineSeek();
+        else if (k === 'newopen') { onl.newOpen = true; onl.msg = ''; renderOnline(); }
+        else if (k === 'newclose') { onl.newOpen = false; renderOnline(); }
         else if (k === 'setup') setTab('new');
         else if (k === 'join') { const c = val('onCode').trim(); if (c) ON.accept(c, true).then((sg) => onlineStart(sg), (er) => toast(onErr(er))); }
         else if (k === 'back') { const lg = ON.liveGame(); if (G && G.online && lg && G.online.id === lg.id) setTab('play'); else if (lg) ON.game(lg.id).then((sg) => onlineStart(sg), (er) => toast(onErr(er))); }
@@ -10466,6 +10486,9 @@
         else if (k === 'pass') ON.password(val('onOld'), val('onNew')).then(() => toast('Password changed'), (er) => toast(onErr(er)));
         else if (k.indexOf('own') === 0) ownerAct(k, b);
       };
+    });
+    box.querySelectorAll('[data-onauth]').forEach((b) => {
+      b.onclick = (e) => { e.preventDefault(); const nm = $('#onName'); if (nm) onl.form.name = nm.value.trim(); onl.auth = b.dataset.onauth; onl.err = ''; renderOnline(); const f = $('#onName'); if (f && !f.value) f.focus(); };
     });
     box.querySelectorAll('[data-onv]').forEach((b) => {
       b.onclick = () => {
@@ -10483,7 +10506,8 @@
     const form = (id, key, num, check) => { const el = $('#' + id); if (el) el.onchange = () => { onl.form[key] = check ? el.checked : num ? +el.value : el.value.trim(); onlineSaveForm(); renderOnline(); }; };
     form('onClock', 'clock', true); form('onColor', 'color'); form('onTo', 'to'); form('onRated', 'rated', false, true); form('onPriv', 'priv', false, true);
     const code = $('#onCode'); if (code) code.oninput = () => { onl.code = code.value; };
-    const pass = $('#onPass'); if (pass) pass.onkeydown = (e) => { if (e.key === 'Enter') auth(ON.login); };
+    const enter = (e) => { if (e.key === 'Enter') auth(onl.auth === 'register' ? ON.register : ON.login); };
+    ['onPass', 'onPass2'].forEach((id) => { const el = $('#' + id); if (el) el.onkeydown = enter; });
     const as = $('#ownAuto'); if (as) as.onchange = () => ON.ownerAutostart(as.checked).then(ownerRefresh);
   }
 
@@ -10496,6 +10520,7 @@
     if (on) {
       const tt = !o.tunnel ? 'Off (test server)' : !t ? 'Off' : t.state === 'up' ? 'Up' : t.state === 'starting' ? 'Starting' : t.state === 'down' ? 'Down, restarting' : 'Error: ' + escH(t.error);
       html += '<div><small>Tunnel</small><b class="' + (t && t.state === 'up' ? 'ok' : '') + '">' + tt + '</b></div>';
+      if (o.tunnel) html += '<div><small>Mac stays awake</small><b class="' + (st.awake ? 'ok' : '') + '">' + (st.awake ? 'Yes' : 'No') + '</b></div>';
       html += '<div><small>Found by the apps</small><b class="' + (t && t.published === 'on' ? 'ok' : '') + '">' + (t && t.published === 'on' ? 'Yes' : t && t.published ? escH(t.published) : 'Not yet') + '</b></div>';
       html += '<div><small>Accounts, games</small><b>' + st.users + ', ' + st.games + ' played</b></div>';
       html += '<div><small>Online now</small><b>' + st.online.length + (st.online.length ? ': ' + nameH(st.online.map((p) => p.name).join(', ')) : '') + '</b></div>';
@@ -10503,7 +10528,7 @@
       if (t && t.url) html += '<div class="wide"><small>Address</small><b class="on-url notranslate">' + escH(t.url) + '</b></div>';
     }
     html += '</div><label class="on-check"><input type="checkbox" id="ownAuto"' + (o.autostart ? ' checked' : '') + '> Switch it on again when Power Chess starts (if it was on)</label>';
-    html += '<p class="on-dim small">The server is a process of its own: closing this window leaves it running. While it is on, players reach this Mac through a Cloudflare tunnel; the Mac has to stay awake for them.</p>';
+    html += '<p class="on-dim small">The server is a process of its own: closing this window leaves it running. While it is on, players reach this Mac through a Cloudflare tunnel, and the Mac does not go to sleep (closing a MacBook\'s lid still sends it to sleep).</p>';
     if (on && st.live.length) html += '<h4>Running games</h4>' + st.live.map((g) => '<div class="on-seek"><div><b>' + nameH(g.wname) + '</b> against <b>' + nameH(g.bname) + '</b><small>' + labelH(g.label || '') + ', <span>' + g.n + ' actions</span></small></div><button class="btn sm" data-ownabort="' + escH(g.id) + '">Call off</button></div>').join('');
     if (on && onl.users) html += '<h4>Accounts (' + onl.users.length + ')</h4>' + (onl.users.length ? onl.users.map((u) => '<div class="on-seek"><div><b>' + nameH(u.name) + '</b> <span class="notranslate">' + u.rating + '</span>' + (u.online ? ' <span class="chip">online</span>' : '') + (u.banned ? ' <span class="chip ai">blocked</span>' : '') + '<small><span>' + u.games + ' games</span>, <span>since</span> <span class="notranslate">' + new Date(u.created).toLocaleDateString() + '</span>' + (u.seen ? ', <span>last seen ' + ago(Date.now() - u.seen) + ' ago</span>' : '') + '</small></div><span class="on-acts"><button class="btn sm" data-ownuser="' + escH(u.name) + '" data-what="password">New password</button><button class="btn sm" data-ownuser="' + escH(u.name) + '" data-what="' + (u.banned ? 'unban' : 'ban') + '">' + (u.banned ? 'Unblock' : 'Block') + '</button><button class="btn sm" data-ownuser="' + escH(u.name) + '" data-what="delete">Delete</button></span></div>').join('') : '<p class="on-dim">No accounts yet.</p>');
     if (on && st.log && st.log.length) html += '<details class="on-log"><summary>Log</summary><pre class="notranslate">' + escH(st.log.slice(-40).join('\n')) + '</pre></details>';
