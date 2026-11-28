@@ -571,7 +571,9 @@
   }
   const stats = saved.stats || {};
   function save() {
-    try { localStorage.setItem(KEY, JSON.stringify({ settings: settings, setup: setup, stats: stats })); } catch (e) { /* private mode */ }
+    let su = setup; // an online challenge's setup is not the mode to come back to
+    try { if (ui.onSetup) su = Object.assign({}, setup, { mode: ui.onSetup.prev || setup.mode }); } catch (e) { /* before ui exists */ }
+    try { localStorage.setItem(KEY, JSON.stringify({ settings: settings, setup: su, stats: stats })); } catch (e) { /* private mode */ }
   }
 
   /* ---------- runtime state ---------- */
@@ -1561,6 +1563,7 @@
     closeOverlay();
     if (from === 'editor') ed.touched = false;
     const navTab = SETUP_STEPS.some((x) => x[0] === tab) ? 'new' : tab; // the four setup steps are one entry in the sidebar
+    if (ui.onSetup && navTab !== 'new') onlineSetupEnd();
     document.querySelectorAll('.nav').forEach((b) => b.classList.toggle('on', b.dataset.tab === navTab || (b.dataset.tab === 'more' && MORE_TABS.indexOf(navTab) >= 0)));
     document.querySelectorAll('.view').forEach((v) => v.classList.toggle('on', v.id === 'view-' + tab));
     document.body.dataset.tab = tab; // the phone layout hides the board on the pages that do not use it
@@ -2665,6 +2668,7 @@
 
   let starting = false;
   async function startGame() {
+    if (ui.onSetup) { setTab('online'); onlineSeek(); return; } // setting up an online challenge: it is posted, not played here
     if (starting) return;
     if (!leaveRunning('A game is still running. Starting a new one counts as a resignation. Resign it?')) return;
     starting = true;
@@ -5983,7 +5987,23 @@
     });
     $('#humanBox').style.display = botsMode || localMode ? 'none' : '';
     $('#colorBox').style.display = botsMode || localMode ? 'none' : '';
-    $('#localBox').style.display = localMode ? '' : 'none';
+    $('#localBox').style.display = localMode && !ui.onSetup ? '' : 'none';
+    // an online challenge being set up: no bots, no mode, no colour or clock here (the challenge has those)
+    const os = !!ui.onSetup;
+    [$('#modeSeg'), $('#modeSeg').previousElementSibling, $('#clockSeg'), $('#clockSeg').previousElementSibling, $('#ratings')].forEach((el) => { if (el) el.classList.toggle('onset-hide', os); });
+    let osb = $('#onSetupBar');
+    if (os && !osb) { osb = h('div', 'onsetbar'); osb.id = 'onSetupBar'; $('#view-new .scroll').prepend(osb); }
+    if (osb) {
+      osb.style.display = os ? '' : 'none';
+      if (os) {
+        const to = onl.form.to;
+        osb.innerHTML = '<b>' + (to ? '<span>Online challenge for</span> ' + nameH(to) : '<span>Online challenge</span>') + '</b>' +
+          '<p>Variant, power-ups for White and Black, handicaps and the board are set on these pages. Clock, colour and who may take it are in the challenge.</p>' +
+          '<div class="onsetbtns"><button class="btn sm" id="onSetBack">Back to the challenge</button><button class="btn sm" id="onSetLeave">Set up a game here instead</button></div>';
+        $('#onSetBack').onclick = () => setTab('online');
+        $('#onSetLeave').onclick = () => { onlineSetupEnd(); renderAll(); };
+      }
+    }
     // king capture follows the game (autoKC): shown only when it is on, with the reason
     const kc = autoKC();
     $('#kcBox').style.display = kc.on ? '' : 'none';
@@ -6236,7 +6256,7 @@
   ];
   function stepValues() {
     const V = Fairy.byId(setup.variant), bots = setup.mode === 'bots', local = setup.mode === 'local';
-    const opp = bots ? 'Bot match' : local ? 'Two players' : botLabel(botById(setup.bot), engineKind() === 'fairy', ownName()).name;
+    const opp = bots ? 'Bot match' : local ? (ui.onSetup ? 'Online' : 'Two players') : botLabel(botById(setup.bot), engineKind() === 'fairy', ownName()).name;
     const vname = V.id === 'custom' && custom ? custom.title : V.name;
     const n = powerNames(setup.powers).length + (setup.ai.use === 'own' && setup.powers2 ? powerNames(setup.powers2).length : 0);
     const pw = V.checkers ? 'off in Checkers' : n ? n + ' active' : 'none';
@@ -6285,6 +6305,9 @@
       head = 'Bot match';
       row('White', '<b>' + lw.name + '</b> (' + lw.tag + ')');
       row('Black', '<b>' + lk.name + '</b> (' + lk.tag + ')');
+    } else if (local && ui.onSetup) {
+      head = onl.form.to ? '<span>Online challenge for</span> <b class="notranslate">' + escH(onl.form.to) + '</b>' : 'Online challenge';
+      row('You play', { w: 'White', b: 'Black', r: 'random colours' }[onl.form.color] || 'random colours');
     } else if (local) {
       head = 'Two players at one board';
       if (setup.flipEach) row('Board', 'turns after each move');
@@ -6292,7 +6315,8 @@
       head = 'You against <b>' + lab.name + '</b> <span class="tag">(' + lab.tag + ')</span>';
       row('You play', colors[setup.color]);
     }
-    row('Clock', setup.clock ? clock : 'none');
+    if (ui.onSetup) row('Clock', onl.form.clock ? clockName(onl.form.clock) : 'none');
+    else row('Clock', setup.clock ? clock : 'none');
     if (variant || V.dice || V.duckChess) row('Variant', '<b>' + (V.id === 'custom' && custom ? custom.title : V.name) + '</b>');
     const anticipate = !local && !dumb && (first.length || other.length) && setup.ai.anticipate;
     if (!first.length && !other.length) row('Power-ups', 'none');
@@ -6314,7 +6338,9 @@
     const errs = startErrs();
     if (errs.length) html += '<div class="err">' + errs[0] + '</div>';
     $('#summary').innerHTML = html;
-    $('#startBtn').disabled = errs.length > 0;
+    $('#startBtn').disabled = errs.length > 0 || (!!ui.onSetup && !!onl.busy);
+    if (ui.onSetup) $('#startBtn').textContent = 'Post challenge';
+    else if ($('#startBtn').textContent === 'Post challenge') $('#startBtn').textContent = 'Start game';
   }
 
   function renderSettings() {
@@ -10453,6 +10479,19 @@
     const u = s < 3600 ? [Math.max(1, Math.round(s / 60)), 'minute'] : s < 86400 ? [Math.round(s / 3600), 'hour'] : s < 86400 * 60 ? [Math.round(s / 86400), 'day'] : [Math.round(s / 86400 / 30), 'month'];
     return rtf ? rtf.format(-u[0], u[1]) : new Date(t).toLocaleString();
   };
+  // New Game as the setup of an online challenge: a game for two (White's and Black's power-ups), the bot parts hidden
+  function onlineSetupStart() {
+    if (!ui.onSetup) ui.onSetup = { prev: setup.mode };
+    setup.mode = 'local';
+    setTab('new');
+    changed();
+  }
+  function onlineSetupEnd() {
+    if (!ui.onSetup) return;
+    setup.mode = ui.onSetup.prev || 'human';
+    ui.onSetup = null;
+    changed();
+  }
   function onlineOpenPlayer(name) {
     if (!name || !ON || !ON.user) return;
     if (name.toLowerCase() === ON.user.name.toLowerCase()) { onl.view = 'profile'; ON.me().then((r) => { onl.profile = r.profile; renderOnline(); }, () => {}); renderOnline(); return; }
@@ -10641,7 +10680,7 @@
         else if (k === 'seek') onlineSeek();
         else if (k === 'newopen') { onl.newOpen = true; onl.msg = ''; renderOnline(); }
         else if (k === 'newclose') { onl.newOpen = false; renderOnline(); }
-        else if (k === 'setup') setTab('new');
+        else if (k === 'setup') onlineSetupStart();
         else if (k === 'join') {
           const c = val('onCode').trim();
           if (c && !onl.joining) {
