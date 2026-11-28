@@ -10445,6 +10445,53 @@
     } catch (e) { toast(onErr(e)); }
   }
 
+  // another player's page: picture, rating, when last online, the friendship and the last games
+  const agoText = (t) => {
+    const s = (Date.now() - t) / 1000, lang = window.I18N && I18N.lang === 'de' ? 'de' : 'en';
+    let rtf = null;
+    try { rtf = new Intl.RelativeTimeFormat(lang, { numeric: 'auto' }); } catch (e) { /* an old browser */ }
+    const u = s < 3600 ? [Math.max(1, Math.round(s / 60)), 'minute'] : s < 86400 ? [Math.round(s / 3600), 'hour'] : s < 86400 * 60 ? [Math.round(s / 86400), 'day'] : [Math.round(s / 86400 / 30), 'month'];
+    return rtf ? rtf.format(-u[0], u[1]) : new Date(t).toLocaleString();
+  };
+  function onlineOpenPlayer(name) {
+    if (!name || !ON || !ON.user) return;
+    if (name.toLowerCase() === ON.user.name.toLowerCase()) { onl.view = 'profile'; ON.me().then((r) => { onl.profile = r.profile; renderOnline(); }, () => {}); renderOnline(); return; }
+    if (onl.view !== 'player') onl.back = onl.view;
+    onl.view = 'player'; onl.player = { name: name };
+    renderOnline();
+    const box = $('#onlineBox'); if (box && box.getBoundingClientRect().top < 0) box.scrollIntoView();
+    Promise.all([ON.profile(name), ON.history(name, 20)]).then((r) => {
+      if (!onl.player || onl.player.name !== name) return;
+      onl.player.profile = r[0]; onl.player.games = r[1].games || []; renderOnline();
+    }, (e) => {
+      if (!onl.player || onl.player.name !== name) return;
+      onl.player.err = e && e.error === 'nobody' ? 'There is no player with that name' : onErr(e); renderOnline();
+    });
+  }
+  function onlinePlayerHtml(me, live) {
+    const pv = onl.player || {}, p = pv.profile;
+    let out = '<button class="btn sm on-back" data-on="pback">&lsaquo; <span>Back</span></button>';
+    if (!p) return out + '<div class="gm-card on-card"><p class="on-dim">' + (pv.err ? escH(pv.err) : 'Loading') + '</p></div>';
+    const f = ON.friendOf(p.name), state = f ? f.state : '';
+    const btn = (what, label, cls, off) => '<button class="btn' + (cls ? ' ' + cls : '') + '" data-onf="' + what + '" data-name="' + escH(p.name) + '"' + (off ? ' disabled' : '') + '>' + label + '</button>';
+    const st = p.playing ? '<i class="on-led wait"></i><span>playing right now</span>' : p.online ? '<i class="on-led ok"></i><span>online</span>'
+      : '<i class="on-led"></i><span>Last online</span> <span class="notranslate">' + escH(agoText(p.seen || p.created)) + '</span>';
+    out += '<div class="gm-card on-card"><div class="on-me">' + avH(p.avatar, p.name, 64) + '<div><h3>' + nameH(p.name) + (state === 'ok' ? ' <span class="chip">Friend</span>' : '') + '</h3><small class="on-fst">' + st + '</small></div></div>' +
+      '<div class="on-stats"><div><b>' + p.rating + '</b><small>Rating</small></div><div><b>' + p.best + '</b><small>Peak</small></div><div><b>' + p.won + '</b><small>Won</small></div><div><b>' + p.drawn + '</b><small>Drawn</small></div><div><b>' + p.lost + '</b><small>Lost</small></div></div>' +
+      '<p class="on-dim small"><span>Member since</span> <span class="notranslate">' + new Date(p.created).toLocaleDateString() + '</span>, <span>rated games:</span> <span class="notranslate">' + (p.rated || 0) + '</span></p><div class="on-btns on-pbtns">';
+    if (!state) out += btn('add', 'Add as a friend', 'green');
+    else if (state === 'in') out += '<span class="on-dim">Wants to be your friend</span>' + btn('accept', 'Accept', 'green') + btn('decline', 'Decline');
+    else if (state === 'out') out += '<span class="on-dim">Friend request sent</span>' + btn('remove', 'Withdraw');
+    else out += (p.online && !p.playing ? btn('challenge', 'Challenge', 'green', !!live) : '') + btn('remove', 'Remove');
+    out += '</div></div>';
+    const gs = pv.games || [], low = p.name.toLowerCase();
+    out += '<div class="gm-card on-card"><h3>Recent games</h3>' + (!gs.length ? '<p class="on-dim">No online games yet.</p>' : gs.map((g) => {
+      const side = g.wname.toLowerCase() === low ? 'w' : 'b', them = side === 'w' ? g.bname : g.wname, mine = me && them.toLowerCase() === me.name.toLowerCase();
+      const res = !g.over ? 'running' : g.over.result === 'draw' ? '½' : g.over.result === side ? 'won' : 'lost';
+      return '<div class="on-seek"><div><span class="on-res ' + (res === 'won' ? 'w' : res === 'lost' ? 'l' : 'd') + '">' + res + '</span> <span>against</span> <b class="on-plink" data-onp="' + escH(them) + '">' + nameH(them) + '</b><small>' + labelH(g.label || '') + ', <span class="notranslate">' + new Date(g.created).toLocaleDateString() + (g.delta ? ', ' + (g.delta[side] >= 0 ? '+' : '') + g.delta[side] : '') + '</span>' + (g.over ? ', <span>' + escH(ONLINE_WHY[onlineOver(g.over).reason] || 'ended') + '</span>' : '') + '</small></div>' + (mine && g.over ? '<button class="btn sm" data-onopen="' + escH(g.id) + '">Open</button>' : '') + '</div>';
+    }).join('')) + '</div>';
+    return out;
+  }
   function onlineFriend(name, what, done) {
     const had = ON.friendOf(name);
     ON.friend(name, what).then(() => {
@@ -10511,25 +10558,28 @@
         }
         if (onl.msg) html += '<p class="on-ok">' + escH(onl.msg) + '</p>';
         if (mine.length) html += '<div class="gm-card on-card"><h3>Your challenges</h3>' + mine.map((s) => '<div class="on-seek"><div><b>' + labelH(s.label) + '</b><small><span>' + (s.color === 'r' ? 'random colours' : s.color === 'w' ? 'you play White' : 'you play Black') + '</span>' + (s.rated ? ' <span class="chip">Rated</span>' : '') + (s.to ? ', <span>only for</span> ' + nameH(s.to) : '') + (s.private || s.to ? ', <span>code</span> <b class="on-code notranslate">' + escH(s.code) + '</b>' : '') + '</small></div><button class="btn sm" data-oncancel="' + escH(s.id) + '">Cancel</button></div>').join('') + '<p class="on-dim small">Waiting for someone to take it.</p></div>';
-        html += '<div class="gm-card on-card"><h3>Open challenges</h3>' + (others.length ? others.map((s) => '<div class="on-seek"><div class="on-who">' + avH(s.avatar, s.name, 34) + '<div><b>' + nameH(s.name) + '</b> (' + s.rating + ')' + (O.friendOf(s.name) && O.friendOf(s.name).state === 'ok' ? ' <span class="chip">Friend</span>' : '') + '<small>' + labelH(s.label) + (s.rated ? ' <span class="chip">Rated</span>' : '') + (s.color === 'w' ? ', <span>plays White</span>' : s.color === 'b' ? ', <span>plays Black</span>' : '') + (s.to ? ', <span>for you</span>' : '') + '</small></div></div><button class="btn green sm" data-onaccept="' + escH(s.id) + '"' + (live ? ' disabled' : '') + '>Play</button></div>').join('') : '<p class="on-dim">None right now. Post one, or join a friend\'s by its code.</p>') +
+        html += '<div class="gm-card on-card"><h3>Open challenges</h3>' + (others.length ? others.map((s) => '<div class="on-seek"><div class="on-who on-plink" data-onp="' + escH(s.name) + '">' + avH(s.avatar, s.name, 34) + '<div><b>' + nameH(s.name) + '</b> (' + s.rating + ')' + (O.friendOf(s.name) && O.friendOf(s.name).state === 'ok' ? ' <span class="chip">Friend</span>' : '') + '<small>' + labelH(s.label) + (s.rated ? ' <span class="chip">Rated</span>' : '') + (s.color === 'w' ? ', <span>plays White</span>' : s.color === 'b' ? ', <span>plays Black</span>' : '') + (s.to ? ', <span>for you</span>' : '') + '</small></div></div><button class="btn green sm" data-onaccept="' + escH(s.id) + '"' + (live ? ' disabled' : '') + '>Play</button></div>').join('') : '<p class="on-dim">None right now. Post one, or join a friend\'s by its code.</p>') +
           '<div class="on-join"><input id="onCode" placeholder="Code" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="8" value="' + escH(onl.code) + '"><button class="btn sm" data-on="join"' + (live || onl.joining ? ' disabled' : '') + '>Join</button></div></div>';
         const ppl = (L && L.online) || [];
         html += '<div class="gm-card on-card"><h3>Online now (' + ppl.length + ')</h3><div class="on-people">' + ppl.map((p) => {
           const self = p.name.toLowerCase() === me.name.toLowerCase(), fr = O.friendOf(p.name);
-          return '<span class="chip on-person' + (p.playing ? ' ai' : '') + '">' + avH(p.avatar, p.name, 20) + nameH(p.name) + '<span class="notranslate on-rt">' + p.rating + '</span>' + (p.playing ? ' <span>playing</span>' : '') +
+          return '<span class="chip on-person on-plink' + (p.playing ? ' ai' : '') + '" data-onp="' + escH(p.name) + '">' + avH(p.avatar, p.name, 20) + nameH(p.name) + '<span class="notranslate on-rt">' + p.rating + '</span>' + (p.playing ? ' <span>playing</span>' : '') +
             (!self && !fr ? '<button class="on-plus" data-onfadd="' + escH(p.name) + '" title="Add as a friend" aria-label="Add as a friend">+</button>' : '') + '</span>';
         }).join('') + '</div></div>';
       } else if (onl.view === 'friends') {
         const fs = O.friends(), inc = fs.filter((f) => f.state === 'in'), ok = fs.filter((f) => f.state === 'ok'), out = fs.filter((f) => f.state === 'out');
         const fb = (what, f, label, cls) => '<button class="btn sm' + (cls ? ' ' + cls : '') + '" data-onf="' + what + '" data-name="' + escH(f.name) + '"' + (what === 'challenge' && live ? ' disabled' : '') + '>' + label + '</button>';
-        const row = (f, acts) => '<div class="on-seek on-friend"><div class="on-who">' + avH(f.avatar, f.name, 36) + '<div><b>' + nameH(f.name) + '</b> <span class="notranslate on-rt">' + f.rating + '</span>' +
+        const row = (f, acts) => '<div class="on-seek on-friend"><div class="on-who on-plink" data-onp="' + escH(f.name) + '" title="Profile">' + avH(f.avatar, f.name, 36) + '<div><b>' + nameH(f.name) + '</b> <span class="notranslate on-rt">' + f.rating + '</span>' +
           (f.state === 'ok' ? '<small class="on-fst">' + (f.playing ? '<i class="on-led wait"></i><span>playing</span>' : f.online ? '<i class="on-led ok"></i><span>online</span>' : '<i class="on-led"></i><span>offline</span>') + '</small>' : '') + '</div></div><span class="on-acts">' + acts + '</span></div>';
-        html += '<div class="gm-card on-card"><h3>Add a friend</h3><div class="on-join"><input id="onFriend" placeholder="Their name" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="20"><button class="btn green sm" data-on="fadd">Add</button></div>' +
+        html += '<div class="gm-card on-card"><h3>Add a friend</h3><label class="on-field"><input id="onFriend" placeholder="Their name" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="20"></label>' +
+          '<div class="on-fbtns"><button class="btn green" data-on="fadd">Add as a friend</button><button class="btn" data-on="fview">View their profile first</button></div>' +
           '<p class="on-dim small">They get a request and are your friend once they say yes. Friends see when the other is online and can challenge each other directly.</p></div>';
         if (inc.length) html += '<div class="gm-card on-card"><h3>Friend requests</h3>' + inc.map((f) => row(f, fb('accept', f, 'Accept', 'green') + fb('decline', f, 'Decline'))).join('') + '</div>';
         html += '<div class="gm-card on-card"><h3><span>Your friends</span> (' + ok.length + ')</h3>' + (ok.length ? ok.map((f) => row(f, (f.online && !f.playing ? fb('challenge', f, 'Challenge', 'green') : '') + fb('remove', f, 'Remove'))).join('')
           : '<p class="on-dim">No friends yet. Add someone by name, or with the + next to a name under Online now.</p>') + '</div>';
         if (out.length) html += '<div class="gm-card on-card"><h3>Waiting for an answer</h3>' + out.map((f) => row(f, fb('remove', f, 'Withdraw'))).join('') + '</div>';
+      } else if (onl.view === 'player') {
+        html += onlinePlayerHtml(me, live);
       } else if (onl.view === 'profile') {
         const p = onl.profile;
         html += '<div class="gm-card on-card"><div class="on-me">' + avH(me.avatar, me.name, 64) + '<h3>' + nameH(me.name) + '</h3></div>' +
@@ -10543,7 +10593,7 @@
         const hs = onl.history;
         html += '<div class="gm-card on-card"><h3>Your online games</h3>' + (!hs ? '<p class="on-dim">Loading</p>' : !hs.length ? '<p class="on-dim">No online games yet.</p>' : hs.map((g) => {
           const side = O.sideIn(g), them = side === 'w' ? g.bname : g.wname, res = !g.over ? 'running' : g.over.result === 'draw' ? '½' : g.over.result === side ? 'won' : 'lost';
-          return '<div class="on-seek"><div><b>' + nameH(them) + '</b> <span class="on-res ' + (res === 'won' ? 'w' : res === 'lost' ? 'l' : 'd') + '">' + res + '</span><small>' + labelH(g.label || '') + ', <span class="notranslate">' + new Date(g.created).toLocaleDateString() + (g.delta ? ', ' + (g.delta[side] >= 0 ? '+' : '') + g.delta[side] : '') + '</span>' + (g.over ? ', <span>' + escH(ONLINE_WHY[onlineOver(g.over).reason] || 'ended') + '</span>' : '') + '</small></div>' + (g.over ? '<button class="btn sm" data-onopen="' + escH(g.id) + '">Open</button>' : '') + '</div>';
+          return '<div class="on-seek"><div><b class="on-plink" data-onp="' + escH(them) + '">' + nameH(them) + '</b> <span class="on-res ' + (res === 'won' ? 'w' : res === 'lost' ? 'l' : 'd') + '">' + res + '</span><small>' + labelH(g.label || '') + ', <span class="notranslate">' + new Date(g.created).toLocaleDateString() + (g.delta ? ', ' + (g.delta[side] >= 0 ? '+' : '') + g.delta[side] : '') + '</span>' + (g.over ? ', <span>' + escH(ONLINE_WHY[onlineOver(g.over).reason] || 'ended') + '</span>' : '') + '</small></div>' + (g.over ? '<button class="btn sm" data-onopen="' + escH(g.id) + '">Open</button>' : '') + '</div>';
         }).join('')) + '</div>';
       }
     }
@@ -10587,7 +10637,7 @@
         else if (k === 'register') auth(ON.register);
         else if (k === 'logout') {
           if (G && G.online && !G.over) { if (!leaveRunning('')) return; }
-          ON.logout(); onl.auth = 'login'; onl.profile = null; onl.history = null; renderOnline(); }
+          ON.logout(); onl.auth = 'login'; onl.view = 'play'; onl.player = null; onl.profile = null; onl.history = null; renderOnline(); }
         else if (k === 'seek') onlineSeek();
         else if (k === 'newopen') { onl.newOpen = true; onl.msg = ''; renderOnline(); }
         else if (k === 'newclose') { onl.newOpen = false; renderOnline(); }
@@ -10601,6 +10651,8 @@
         }
         else if (k === 'back') { const lg = ON.liveGame(); if (G && G.online && lg && G.online.id === lg.id) setTab('play'); else if (lg) ON.game(lg.id).then((sg) => onlineStart(sg), (er) => toast(onErr(er))); }
         else if (k === 'sync') cloudSync(false).then((ok) => { if (ok) toast('Progress saved with your account'); });
+        else if (k === 'fview') { const nm = val('onFriend').trim(); if (nm) onlineOpenPlayer(nm); else { const el = $('#onFriend'); if (el) el.focus(); } }
+        else if (k === 'pback') { onl.view = onl.back && onl.back !== 'player' ? onl.back : 'friends'; onl.player = null; renderOnline(); }
         else if (k === 'fadd') { const nm = val('onFriend').trim(); if (nm) onlineFriend(nm, 'add', () => { const el = $('#onFriend'); if (el) el.value = ''; }); }
         else if (k === 'avsave') {
           b.disabled = true;
@@ -10625,6 +10677,7 @@
     box.querySelectorAll('[data-oncancel]').forEach((b) => { b.onclick = () => ON.cancel(b.dataset.oncancel).then(() => { onl.msg = ''; }, (e) => toast(onErr(e))); });
     box.querySelectorAll('[data-onaccept]').forEach((b) => { b.onclick = () => { b.disabled = true; ON.accept(b.dataset.onaccept).then((sg) => onlineStart(sg), (e) => { b.disabled = false; toast(onErr(e)); }); }; });
     box.querySelectorAll('[data-onopen]').forEach((b) => { b.onclick = () => onlineOpenOld(b.dataset.onopen); });
+    box.querySelectorAll('[data-onp]').forEach((b) => { b.onclick = (e) => { if (e.target.closest('button')) return; e.preventDefault(); onlineOpenPlayer(b.dataset.onp); }; });
     box.querySelectorAll('[data-onfadd]').forEach((b) => { b.onclick = (e) => { e.stopPropagation(); b.disabled = true; onlineFriend(b.dataset.onfadd, 'add'); }; });
     box.querySelectorAll('[data-onf]').forEach((b) => {
       b.onclick = () => {
