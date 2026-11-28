@@ -1403,6 +1403,7 @@
   setInterval(() => {
     if (!G || !G.clock.on || G.over) return;
     const now = performance.now(), c = live().turn;
+    if (G.online && !G.online.n) { G.clock.last = now; return; } // online the clocks start with the first move, as on the server
     G.clock[c] -= now - G.clock.last;
     G.clock.last = now;
     if (G.clock[c] <= 0) { G.clock[c] = 0; if (G.online) { renderClocks(); return; } finish({ over: true, result: R.other(c), reason: 'timeout' }); return; } // online the server's clock decides
@@ -10121,7 +10122,7 @@
      other's actions come back the same way and are played here by the same rules, so both boards stay one game. No
      eval bar, hints, undo or take-backs while it runs; the server keeps the clocks and the result. */
   var ON = window.PCOnline || null; // var: finish() may ask for it before this line has run
-  const onl = { view: 'play', msg: '', err: '', busy: false, history: null, histFor: '', owner: null, users: null, ownerTimer: null, form: { name: '', clock: 300, color: 'r', rated: true, priv: false, to: '' }, code: '', synced: false };
+  const onl = { view: 'play', msg: '', err: '', busy: false, history: null, histFor: '', owner: null, users: null, ownerTimer: null, form: { name: '', clock: 300, color: 'r', rated: true, priv: false, to: '' }, code: '', synced: false, folds: {} };
   try { Object.assign(onl.form, JSON.parse(localStorage.getItem('powerchess_onlineset')) || {}); } catch (e) { /* first visit */ }
   onl.auth = onl.form.name ? 'login' : 'register'; // someone who signed in here before signs in, a new face makes an account
   const ONLINE_CLOCKS = [[0, 'None'], [60, '1 min'], [180, '3 min'], [300, '5 min'], [600, '10 min'], [915, '15 | 10']];
@@ -10415,7 +10416,7 @@
       const live = O.liveGame();
       if (live) {
         const them = O.sideIn(live) === 'w' ? live.bname : live.wname, here = G && G.online && G.online.id === live.id;
-        html += '<div class="gm-card on-card on-live"><b>Your game against ' + nameH(them) + ' is running</b><button class="btn green" data-on="back">' + (here ? 'Back to the board' : 'Open it') + '</button></div>';
+        html += '<div class="gm-card on-card on-live"><b><span>Your game is running against</span> ' + nameH(them) + '</b><button class="btn green" data-on="back">' + (here ? 'Back to the board' : 'Open it') + '</button></div>';
       }
       // play
       const tabs = [['play', 'Play'], ['profile', 'Profile'], ['history', 'Games']];
@@ -10446,7 +10447,7 @@
           (p ? '<div><b>' + p.won + '</b><small>Won</small></div><div><b>' + p.drawn + '</b><small>Drawn</small></div><div><b>' + p.lost + '</b><small>Lost</small></div>' : '') + '</div>' +
           '<p class="on-dim">Online games count here. Your games against the bots, the puzzles and the Game Modes are kept with the account too (the cloud save), so another device signed in with it has them.</p>' +
           '<div class="on-btns"><button class="btn" data-on="sync">Sync progress now</button><button class="btn" data-on="logout">Sign out</button></div></div>' +
-          '<details class="gm-card on-card on-fold"><summary>Change password</summary><label class="on-field"><span>Old password</span><input id="onOld" type="password" autocomplete="current-password"></label><label class="on-field"><span>New password</span><input id="onNew" type="password" autocomplete="new-password"></label><div class="on-btns"><button class="btn" data-on="pass">Change</button></div></details>';
+          '<details class="gm-card on-card on-fold" id="onPassFold"><summary>Change password</summary><label class="on-field"><span>Old password</span><input id="onOld" type="password" autocomplete="current-password"></label><label class="on-field"><span>New password</span><input id="onNew" type="password" autocomplete="new-password"></label><div class="on-btns"><button class="btn" data-on="pass">Change</button></div></details>';
       } else {
         const hs = onl.history;
         html += '<div class="gm-card on-card"><h3>Your online games</h3>' + (!hs ? '<p class="on-dim">Loading</p>' : !hs.length ? '<p class="on-dim">No online games yet.</p>' : hs.map((g) => {
@@ -10459,7 +10460,9 @@
     const kept = {}, act = document.activeElement;
     box.querySelectorAll('input[id]:not([type=checkbox]),select[id]').forEach((el) => { kept[el.id] = el.value; });
     const focus = act && box.contains(act) && act.id ? { id: act.id, a: act.selectionStart, b: act.selectionEnd } : null;
+    box.querySelectorAll('details[id]').forEach((el) => { onl.folds[el.id] = el.open; });
     box.innerHTML = html;
+    box.querySelectorAll('details[id]').forEach((el) => { if (onl.folds[el.id]) el.open = true; });
     Object.keys(kept).forEach((id) => { const el = box.querySelector('#' + id); if (el && el.tagName === 'INPUT') el.value = kept[id]; });
     if (focus) { const el = box.querySelector('#' + focus.id); if (el) { el.focus({ preventScroll: true }); try { if (focus.a != null) el.setSelectionRange(focus.a, focus.b); } catch (e) { /* a field without a cursor */ } } }
     onlineWire(box);
@@ -10536,8 +10539,8 @@
     html += '</div><label class="on-check"><input type="checkbox" id="ownAuto"' + (o.autostart ? ' checked' : '') + '> Switch it on again when Power Chess starts (if it was on)</label>';
     html += '<p class="on-dim small">The server is a process of its own: closing this window leaves it running. While it is on, players reach this Mac through a Cloudflare tunnel, and the Mac does not go to sleep (closing a MacBook\'s lid still sends it to sleep).</p>';
     if (on && st.live.length) html += '<h4>Running games</h4>' + st.live.map((g) => '<div class="on-seek"><div><b>' + nameH(g.wname) + '</b> against <b>' + nameH(g.bname) + '</b><small>' + labelH(g.label || '') + ', <span>' + g.n + ' actions</span></small></div><button class="btn sm" data-ownabort="' + escH(g.id) + '">Call off</button></div>').join('');
-    if (on && onl.users) html += '<h4>Accounts (' + onl.users.length + ')</h4>' + (onl.users.length ? onl.users.map((u) => '<div class="on-seek"><div><b>' + nameH(u.name) + '</b> <span class="notranslate">' + u.rating + '</span>' + (u.online ? ' <span class="chip">online</span>' : '') + (u.banned ? ' <span class="chip ai">blocked</span>' : '') + '<small><span>' + u.games + ' games</span>, <span>since</span> <span class="notranslate">' + new Date(u.created).toLocaleDateString() + '</span>' + (u.seen ? ', <span>last seen ' + ago(Date.now() - u.seen) + ' ago</span>' : '') + '</small></div><span class="on-acts"><button class="btn sm" data-ownuser="' + escH(u.name) + '" data-what="password">New password</button><button class="btn sm" data-ownuser="' + escH(u.name) + '" data-what="' + (u.banned ? 'unban' : 'ban') + '">' + (u.banned ? 'Unblock' : 'Block') + '</button><button class="btn sm" data-ownuser="' + escH(u.name) + '" data-what="delete">Delete</button></span></div>').join('') : '<p class="on-dim">No accounts yet.</p>');
-    if (on && st.log && st.log.length) html += '<details class="on-log"><summary>Log</summary><pre class="notranslate">' + escH(st.log.slice(-40).join('\n')) + '</pre></details>';
+    if (on && onl.users) html += '<details class="on-fold-in" id="ownAcc"><summary>Accounts (' + onl.users.length + ')</summary>' + (onl.users.length ? onl.users.map((u) => '<div class="on-seek"><div><b>' + nameH(u.name) + '</b> <span class="notranslate">' + u.rating + '</span>' + (u.online ? ' <span class="chip">online</span>' : '') + (u.banned ? ' <span class="chip ai">blocked</span>' : '') + '<small><span>' + u.games + ' games</span>, <span>since</span> <span class="notranslate">' + new Date(u.created).toLocaleDateString() + '</span>' + (u.seen ? ', <span>last seen ' + ago(Date.now() - u.seen) + ' ago</span>' : '') + '</small></div><span class="on-acts"><button class="btn sm" data-ownuser="' + escH(u.name) + '" data-what="password">New password</button><button class="btn sm" data-ownuser="' + escH(u.name) + '" data-what="' + (u.banned ? 'unban' : 'ban') + '">' + (u.banned ? 'Unblock' : 'Block') + '</button><button class="btn sm" data-ownuser="' + escH(u.name) + '" data-what="delete">Delete</button></span></div>').join('') : '<p class="on-dim">No accounts yet.</p>') + '</details>';
+    if (on && st.log && st.log.length) html += '<details class="on-log on-fold-in" id="ownLog"><summary>Log</summary><pre class="notranslate">' + escH(st.log.slice(-40).join('\n')) + '</pre></details>';
     return html + '</div>';
   }
   function ownerRefresh() {

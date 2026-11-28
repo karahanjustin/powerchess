@@ -93,10 +93,28 @@
   if (PWA.web && 'serviceWorker' in root.navigator && root.isSecureContext) {
     /* updates, as an app from the store gets them: a new version loads in the background, takes over while the app
        is out of sight, and the app starts again when it comes back (the running game is kept, see saveLive) */
-    var swapped = false;
+    var swapped = false, reloadOnSwap = false;
+    var banner = function (reg) {
+      // an update that arrived while the app is in use: offered, not forced (a game may be running)
+      if (document.getElementById('pwaUpd') || !document.body) return;
+      var b = document.createElement('div');
+      b.id = 'pwaUpd';
+      b.innerHTML = '<span>A new version is ready</span><button type="button" class="btn green sm">Update</button>';
+      b.querySelector('button').onclick = function () {
+        if (reg.waiting) { reloadOnSwap = true; reg.waiting.postMessage('skipWaiting'); } else root.location.reload();
+      };
+      document.body.appendChild(b);
+    };
     root.navigator.serviceWorker.register('sw.js').then(function (reg) {
-      var waiting = function () { if (reg.waiting && root.navigator.serviceWorker.controller) PWA.updated = true; };
-      waiting();
+      var waiting = function () { if (reg.waiting && root.navigator.serviceWorker.controller) { PWA.updated = true; banner(reg); } };
+      // at a start: a version loaded last time takes over at once (once per start, so it can never loop)
+      var started = false;
+      try { started = sessionStorage.getItem('pc_upd') === '1'; } catch (e) { /* no storage */ }
+      if (reg.waiting && root.navigator.serviceWorker.controller && !started) {
+        try { sessionStorage.setItem('pc_upd', '1'); } catch (e) { /* no storage */ }
+        PWA.updated = true; reloadOnSwap = true;
+        reg.waiting.postMessage('skipWaiting');
+      } else waiting();
       reg.addEventListener('updatefound', function () {
         var w = reg.installing;
         if (w) w.addEventListener('statechange', function () { if (w.state === 'installed') waiting(); });
@@ -107,7 +125,7 @@
         else if (document.visibilityState === 'visible') reg.update().catch(function () {}); // back in front: anything new?
       });
     }).catch(function (e) { console.warn('service worker', e); });
-    root.navigator.serviceWorker.addEventListener('controllerchange', function () { if (PWA.updated) swapped = true; });
+    root.navigator.serviceWorker.addEventListener('controllerchange', function () { if (reloadOnSwap) root.location.reload(); else if (PWA.updated) swapped = true; });
     /* the first visit: the worker is not in charge yet, so the page is not isolated. Once it is, reload once.
        Once only: the mark is kept in sessionStorage and in window.name (which survives a reload even where storage
        is refused), so a browser that never isolates the page does not reload it over and over. */
