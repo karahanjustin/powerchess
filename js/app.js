@@ -10455,7 +10455,13 @@
         }).join('')) + '</div>';
       }
     }
+    // what is typed survives a redraw (the Owner Console refreshes every few seconds, the lobby on every change)
+    const kept = {}, act = document.activeElement;
+    box.querySelectorAll('input[id]:not([type=checkbox]),select[id]').forEach((el) => { kept[el.id] = el.value; });
+    const focus = act && box.contains(act) && act.id ? { id: act.id, a: act.selectionStart, b: act.selectionEnd } : null;
     box.innerHTML = html;
+    Object.keys(kept).forEach((id) => { const el = box.querySelector('#' + id); if (el && el.tagName === 'INPUT') el.value = kept[id]; });
+    if (focus) { const el = box.querySelector('#' + focus.id); if (el) { el.focus({ preventScroll: true }); try { if (focus.a != null) el.setSelectionRange(focus.a, focus.b); } catch (e) { /* a field without a cursor */ } } }
     onlineWire(box);
   }
   function onlineSpecSafe() { try { return onlineSpec(); } catch (e) { return { variant: setup.variant, powers: {} }; } }
@@ -10557,7 +10563,7 @@
   function onlineEnter() {
     if (!ON) return;
     ON.start();
-    if (ON.canOwn()) { ownerRefresh(); clearInterval(onl.ownerTimer); onl.ownerTimer = setInterval(() => { if (ui.tab === 'online' && !document.hidden) ownerRefresh(); }, 4000); }
+    if (ON.canOwn()) { ownerRefresh(); clearInterval(onl.ownerTimer); onl.ownerTimer = setInterval(() => { const f = document.activeElement; if (ui.tab === 'online' && !document.hidden && !(f && /^(INPUT|SELECT|TEXTAREA)$/.test(f.tagName) && f.type !== 'checkbox' && f.closest('#onlineBox'))) ownerRefresh(); }, 4000); /* not while typing or choosing */ }
     if (ON.user && onl.view === 'profile') ON.me().then((r) => { onl.profile = r.profile; renderOnline(); }, () => {});
     renderOnline();
   }
