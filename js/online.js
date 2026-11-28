@@ -12,7 +12,7 @@
     base: null, status: 'idle', // idle, finding, offline, online
     token: null, user: null, lobby: null, games: {}, error: '', rev: 0, owner: false, why: ''
   };
-  var listeners = [], gameListeners = [], polling = false, findTimer = null, stopped = true, pollCtl = null;
+  var listeners = [], gameListeners = [], polling = false, findTimer = null, stopped = true, pollCtl = null, findGen = 0;
 
   try { var saved = JSON.parse(root.localStorage.getItem(KEY) || 'null'); if (saved && saved.token) { O.token = saved.token; O.user = saved.user || null; } } catch (e) { /* private mode */ }
   function keep() { try { root.localStorage.setItem(KEY, JSON.stringify({ token: O.token, user: O.user })); } catch (e) { /* private mode */ } }
@@ -55,22 +55,25 @@
   function find() {
     clearTimeout(findTimer);
     if (stopped) return Promise.resolve(false);
+    var gen = ++findGen, stale = function () { return gen !== findGen; }; // a newer search runs: this one's answer is old
     O.status = 'finding'; emit();
     return localOwner().then(function (local) {
+      if (stale()) return 'wait';
       if (local === 'retry') { findTimer = setTimeout(find, 2000); return 'wait'; }
       if (local) return local;
       if (local === false) { O.why = 'off'; return null; } // the owner's own app: the server is switched off
       return fetchJson(WORKER, {}, 8000).then(function (r) { O.why = r.body && r.body.on ? '' : 'off'; return r.body && r.body.on && r.body.url ? r.body.url : null; }, function () { O.why = 'net'; return null; });
     }).then(function (url) {
-      if (url === 'wait') return false;
+      if (url === 'wait' || stale()) return false;
       if (!url) { offline(); return false; }
       return fetchJson(url + '/api/hello', {}, 8000).then(function (r) {
+        if (stale()) return false;
         if (r.status !== 200 || !r.body || r.body.name !== 'Power Chess') { O.why = 'down'; offline(); return false; }
         O.base = url; O.status = 'online'; O.error = ''; O.why = ''; O.hello = r.body;
         emit();
         if (O.token) startPolling();
         return true;
-      }, function () { O.why = 'down'; offline(); return false; });
+      }, function () { if (stale()) return false; O.why = 'down'; offline(); return false; });
     });
   }
   function offline() {
@@ -140,6 +143,10 @@
   O.profile = function (name) { return O.api('GET', '/api/profile?name=' + encodeURIComponent(name)); };
   O.me = function () { return O.api('GET', '/api/me'); };
   O.history = function (name, limit) { return O.api('GET', '/api/history?limit=' + (limit || 50) + (name ? '&name=' + encodeURIComponent(name) : '')); };
+  O.setAvatar = function (code) { return O.api('POST', '/api/avatar', { avatar: code }).then(function (r) { O.user = r.user; keep(); emit(); return r.user; }); };
+  O.friend = function (name, what) { return O.api('POST', '/api/friend', { name: name, what: what }); };
+  O.friends = function () { return (O.lobby && O.lobby.friends) || []; };
+  O.friendOf = function (name) { var n = String(name || '').toLowerCase(); return O.friends().find(function (f) { return f.name.toLowerCase() === n; }) || null; };
   O.game = function (id) { return O.api('GET', '/api/game?id=' + encodeURIComponent(id)).then(function (r) { O.games[r.game.id] = r.game; return r.game; }); };
 
   /* ---------- the lobby and the games ---------- */
