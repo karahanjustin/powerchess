@@ -96,6 +96,7 @@
   // the rating a game counts for, or null
   function ratingClass(game) {
     if (game.auto || game.local || !game.bot || game.hex) return null;
+    if (Handicap.any(game.spec)) return null; // an uneven game on purpose
     if (game.B.powers) return samePowers(game) ? 'power' : null;
     return timeClass(game.spec.clock);
   }
@@ -111,6 +112,7 @@
   }
   function rateGame(game, res) {
     const cls = ratingClass(game), all = stats.rating = stats.rating || {};
+    if (!cls && Handicap.any(game.spec) && !game.auto && !game.local && game.bot && !game.hex) return '. Not rated: a game with handicaps';
     if (!cls) return game.B.powers && !game.auto && !game.local && game.bot && !game.hex ? '. Not rated: the bot did not have the same power-ups' : '';
     const r = all[cls] = all[cls] || { r: 1000, n: 0, log: [] };
     const score = res === 'w' ? 1 : res === 'd' ? 0.5 : 0, k = r.n < 20 ? 40 : 20;
@@ -560,6 +562,7 @@
   if (['none', 'same', 'own'].indexOf(setup.ai.use) < 0) setup.ai.use = 'none';
   setup.botW = Object.assign({ engine: 'auto', bot: 'max' }, saved.setup && saved.setup.botW);
   setup.botB = Object.assign({ engine: 'fairy', bot: 'max' }, saved.setup && saved.setup.botB);
+  setup.hc = Handicap.setupClean(saved.setup && saved.setup.hc); // blindfold, touch-move, odds (js/handicap.js)
   if (!setup.engineAuto) { // the engine became automatic (2026-10-03): the saved choice gives way once
     setup.engine = 'auto';
     if (setup.botW.engine === 'sf') setup.botW.engine = 'auto';
@@ -689,9 +692,9 @@
   }
   /* The colour the person at the keyboard plays: their own against a bot, whoever is to move when two
      people share the board. cfg.side itself stays fixed, the rules key the pockets by it. */
-  function mySide() { return G.local ? live().turn : G.cfg.side; }
+  function mySide() { return G.online ? G.online.side : G.local ? live().turn : G.cfg.side; }
   // Drawback Chess for two at one device: the side to move has to take the device and show its drawback first
-  const handoff = () => !!(G && G.local && G.db && !G.over && G.dbReveal !== live().turn);
+  const handoff = () => !!(G && G.local && !G.online && G.db && !G.over && G.dbReveal !== live().turn);
   function canAct() {
     return mode() === 'game' && ui.tab !== 'review' && !G.auto && !G.over && isLive() && !ui.overlay && !ui.thinking && !handoff() && (live().turn === mySide() || G.puppetNow);
   }
@@ -711,7 +714,7 @@
       pw[me] = setup.powers || null; pw[R.other(me)] = theirs || null;
       const pcfg = { side: 'w', pw: pw, traits: hasTraits(setup.traits) ? setup.traits : null, freeArmy: true, terrain: hasTerrain(setup.terrain) ? setup.terrain : null };
       let s;
-      try { s = R.fromFen(setup.fen, pcfg); } catch (e) { s = R.fromFen(R.START_FEN); }
+      try { s = R.fromFen(hcPreviewFen(V), pcfg); } catch (e) { s = R.fromFen(R.START_FEN); }
       return { s: s, W: s.W || 8, H: s.H || 8, glyphs: {}, cfg: hasTerrain(setup.terrain) ? { side: 'w', terrain: setup.terrain } : null };
     }
     if (V.checkers) { const s = R.fromFen(checkersBoard(setup.fen) ? setup.fen : V.fen); return { s: s, W: s.W || 8, H: s.H || 8, glyphs: {}, cfg: null }; }
@@ -1080,14 +1083,14 @@
     const trial = reviewing() && rv.trial ? rv.trial : rvPeek();
     if (inGame) {
       if (trial) lastSquares({ m: trial.m, tp: trial.state.fx ? trial.state.fx.tp : -1 }).forEach((sq) => mark(sq, 'last'));
-      else if (G.view > 0) lastSquares(G.log[G.view - 1]).forEach((sq) => mark(sq, 'last'));
+      else if (G.view > 0 && !hcOn('nohints')) lastSquares(G.log[G.view - 1]).forEach((sq) => mark(sq, 'last'));
       s.gold.forEach((sq) => mark(sq, 'goldsq'));
       (s.ice || []).forEach((sq) => mark(sq, 'frozen'));
-      G.B.checks(s).forEach((sq) => mark(sq, 'check'));
+      if (!hcOn('nohints') && !hcOn('blind')) G.B.checks(s).forEach((sq) => mark(sq, 'check')); // a blindfold player is told check, not shown the king
       const pts = ui.mode === 'portal' ? ui.draft : s.portals;
       pts.forEach((sq, i) => mark(sq, 'portal' + (i ? ' b' : '')));
       if (isLive()) ui.premoves.forEach((pm) => { mark(pm.from, 'premove'); mark(pm.to, 'premove'); });
-      if (settings.danger && dangerGame() && !G.over) dangerSquares(s, G.cfg, R.other(G.auto ? s.turn : mySide())).forEach((q) => mark(q, 'danger' + (s.board[q] ? ' hit' : '')));
+      if (settings.danger && dangerGame() && !G.over && !hcOn('nohints')) dangerSquares(s, G.cfg, R.other(G.auto ? s.turn : mySide())).forEach((q) => mark(q, 'danger' + (s.board[q] ? ' hit' : '')));
       // the Alarm bell (The Ouroboros King): the King's square is marked while it is under attack, guarded by a Prince or not
       else if (runGame() && Ouro.has(ouroRun(), 'bell') && !G.over) { const me = mySide(), ks = s.board.findIndex((p) => p && R.colorOf(p) === me && R.isRoyal(p)); if (ks >= 0 && R.attacked(s, ks, R.other(me), G.cfg)) mark(ks, 'danger hit'); }
     } else if (an) {
@@ -1132,6 +1135,7 @@
       const p = brd[sq];
       if (!p) continue;
       if (inGame && fogged(R.colorOf(p))) continue; // Fog of War
+      const blindP = inGame && hcHides(R.colorOf(p)); // blindfold: the piece is there (it can be picked up), not drawn
       const gold = s.gold.indexOf(sq) >= 0, ice = !gold && !!s.ice && s.ice.indexOf(sq) >= 0;
       const safe = (s.guard && s.guard.indexOf(sq) >= 0) || (s.ouSafe && R.colorOf(p) === s.ouSafe && R.isRoyal(p)); // Shield, or the enemy General under its Magic tiara
       const d = h('div', 'piece' + (gold ? ' gold' : '') + (ice ? ' ice' : '') + (s.reborn && s.reborn.indexOf(sq) >= 0 ? ' spent' : '') + (safe ? ' shielded' : '')); // spent: a fire chick or phoenix that already came back
@@ -1164,15 +1168,17 @@
         if (mx <= 12) d.appendChild(h('i', 'skhp seg', Array.from({ length: mx }, (_, i) => '<u class="' + (i < left ? 'on' : '') + '"></u>').join('')));
         else d.appendChild(h('i', 'skhp', '<b style="width:' + (left / mx * 100) + '%"></b><span>' + left + '</span>'));
       }
+      if (blindP) d.classList.add('hcblind');
       L.pieces.appendChild(d);
       els[sq] = d;
     }
+    hcLayer();
     if (v.sk) skDecorate(els);
     if (v.pb) pbDecorate(els);
     if (anims && settings.anim) anims.forEach((a) => {
       const dropped = ui.dropFrom >= 0; // the piece was carried there by hand: nothing left to slide
       if (a.ghost) {
-        if (dropped) return;
+        if (dropped || (inGame && hcHides(R.colorOf(a.ghost)))) return; // a hidden piece is not shown on its way out
         const g = h('div', 'piece');
         paint(g, a.ghost, v.glyphs, v.cfg);
         g.style.transform = trans(a.at);
@@ -1211,7 +1217,7 @@
       else if (ui.mode === 'freeze') PB.freezeTargets(s).forEach((sq) => hint(sq, 'cold'));
       else if (ui.mode === 'shield') PB.shieldTargets(s).forEach((sq) => hint(sq, 'shieldh'));
       else if (ui.mode === 'convert') PB.convertTargets(s).forEach((sq) => hint(sq, 'turn'));
-      else if (ui.sel && settings.legal) {
+      else if (ui.sel && settings.legal && !hcOn('nohints')) {
         const seen = {};
         ui.sel.moves.forEach((m) => {
           if (seen[m.to]) return;
@@ -1345,7 +1351,7 @@
     let you = false, name, tag = '';
     if (md === 'analysis' || md === 'puzzle' || ui.tab === 'puzzles') name = color === 'w' ? 'White' : 'Black';
     else if (md === 'modes') { const mb = modesBar(color); you = mb.you; name = mb.name; tag = mb.tag; }
-    else if (inGame) { you = !G.auto && !G.local && color === G.cfg.side; name = G.names[color]; tag = G.tags[color] || ''; }
+    else if (inGame) { you = G.online ? color === G.online.side : !G.auto && !G.local && color === G.cfg.side; name = G.names[color]; tag = G.tags[color] || ''; }
     else if (setup.mode === 'bots') {
       const b = color === 'w' ? setup.botW : setup.botB, lab = botLabel(botById(b.bot), prefEngine(b.engine) === 'fairy', ownName());
       name = lab.name; tag = lab.tag;
@@ -1361,12 +1367,12 @@
     av.style.backgroundImage = imgUrl(color + (you ? 'P' : 'K'));
     const meta = h('div', 'pmeta');
     meta.appendChild(h('div', 'pname', name + (tag ? '<span>(' + tag + ')</span>' : '')));
-    const caps = h('div', 'pcaps'), list = capturedBy(color);
+    const caps = h('div', 'pcaps'), list = hcOn('blind') ? [] : capturedBy(color); // blindfold: what was taken is not shown
     list.forEach((p, i) => {
       const ic = paint(h('i', i < list.length - 1 && list[i + 1] !== p ? 'gap' : ''), p, v.glyphs, null);
       caps.appendChild(ic);
     });
-    if (inGame && G.B.kind === 'std') {
+    if (inGame && G.B.kind === 'std' && !hcOn('blind')) {
       const diff = material(v.s) * (color === 'w' ? 1 : -1);
       if (diff > 0) caps.appendChild(h('b', '', '+' + diff));
     }
@@ -1399,8 +1405,8 @@
     const now = performance.now(), c = live().turn;
     G.clock[c] -= now - G.clock.last;
     G.clock.last = now;
-    if (G.clock[c] <= 0) { G.clock[c] = 0; finish({ over: true, result: R.other(c), reason: 'timeout' }); return; }
-    if ((G.local || c === G.cfg.side) && !G.clock.warned && G.clock[c] < 20000) { G.clock.warned = true; snd('lowtime'); }
+    if (G.clock[c] <= 0) { G.clock[c] = 0; if (G.online) { renderClocks(); return; } finish({ over: true, result: R.other(c), reason: 'timeout' }); return; } // online the server's clock decides
+    if ((G.online ? c === G.online.side : G.local || c === G.cfg.side) && !G.clock.warned && G.clock[c] < 20000) { G.clock.warned = true; snd('lowtime'); }
     renderClocks();
   }, 100);
 
@@ -1470,7 +1476,7 @@
       else ev = e.mate != null ? { cp: null, mate: e.mate, depth: 0 } : { cp: e.cp, mate: null, depth: 0 };
     }
     if (mode() === 'analysis') ev = A.term ? barEv({ win: A.term.result }) : (A.lines[0] ? barEv(A.lines[0].ev) : { cp: 0, mate: null, depth: 0 });
-    bar.classList.toggle('off', !settings.evalBar || (mode() !== 'game' && mode() !== 'analysis') || (mode() === 'game' && ranked()));
+    bar.classList.toggle('off', !settings.evalBar || (mode() !== 'game' && mode() !== 'analysis') || (mode() === 'game' && (ranked() || hcNoEval())));
     bar.classList.toggle('flip', ui.flipped);
     let pct, txt, whiteBetter;
     if (ev.mate != null) {
@@ -1486,7 +1492,7 @@
     $('#evalfill').style.height = pct + '%';
     num.textContent = txt;
     num.className = whiteBetter ? 'w' : 'b';
-    $('#statusInfo').textContent = G && ev.depth && !ranked() ? 'depth ' + ev.depth + ', ' + (ev.mate != null ? txt : ((ev.cp > 0 ? '+' : ev.cp < 0 ? '-' : '') + txt)) : '';
+    $('#statusInfo').textContent = G && ev.depth && !ranked() && !(mode() === 'game' && hcNoEval()) ? 'depth ' + ev.depth + ', ' + (ev.mate != null ? txt : ((ev.cp > 0 ? '+' : ev.cp < 0 ? '-' : '') + txt)) : '';
   }
 
   const useThreads = (E) => Math.max(1, Math.min(E.threads, energy().threads)); // the threads the energy setting lets it use
@@ -1506,7 +1512,7 @@
 
   /* ---------- panel: game view ---------- */
 
-  const TITLES = { puzzles: 'Puzzles', play: 'Play', analysis: 'Analysis', archive: 'Archive', review: 'Game Review', new: 'New Game', variants: 'New Game', powers: 'New Game', editor: 'New Game', settings: 'Settings', modes: 'Game Modes' };
+  const TITLES = { online: 'Online', puzzles: 'Puzzles', play: 'Play', analysis: 'Analysis', archive: 'Archive', review: 'Game Review', new: 'New Game', variants: 'New Game', powers: 'New Game', editor: 'New Game', settings: 'Settings', modes: 'Game Modes' };
 
   /* Android's back button (and the browser's): back through the tabs, the way an app does, closing what is open
      first (an explanation, a menu, the preset browser, the result card, a piece card). On the first screen, back
@@ -1528,7 +1534,7 @@
     navFromPop = true;
     try { setTab(tab); } finally { navFromPop = false; }
   });
-  const MORE_TABS = ['review', 'analysis', 'archive', 'settings']; // under More on a phone
+  const MORE_TABS = ['puzzles', 'review', 'analysis', 'archive', 'settings']; // under More on a phone
   function setTab(tab) {
     if (tab === 'more') { $('#moreSheet').classList.toggle('on'); return; }
     $('#moreSheet').classList.remove('on');
@@ -1562,6 +1568,7 @@
     if (from === 'modes' && tab !== 'modes' && ui.flipSaved != null) { const f = ui.flipSaved; ui.flipSaved = null; if (ui.flipped !== f) { ui.flipped = f; buildSquares(); } }
     if (tab === 'modes') renderModes();
     if (tab === 'archive') renderArchive();
+    if (tab === 'online') onlineEnter();
     renderAll();
     if (tab === 'analysis' && A) runAnalysis();
     if (tab !== from && !navFromPop) { try { history.pushState({ pc: tab }, ''); } catch (e) { /* no history */ } }
@@ -1595,6 +1602,7 @@
   document.addEventListener('visibilitychange', () => { try { updateMusic(); } catch (e) { /* no audio */ } });
   function renderAll(anims) {
     try { updateMusic(); } catch (e) { /* no audio here */ }
+    hcBefore();
     renderBoard(anims);
     renderBars();
     renderGame();
@@ -1620,6 +1628,7 @@
     if (G.puppetNow) return 'Puppet Master: play the engine\'s move for it';
     if (G.auto) return nameOf(G, s.turn) + ' is thinking for ' + (s.turn === 'w' ? 'White' : 'Black');
     if (s.again >= 0 && (G.local || s.turn === G.cfg.side) && !ui.mode) return 'The ' + R.fairyOf(s.board[s.again]).name.toLowerCase() + ' has taken and may move once more, or stay';
+    if (G.online && !ui.mode && !(ui.sel && ui.sel.drop)) return (s.turn === G.online.side ? 'Your move' : G.names[s.turn] + ' is to move') + (G.B.checks(s).length ? ', in check' : '');
     if (G.local && !ui.mode && !(ui.sel && ui.sel.drop)) return (s.turn === 'w' ? 'White' : 'Black') + ' to move' + (G.B.checks(s).length ? ', in check' : '');
     if (s.turn !== G.cfg.side) return G.botName + ' is thinking' + (ui.premoves.length > 1 ? ', ' + ui.premoves.length + ' premoves set' : ui.premoves.length ? ', premove set' : '');
     if (ui.mode === 'gild') return 'Midas Touch: click a glowing piece';
@@ -1717,7 +1726,7 @@
   function canRoll() {
     if (!G || G.over || G.rolling || mode() !== 'game' || ui.tab === 'review' || !isLive()) return false;
     const s = live();
-    return !!(G.B.unrolled && G.B.unrolled(s)) && !G.auto && (G.local || s.turn === G.cfg.side);
+    return !!(G.B.unrolled && G.B.unrolled(s)) && !G.auto && (G.online ? s.turn === G.online.side : G.local || s.turn === G.cfg.side);
   }
   /* A throw: the faces are drawn the moment the button is pressed (or the bot's turn comes), never before, then the
      dice spin like slot reels, top to bottom, and stop one after the other. */
@@ -1776,7 +1785,7 @@
     const g = s.sg[c], cap = R.SG.cap, who = G.auto || G.local ? (c === 'w' ? 'White' : 'Black') : c === G.cfg.side ? 'Your' : 'The bot\'s';
     const row = h('div', 'prow', skMag(g[0], cap, g[1], R.SG.res) + '<span>' + who + ' royal shotgun</span>');
     const rl = isLive() && !G.over && s.turn === c && canAct() && G.legal.find((m) => m.reload);
-    if (s.turn === c && !G.auto && (G.local || c === G.cfg.side)) {
+    if (s.turn === c && !G.auto && (G.online ? c === G.online.side : G.local || c === G.cfg.side)) {
       const b = h('button', 'btn', 'Reload');
       b.disabled = !rl;
       b.title = rl ? 'Put one shell into the gun from the reserve: that is your move' : g[0] >= cap ? 'The gun is full' : 'No shells in reserve';
@@ -1810,6 +1819,7 @@
     const cfg = G.cfg, s = live();
     head.style.display = '';
     let hh = G.auto ? '<b>' + nameOf(G, 'w') + '</b> against <b>' + nameOf(G, 'b') + '</b><span class="chip">Bot match</span>'
+      : G.online ? '<b>' + nameH(G.names.w) + '</b> against <b>' + nameH(G.names.b) + '</b><span class="chip">Online</span>' + (G.online.rated ? '<span class="chip">Rated</span>' : '')
       : G.local ? '<b>White</b> against <b>Black</b><span class="chip">Two players</span>' : 'You against <b>' + G.botName + '</b>';
     if (G.variantGame || G.dice || G.checkers || G.duck) hh += '<span class="chip">' + G.vname + '</span>';
     if (G.spec && G.spec.gameMode) hh += '<span class="chip gm">' + modeChip(G.spec.gameMode) + '</span>';
@@ -1826,6 +1836,7 @@
       if (theirs) hh += G.use === 'same' ? '<span class="chip ai">Bot has them too</span>' : chips(theirs, ' ai', 'Bot: ');
     }
     if (G.ai && G.ai.anticipate && !G.local && (G.pw.w || G.pw.b)) hh += '<span class="chip ai">Bots anticipate</span>'; // only worth saying when there are power-ups to see coming
+    hh += hcChips();
     head.innerHTML = hh;
 
     // power bar
@@ -1842,6 +1853,7 @@
       if (ui.peek && ui.peek.sq === ui.info) card.insertAdjacentHTML('beforeend', peekLegend()); // what the red marks on the board mean
       fl.appendChild(card); // floats over the move list
     }
+    if (G.online) onlineRow(bar);
     if (G.db) bar.appendChild(drawbackRow(sv));
     // the hand-over between two players at one device, over the board as well
     let hc = $('#handoffCard');
@@ -1860,7 +1872,7 @@
     if (sv.sg) Object.keys(sv.sg).forEach((c) => bar.appendChild(gunRow(sv, c)));
     if (G.dice && (sv.dice || sv.rolled || (G.B.unrolled && G.B.unrolled(sv))) && !(G.over && isLive())) bar.appendChild(diceRow(sv, G.auto || G.local ? (sv.turn === 'w' ? 'White' : 'Black') : sv.turn === cfg.side ? 'You' : 'The bot', isLive() ? null : { B: G.B, legal: G.B.legal(sv), cfg: cfg, canRoll: false }));
     const mine = G.auto ? {} : G.local ? (G.pw[me] || {}) : cfg; // a bot match has nothing to click; at a shared board the side to move
-    if (G.local) {
+    if (G.local && !G.online) {
       const row = h('div', 'prow');
       const b = h('button', 'btn' + (G.spec.flipEach ? ' on' : ''), 'Turn board');
       b.onclick = () => { G.spec.flipEach = setup.flipEach = !G.spec.flipEach; save(); if (G.spec.flipEach && !G.over) { ui.flipped = live().turn === 'b'; buildSquares(); } renderAll(); };
@@ -1993,6 +2005,7 @@
     }
     // Danger (the Ouroboros King's rules, as in Shotgun King): every square the other side could take on next turn
     if (dangerGame()) simple('Danger', true, () => { settings.danger = !settings.danger; save(); renderAll(); }, settings.danger ? 'Red: what the other side could take next turn' : 'Show what the other side could take next turn', !!settings.danger);
+    hcBar(bar);
     // what the text next to a button says, also as its hold text (a phone shows the buttons only)
     bar.querySelectorAll('.prow').forEach((row) => { const b = row.querySelector('button'), t = row.querySelector(':scope > span'); if (b && t && t.textContent && !b.title) b.title = t.textContent; });
     bar.classList.toggle('on', bar.children.length > 0);
@@ -2031,8 +2044,8 @@
 
     $('#statusText').textContent = statusText();
     $('#statusline').classList.toggle('busy', !G.over && s.turn !== me);
-    $('#cUndo').disabled = modeGame() || undoTarget() < 0;
-    $('#cHint').disabled = ranked() || !act || !!(G.B.unrolled && G.B.unrolled(live())); // nothing to hint before the throw
+    $('#cUndo').disabled = modeGame() || !!G.online || undoTarget() < 0;
+    $('#cHint').disabled = ranked() || hcOn('nohints') || !act || !!(G.B.unrolled && G.B.unrolled(live())); // nothing to hint before the throw
     $('#cResign').disabled = !!G.over;
     $('#cReview').disabled = !G.over;
     $('#cAnalyse').disabled = !G.over || !!G.hex; // the analysis board is square: a hex game has its review
@@ -2144,11 +2157,13 @@
   }
 
   function resultText(st) {
-    const side = G.cfg.side;
-    let title = st.result === 'draw' ? 'Draw' : G.auto || G.local ? (st.result === 'w' ? 'White Won' : 'Black Won') : (st.result === side ? 'You Won!' : G.botName + ' Won');
+    const side = G.online ? G.online.side : G.cfg.side;
+    let title = st.result === 'draw' ? 'Draw' : G.auto || (G.local && !G.online) ? (st.result === 'w' ? 'White Won' : 'Black Won') : (st.result === side ? 'You Won!' : G.botName + ' Won');
     if (st.reason === 'stopped') title = 'Match stopped';
+    if (st.reason === 'aborted') title = 'Game called off';
     const sub = {
       stopped: 'before it was decided',
+      agreement: 'by agreement', aborted: 'called off before it began', abandoned: 'left unfinished',
       checkmate: 'by checkmate', stalemate: 'by stalemate', repetition: 'by repetition', timeout: 'on time', resignation: 'by resignation',
       explosion: 'a royal piece was caught in a martyr\'s blast', 'king captured': 'by taking the king',
       finisher: st.result === side || G.auto || G.local ? 'by The Finisher: the enemy General stood alone' : 'by the enemy\'s Finisher: your King stood alone', smoke: 'gone in a cloud of smoke', hourglass: 'the sand runs back',
@@ -2357,7 +2372,7 @@
   }
 
   async function createGame(spec) {
-    const V = Fairy.byId(spec.variant), auto = spec.mode === 'bots', local = spec.mode === 'local', std = stdVariant(V.id) || !!V.checkers;
+    const V = Fairy.byId(spec.variant), auto = spec.mode === 'bots', local = spec.mode === 'local' || spec.mode === 'online', std = stdVariant(V.id) || !!V.checkers;
     // checkers rules: the Checkers variant, or a normal game started from a board of only checkers pieces
     const ckGame = !!V.checkers || (V.id === 'chess' && !!spec.fen && checkersBoard(spec.fen));
     const ownG = ckGame ? 'Checkers' : V.duckChess ? 'Duck Chess' : null; // the app's own engine plays it
@@ -2402,7 +2417,7 @@
       B: null, W: 8, H: 8, glyphs: {}, states: [], log: [], view: 0, over: null, endOpen: false, counted: false,
       legal: [], keys: {}, startFen: '', moveNo: 1, analysis: null,
       vetoLeft: cfg.veto && !auto ? 3 : 0, banned: {}, puppetLeft: cfg.puppet && !auto ? 1 : 0, puppetArmed: false, puppetNow: false,
-      clock: { on: spec.clock > 0, w: secs * 1000, b: secs * 1000, inc: spec.clock === 915 ? 10000 : 0, last: performance.now(), warned: false }
+      clock: { on: spec.clock > 0, w: secs * 1000 * Handicap.time(spec, 'w'), b: secs * 1000 * Handicap.time(spec, 'b'), inc: spec.clock === 915 ? 10000 : 0, last: performance.now(), warned: false }
     };
     if (auto) {
       g.bots = { w: { engine: spec.bots.w.engine, bot: botById(spec.bots.w.bot) }, b: { engine: spec.bots.b.engine, bot: botById(spec.bots.b.bot) } };
@@ -2434,7 +2449,7 @@
         if (!cfg.terrain) cfg.terrain = { walls: [], water: [], portals: [], holes: [], ducks: [], bducks: [] };
       }
       if (ckGame) { cfg.checkers = true; cfg.freeArmy = true; g.checkers = true; g.vname = 'Checkers'; if (V.checkers) cfg.pw = { w: null, b: null }; } // the variant has no power-ups, a normal game keeps its own
-      const s0 = R.fromFen(spec.fen || R.START_FEN, cfg);
+      const s0 = R.fromFen(hcStartFen(spec, V.id === 'chess' && !ckGame && !spec.drawback), cfg); // material odds come off here
       if ((s0.W || 8) !== 8 || (s0.H || 8) !== 8) cfg.freeArmy = true; // a big board has no standard army to compare with
       const errs = R.validate(s0, cfg);
       if (errs.length) throw new Error(errs[0]);
@@ -2508,6 +2523,12 @@
      resignation (a bot match or a two-player game is stopped). Before your first move it is just called
      off. Game Modes keep theirs (MS.pending). false: the player keeps playing. */
   function leaveRunning(msg) {
+    if (G && G.online && !G.over) {
+      if (!confirm('Your online game is still running. Resign it?')) return false;
+      if (ON) ON.resign(G.online.id).catch(() => {});
+      finish({ over: true, result: R.other(G.online.side), reason: G.online.n < 2 ? 'aborted' : 'resignation' }, true);
+      return true;
+    }
     if (!G || G.over || !G.log.length || (G.spec && G.spec.gameMode)) return true;
     const played = G.auto || G.local ? G.log.length : G.log.filter((e) => e.by === G.cfg.side).length;
     if (!played) return true;
@@ -2642,7 +2663,7 @@
     starting = true;
     $('#startBtn').textContent = 'Loading';
     let g;
-    try { g = await createGame(specFromSetup()); } catch (e) { toast(e.message || 'The game could not be set up'); return; } finally {
+    try { g = await createGame(hcSpec(specFromSetup())); } catch (e) { toast(e.message || 'The game could not be set up'); return; } finally {
       starting = false;
       $('#startBtn').textContent = 'Start game';
     }
@@ -2651,6 +2672,225 @@
     snd('start');
     setTab('play');
     afterAction(true);
+  }
+
+  /* ---------- handicaps ----------
+     Blindfold, peeks, vanishing pieces, no hints, touch-move and time odds per colour (spec.hc), material odds
+     (spec.odds). They live in the spec, so an archived game replays with them; the pure parts are js/handicap.js.
+     They apply to the person at this device: you against a bot, whoever is to move at a shared board, the colour
+     played here in an online game. A bot match has none, and a finished game is shown as it is. */
+  const HC_ODDS_OPTS = [['', 'None'], ['p', 'f-pawn'], ['pm', 'Pawn and move'], ['n', 'Knight'], ['r', 'Rook'], ['q', 'Queen'], ['rr', 'Both rooks']];
+  const hcFade = { g: null, key: '', out: false, t: 0 };
+  // material odds only take the pieces off the normal start of standard chess
+  const hcOddsOk = (variant, fen) => variant === 'chess' && Handicap.isStart(fen || R.START_FEN) && !checkersBoard(fen || R.START_FEN);
+  // the New Game choices put on the spec of the game being started (the colour is known by now, Random too)
+  function hcSpec(spec) {
+    const S = setup.hc, hc = {}, odds = {};
+    if (spec.mode === 'human') { hc[spec.side] = S.me; odds[spec.side] = S.odds.me; odds[R.other(spec.side)] = S.odds.bot; }
+    else if (spec.mode === 'local' || spec.mode === 'online') { hc.w = S.w; hc.b = S.b; odds.w = S.odds.w; odds.b = S.odds.b; }
+    return Handicap.attach(spec, hc, hcOddsOk(spec.variant, spec.fen) ? odds : null);
+  }
+  // the position a game starts from: the stored one, the odds taken off (a replay's position has them off already)
+  const hcStartFen = (spec, ok) => (ok && spec.odds ? Handicap.oddsFen(spec.fen || R.START_FEN, spec.odds) : spec.fen || R.START_FEN);
+  // the board of the New Game tab shows the odds too
+  function hcPreviewFen(V) {
+    if (setup.mode === 'bots' || !hcOddsOk(V.id, setup.fen)) return setup.fen;
+    const S = setup.hc, me = setup.mode === 'human' && setup.color === 'b' ? 'b' : 'w', odds = {};
+    if (setup.mode === 'local') { odds.w = S.odds.w; odds.b = S.odds.b; } else { odds[me] = S.odds.me; odds[R.other(me)] = S.odds.bot; }
+    return Handicap.oddsFen(setup.fen, odds);
+  }
+  // the colour whose handicaps apply at this device
+  function hcSide() {
+    if (!G || !G.spec || !G.spec.hc || G.auto) return null;
+    if (G.online) return G.online.side || null;
+    return G.local ? live().turn : G.spec.side;
+  }
+  function hcNow() {
+    const c = hcSide();
+    return c && !G.over && mode() === 'game' && G.spec.hc[c] ? G.spec.hc[c] : null;
+  }
+  const hcOn = (k) => { const o = hcNow(); return !!(o && o[k]); };
+  const hcNoEval = () => hcOn('nohints') || hcOn('blind'); // the bar would say how the hidden position stands
+  // blindfold: is a piece of colour c hidden?
+  function hcHides(c) {
+    const o = hcNow();
+    if (!o || !o.blind) return false;
+    return o.blind === 'all' || (o.blind === 'opp' ? c !== hcSide() : c === hcSide());
+  }
+  // after each redraw of the pieces: vanishing pieces fade a few seconds after every new position, a peek shows all
+  function hcLayer() {
+    const o = hcNow(), fade = o && o.fade ? o.fade : 0, key = fade ? G.states.length + ':' + fade : '';
+    if (G !== hcFade.g || key !== hcFade.key) {
+      clearTimeout(hcFade.t);
+      hcFade.g = G; hcFade.key = key; hcFade.out = false;
+      if (fade) hcFade.t = setTimeout(() => { hcFade.out = true; hcClasses(); }, fade * 1000);
+    }
+    hcClasses();
+  }
+  function hcClasses() {
+    const o = hcNow();
+    L.pieces.classList.toggle('hcfaded', !!(o && o.fade && hcFade.out && hcFade.g === G));
+    L.pieces.classList.toggle('hcpeek', !!(o && ui.hcPeek));
+    document.body.classList.toggle('nocoords', !settings.coords || hcOn('nohints'));
+  }
+  // before every redraw: touch-move holds on to its piece, no hints means no threats and no looks at enemy pieces
+  function hcBefore() {
+    hcTouchKeep();
+    if (hcOn('nohints')) { ui.threat = null; ui.peek = null; }
+  }
+
+  /* Touch-move: a piece of yours with a legal move, once picked up, is the one that moves this turn. Clicks
+     elsewhere change nothing, and nothing else (Escape, a power-up button, a second click) lets go of it. */
+  function hcTouchSet(sq) {
+    if (hcOn('touch') && isLive() && canAct() && ui.sel && ui.sel.sq === sq && (ui.sel.moves.length || ui.sel.blast)) ui.hcTouch = { g: G, at: G.states.length, sq: sq };
+  }
+  function hcTouchSq() {
+    const t = ui.hcTouch;
+    return t && t.g === G && t.at === G.states.length && hcOn('touch') && canAct() && isLive() ? t.sq : -1;
+  }
+  function hcTouchBlock(sq) {
+    const t = hcTouchSq();
+    if (t < 0 || sq === t || (ui.sel && ui.sel.sq === t && ui.sel.moves.some((m) => m.to === sq))) return false;
+    toast('Touch-move: the piece you picked up has to move');
+    return true;
+  }
+  function hcTouchKeep() {
+    const t = hcTouchSq();
+    if (t >= 0 && !(ui.sel && ui.sel.sq === t)) { select(t); ui.mode = null; }
+  }
+
+  // Peeks: the pieces are shown while the button (or Space) is held, one peek per hold
+  function hcPeeksLeft(c) {
+    if (!G.hcPeeks) G.hcPeeks = { w: Handicap.peeks(G.spec, 'w'), b: Handicap.peeks(G.spec, 'b') };
+    return G.hcPeeks[c];
+  }
+  function hcCanPeek() {
+    const o = hcNow();
+    return !!o && !!(o.blind || o.fade) && !!o.peeks && hcPeeksLeft(hcSide()) !== 0;
+  }
+  function hcPeekStart(btn) {
+    if (ui.hcPeek || !hcCanPeek()) return;
+    const c = hcSide();
+    if (G.hcPeeks[c] > 0) G.hcPeeks[c]--;
+    ui.hcPeek = true;
+    hcClasses();
+    if (btn) { btn.classList.add('on'); if (btn.nextSibling) btn.nextSibling.textContent = hcPeekText(G.hcPeeks[c]); } // the bar is redrawn when it is let go: the button under the finger stays
+    ['pointerup', 'pointercancel', 'blur'].forEach((k) => window.addEventListener(k, hcPeekEnd, { once: true }));
+    saveLive();
+  }
+  function hcPeekEnd() {
+    if (!ui.hcPeek) return;
+    ui.hcPeek = false;
+    hcClasses();
+    if (G) renderGame();
+  }
+  const hcPeekText = (left) => (left < 0 ? 'Hold to see the pieces (Space)' : left === 0 ? 'No peeks left' : left + ' left, hold to see the pieces (Space)');
+  function hcBar(bar) {
+    const o = hcNow();
+    if (!o || !(o.blind || o.fade) || !o.peeks) return;
+    const left = hcPeeksLeft(hcSide()), row = h('div', 'prow'), b = h('button', 'btn hcpeekbtn' + (ui.hcPeek ? ' on' : ''), 'Peek');
+    b.disabled = left === 0;
+    b.onpointerdown = (e) => { e.preventDefault(); hcPeekStart(b); };
+    b.oncontextmenu = (e) => e.preventDefault();
+    row.appendChild(b);
+    row.appendChild(h('span', '', hcPeekText(left)));
+    bar.appendChild(row);
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== ' ' || /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName) || ui.tab !== 'play' || !hcNow() || canRoll()) return;
+    e.preventDefault();
+    if (!e.repeat) hcPeekStart(null);
+  });
+  document.addEventListener('keyup', (e) => { if (e.key === ' ' && ui.hcPeek) { e.preventDefault(); hcPeekEnd(); } });
+
+  // the chips in the game header, like the power-ups'
+  function hcChips() {
+    const sp = G.spec;
+    if (!sp || (!sp.hc && !sp.odds)) return '';
+    const two = !G.auto && (G.local || !!G.online), out = [];
+    ['w', 'b'].forEach((c) => {
+      const who = c === 'w' ? 'White' : 'Black', od = sp.odds && sp.odds[c];
+      Handicap.labels(sp.hc && sp.hc[c]).forEach((t) => out.push(two ? who + ': ' + t : t));
+      if (od) out.push((two ? who + ' gives odds: ' : c === sp.side ? 'You give odds: ' : 'Bot gives odds: ') + Handicap.ODDS_NAME[od]);
+    });
+    return out.map((t) => '<span class="chip">' + t + '</span>').join('');
+  }
+  // a list of labels, each in its own element, so that each is translated on its own
+  const hcList = (l) => l.map((t) => '<span>' + t + '</span>').join(', ');
+  // the rows of the summary on the New Game tab
+  function hcSummary(row) {
+    if (setup.mode === 'bots') return;
+    const S = setup.hc, V = Fairy.byId(setup.variant), oddsOk = hcOddsOk(V.id, setup.fen), b = (l) => '<b>' + hcList(l) + '</b>';
+    const odds = (v, pre) => (v && oddsOk ? [pre + Handicap.ODDS_NAME[v]] : []);
+    if (setup.mode === 'local') {
+      ['w', 'b'].forEach((c) => { const l = Handicap.labels(S[c]).concat(odds(S.odds[c], 'Gives odds: ')); if (l.length) row(c === 'w' ? 'White' : 'Black', b(l)); });
+      return;
+    }
+    const l = Handicap.labels(S.me), o = odds(S.odds.bot, 'Bot gives odds: ').concat(odds(S.odds.me, 'You give odds: '));
+    if (l.length) row('Your handicaps', b(l));
+    if (o.length) row('Odds', b(o));
+  }
+
+  /* The Handicaps section of the New Game tab: a card with what is set, the choices behind Change. Against a bot
+     your own handicaps and the odds either way, for two players one set per colour. */
+  function renderHandicaps() {
+    const box = $('#hcBox');
+    if (!box) return;
+    const local = setup.mode === 'local', S = setup.hc, V = Fairy.byId(setup.variant), oddsOk = hcOddsOk(V.id, setup.fen);
+    box.style.display = setup.mode === 'bots' ? 'none' : '';
+    if (setup.mode === 'bots') return;
+    const sets = local ? [['w', 'White'], ['b', 'Black']] : [['me', 'Your handicaps']];
+    const said = [];
+    sets.forEach((x) => {
+      const od = local ? S.odds[x[0]] : S.odds.me, l = Handicap.labels(S[x[0]]).concat(oddsOk && od ? [(local ? 'Gives odds: ' : 'You give odds: ') + Handicap.ODDS_NAME[od]] : []);
+      if (!local && oddsOk && S.odds.bot) l.push('Bot gives odds: ' + Handicap.ODDS_NAME[S.odds.bot]);
+      if (l.length) said.push((local ? '<span>' + x[1] + ':</span> ' : '') + hcList(l));
+    });
+    $('#hcCard').innerHTML = '<div class="setrow"><div>' + (said.length ? '<b>' + said.join('<br>') + '</b>' : 'None') +
+      '<small>Blindfold, vanishing pieces, no hints, touch-move, time and material odds</small></div><button class="btn" id="hcChange">' + (ui.hcOpen ? 'Done' : 'Change') + '</button></div>';
+    $('#hcChange').onclick = () => { ui.hcOpen = !ui.hcOpen; renderHandicaps(); };
+    const more = $('#hcMore');
+    more.classList.toggle('on', !!ui.hcOpen);
+    more.innerHTML = '';
+    if (!ui.hcOpen) return;
+    const touchUi = window.PWA && PWA.touch;
+    const row = (label, small, ctl, dim) => {
+      const el = h('div', 'setrow' + (dim ? ' dim' : ''), '<div>' + label + (small ? '<small>' + small + '</small>' : '') + '</div>');
+      if (touchUi && small) el.title = small; // a phone shows the names only, the explanation when the row is held
+      el.appendChild(ctl);
+      more.appendChild(el);
+    };
+    const pick = (opts, cur, onPick) => {
+      const s = h('select', 'field');
+      opts.forEach((o) => s.appendChild(new Option(o[1], String(o[0]))));
+      s.value = String(cur);
+      s.onchange = () => { onPick(s.value); changed(); };
+      return s;
+    };
+    const sw = (on, onPick) => { const b = h('button', 'sw' + (on ? ' on' : '')); b.onclick = () => { onPick(); changed(); }; return b; };
+    const oddsRow = (label, key) => row(label, oddsOk ? '' : 'Only from the starting position of standard chess', pick(HC_ODDS_OPTS, S.odds[key], (v) => { S.odds[key] = v; }), !oddsOk);
+    sets.forEach((x) => {
+      const o = S[x[0]];
+      more.appendChild(h('div', 'bots-head', x[1]));
+      row('Blindfold', 'The pieces are not drawn, moves are still made on the board', pick([['', 'Off'], ['all', 'All pieces'], ['opp', 'The other side\'s'], ['own', 'Your own']], o.blind, (v) => { o.blind = v; }));
+      row('Vanishing pieces', 'Shown after every move, then they fade', pick([[0, 'Off'], [2, 'After 2 s'], [4, 'After 4 s'], [8, 'After 8 s']], o.fade, (v) => { o.fade = +v; }));
+      row('Peeks', 'Hold Peek or Space to see the pieces', pick([[0, 'None'], [1, '1'], [3, '3'], [5, '5'], [10, '10'], [-1, 'Unlimited']], o.peeks, (v) => { o.peeks = +v; }), !o.blind && !o.fade);
+      row('No hints', 'No move dots, highlights, threats, eval bar, hints or coordinates', sw(o.nohints, () => { o.nohints = !o.nohints; }));
+      row('Touch-move', 'A piece picked up has to move', sw(o.touch, () => { o.touch = !o.touch; }));
+      row('Time', setup.clock ? 'Share of the clock and the increment' : 'Needs a clock', pick([[1, 'Full'], [0.75, '75%'], [0.5, '50%'], [0.25, '25%']], o.time, (v) => { o.time = +v; }), !setup.clock);
+      if (local) oddsRow('Gives odds', x[0]);
+    });
+    if (!local) {
+      more.appendChild(h('div', 'bots-head', 'Material odds'));
+      oddsRow('The bot gives odds', 'bot');
+      oddsRow('You give odds', 'me');
+    }
+    if (said.length) {
+      const clr = h('button', 'btn', 'No handicaps');
+      clr.style.cssText = 'width:100%;margin-top:8px';
+      clr.onclick = () => { setup.hc = Handicap.setupClean(null); changed(); };
+      more.appendChild(clr);
+    }
   }
 
   /* ---------- game archive ---------- */
@@ -2725,8 +2965,8 @@
   const LIVE_KEY = 'powerchess_live';
   function saveLive() {
     try {
-      if (!G || (G.spec && G.spec.gameMode) || G.over || G.archiveId || !G.log.length) { localStorage.removeItem(LIVE_KEY); return; }
-      localStorage.setItem(LIVE_KEY, JSON.stringify({ spec: G.spec, actions: actionsOf(G), clock: G.clock.on ? { w: G.clock.w, b: G.clock.b } : null, vetoLeft: G.vetoLeft, banned: G.banned }));
+      if (!G || G.online || (G.spec && G.spec.gameMode) || G.over || G.archiveId || !G.log.length) { localStorage.removeItem(LIVE_KEY); return; }
+      localStorage.setItem(LIVE_KEY, JSON.stringify({ spec: G.spec, actions: actionsOf(G), clock: G.clock.on ? { w: G.clock.w, b: G.clock.b } : null, vetoLeft: G.vetoLeft, banned: G.banned, hcPeeks: G.hcPeeks || null }));
     } catch (e) { /* storage full or private mode: the game just is not kept */ }
   }
   async function resumeLive() {
@@ -2749,6 +2989,7 @@
     if (o.clock && g.clock.on) { g.clock.w = o.clock.w; g.clock.b = o.clock.b; g.clock.last = performance.now(); }
     if (o.vetoLeft != null) g.vetoLeft = o.vetoLeft;
     if (o.banned) g.banned = o.banned;
+    if (o.hcPeeks) g.hcPeeks = o.hcPeeks;
     installGame(g);
     botBrain.fresh(); evalBrain.fresh();
     if (ui.tab === 'new') setTab('play');
@@ -2769,7 +3010,7 @@
       id: G.archiveId || Date.now(), date: old >= 0 ? archive[old].date : Date.now(), spec: G.spec, actions: actionsOf(G),
       over: { over: true, result: G.over.result, reason: G.over.reason }, white: nameOf(G, 'w'), black: nameOf(G, 'b'), tags: G.tags,
       vname: G.variantGame || G.dice || G.checkers || G.duck ? G.vname : '', powers: allPowerNames(G),
-      plies: G.log.filter((e) => e.m).length, you: G.auto || G.local ? null : G.cfg.side, acc: old >= 0 ? archive[old].acc : null
+      plies: G.log.filter((e) => e.m).length, you: G.online ? G.online.side : G.auto || G.local ? null : G.cfg.side, onlineId: G.online ? G.online.id : undefined, acc: old >= 0 ? archive[old].acc : null
     };
     G.archiveId = rec.id;
     if (old >= 0) archive.splice(old, 1);
@@ -2934,6 +3175,7 @@
       if (brainGame(G.B, G.cfg)) analyse(); // the bar of a bot match: the power-up search's own look at every position
       return;
     }
+    if (G.online) return; // online: no engine looks on, the other player moves from his own device
     if (G.local) { analyse(); return; } // the board has turned above
     if (s.turn !== G.cfg.side) {
       if (G.puppetArmed && G.puppetLeft > 0) {
@@ -2983,7 +3225,7 @@
     // watching a bot match: the piece looked at stays looked at, its squares worked out again for the new position
     const watch = G.auto && ui.peek ? peekFollow(ui.peek.sq, entry, n) : -1;
     ui.peek = null;
-    if (G.local && G.db) G.dbReveal = null; // both drawbacks hidden again until the next player has the device
+    if (G.local && !G.online && G.db) G.dbReveal = null; // both drawbacks hidden again until the next player has the device
     G.states.push(n);
     G.log.push(entry);
     G.view = G.states.length - 1;
@@ -3017,6 +3259,7 @@
       G.keys[k] = (G.keys[k] || 0) + 1;
       if (G.keys[k] >= 3) st = { over: true, result: 'draw', reason: 'repetition' };
     }
+    onlineSend(st); // online: what this player did goes to the server (the end with it)
     if (st.over) { finish(st); return; }
     if (ouRelics()) return;
     kick();
@@ -3230,7 +3473,7 @@
     if (by !== G.cfg.side) G.puppetNow = false;
     const n = G.B.play(s, m), fx = n.fx;
     const san = G.B.san(s, m, G.legal, n);
-    if (G.clock.on && n.turn !== by) G.clock[by] += G.clock.inc;
+    if (G.clock.on && n.turn !== by) G.clock[by] += G.clock.inc * Handicap.time(G.spec, by);
     G.clock.last = performance.now();
     const keep = beforeMove(by);
     pushState(n, { by: by, m: m, san: san, removed: fx.removed, tp: fx.tp, puppet: puppet });
@@ -3250,7 +3493,7 @@
     const s = live(), n = G.B.gild(s, sq);
     if (!n) return;
     n.fx = null;
-    if (n.turn !== s.turn) { if (G.clock.on) G.clock[s.turn] += G.clock.inc; G.clock.last = performance.now(); } // Midas that uses the turn ends it
+    if (n.turn !== s.turn) { if (G.clock.on) G.clock[s.turn] += G.clock.inc * Handicap.time(G.spec, s.turn); G.clock.last = performance.now(); } // Midas that uses the turn ends it
     pushState(n, { by: s.turn, gild: sq, san: '✦' + sqLabel(sq), removed: [] });
     ui.sel = null; ui.mode = null; ui.hintArrow = null;
     renderAll();
@@ -3387,7 +3630,7 @@
     ui.thinking = false; ui.sel = null; ui.mode = null; ui.hintArrow = null; ui.premoves = [];
     closeOverlay();
     setZoom(1); // the end card sits on the board: the whole board in view
-    const side = G.cfg.side, res = st.result === 'draw' ? 'd' : (st.result === side ? 'w' : 'l');
+    const side = G.online ? G.online.side : G.cfg.side, res = st.result === 'draw' ? 'd' : (st.result === side ? 'w' : 'l');
     let ratingNote = '';
     if (!G.counted && !G.auto && !G.local) {
       const rec = stats[G.statKey] = stats[G.statKey] || { w: 0, l: 0, d: 0 };
@@ -3400,15 +3643,17 @@
     if (st.result && st.result !== 'draw') ui.eval = { cp: null, mate: 0, depth: 0, lost: R.other(st.result) }; // a king capture or an explosion ends it as surely as a mate
     const modeLine = settleMode(res); // a bet or a run stage is settled here, once
     const txt = resultText(st), rec = stats[G.statKey] || { w: 0, l: 0, d: 0 };
-    $('#endcard').classList.toggle('win', !G.auto && !G.local && res === 'w');
+    $('#endcard').classList.toggle('win', !G.auto && (!G.local || !!G.online) && res === 'w');
     $('#endTitle').textContent = txt.title;
     $('#endSub').textContent = txt.sub;
     $('#endTally').textContent = G.auto ? nameOf(G, 'w') + ' (White) against ' + nameOf(G, 'b') + ' (Black)'
+      : G.online ? 'Online against ' + G.botName + (G.online.rated ? ', rated' : '') + ', ' + G.log.filter((e) => e.m).length + ' half-moves'
       : G.local ? 'Two players at one board, ' + G.log.filter((e) => e.m).length + ' half-moves'
       : modeLine || 'Your record against ' + G.botName + ': ' + rec.w + ' won, ' + rec.d + ' drawn, ' + rec.l + ' lost' + ratingNote;
     endButtons();
-    if (!quiet) snd(G.auto || G.local ? 'draw' : res === 'w' ? 'win' : res === 'l' ? 'lose' : 'draw');
+    if (!quiet) snd(G.auto || (G.local && !G.online) ? 'draw' : res === 'w' ? 'win' : res === 'l' ? 'lose' : 'draw');
     archiveGame();
+    if (ON && ON.user) setTimeout(() => cloudSync(true), 1500); // the cloud save: the game, the record
     renderAll();
     renderSetup();
   }
@@ -4034,7 +4279,7 @@
     $('#statusText').textContent = statusText();
   }
   function hint() {
-    if (!canAct() || ranked() || (G.B.unrolled && G.B.unrolled(live()))) return; // nothing to hint before the throw
+    if (!canAct() || ranked() || hcOn('nohints') || (G.B.unrolled && G.B.unrolled(live()))) return; // nothing to hint before the throw
     if (G.analysis && G.analysis.state === live() && (G.analysis.best || G.analysis.act)) { showHint(); return; }
     ui.hintWanted = true;
     $('#statusText').textContent = 'Looking for a hint';
@@ -4054,7 +4299,7 @@
   }
   function undo() {
     if (runGame() && !G.over) { doRewind(); return; } // The Ouroboros King: a Rewind
-    if (modeGame()) return; // no take-backs in a game mode, not even after it ended (it is settled)
+    if (modeGame() || (G && G.online)) return; // no take-backs in a game mode or online, not even after it ended (it is settled)
     const j = undoTarget();
     if (j < 0) return;
     undoTo(j);
@@ -5304,7 +5549,7 @@
        stays a capture. */
     const stdRules = (anl ? A.B : G.B).kind === 'std' || (!anl && !!G.hex); // a hex game has its cards and looks too
     if (ui.peek && ui.peek.sq !== sq) ui.peek = null;
-    const seen = p && !(!anl && fogged(R.colorOf(p))); // Fog of War: a hidden piece cannot be looked at
+    const seen = p && !(!anl && (fogged(R.colorOf(p)) || hcHides(R.colorOf(p)))); // Fog of War, blindfold: a hidden piece cannot be looked at
     if (stdRules) ui.info = seen ? sq : null;
     else if (!anl && G.glyphs && G.glyphs['+p']) ui.info = seen ? sq : null; // Shogi: the card of the piece, how it moves
     if (seen && stdRules && !ui.mode && !mine && !(ui.sel && ui.sel.moves.some((m) => m.to === sq))) { peekAt(sq, s, anl ? A.cfg : G.cfg); return; }
@@ -5329,6 +5574,7 @@
       return;
     }
     if (!trying && !canAct()) return;
+    if (!trying && hcTouchBlock(sq)) return; // touch-move: the piece picked up has to move
     if (trying && (ui.mode === 'gild' || ui.mode === 'freeze' || ui.mode === 'convert' || ui.mode === 'shield')) ui.mode = null; // those act on the live game only
     if (ui.mode === 'gild') {
       if (G.B.gildTargets(s, G.legal).indexOf(sq) >= 0) doGild(sq);
@@ -5387,6 +5633,7 @@
     if (mine) {
       const was = ui.sel && ui.sel.sq === sq;
       select(sq);
+      if (!trying) hcTouchSet(sq);
       renderAll();
       startDrag(e, sq, was);
     } else if (ui.sel) { ui.sel = null; renderAll(); }
@@ -5810,6 +6057,7 @@
       changed();
     });
     seg($('#clockSeg'), CLOCKS, setup.clock, (v) => { setup.clock = v; changed(); });
+    renderHandicaps();
   }
 
   function renderVariants() {
@@ -6054,6 +6302,7 @@
       pos.push([n(T.ghosts) ? n(T.ghosts) + ' ghost' : '', n(T.snipers) ? n(T.snipers) + ' camo' : '', n(T.helmets) ? n(T.helmets) + ' helmet' : '', n(T.vests) ? n(T.vests) + ' vest' : ''].filter(Boolean).join(', ') + ' by hand');
     }
     if (pos.length) row('Position', pos.join(', '));
+    hcSummary(row);
     let html = '<div class="sumhead">' + head + '</div><dl class="sumgrid">' + rows.join('') + '</dl>';
     const errs = startErrs();
     if (errs.length) html += '<div class="err">' + errs[0] + '</div>';
@@ -6286,7 +6535,7 @@
 
   // numbers with dots between the thousands: 10000 is written 10.000
   const num = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  const ranked = () => !!(G && G.spec && G.spec.gameMode && G.spec.gameMode.kind !== 'hex' && !G.spec.gameMode.twoP && !G.over); // a mode game is running: no undo, hints or eval (Hexagonal Chess keeps them)
+  const ranked = () => !!(G && !G.over && ((G.spec && G.spec.gameMode && G.spec.gameMode.kind !== 'hex' && !G.spec.gameMode.twoP) || G.online)); // online too // a mode game is running: no undo, hints or eval (Hexagonal Chess keeps them)
   const modeGame = () => !!(G && G.spec && G.spec.gameMode && G.spec.gameMode.kind !== 'hex' && !G.spec.gameMode.twoP);
   function modeChip(gm) {
     if (gm.twoP) return ({ dice: 'Dice Chess', drawback: 'Drawback Chess', hex: 'Hexagonal Chess' })[gm.kind] || 'Game Mode';
@@ -9702,6 +9951,7 @@
   $('#cFlip').onclick = flip;
   $('#cResign').onclick = () => {
     if (!G || G.over) return;
+    if (G.online) { onlineResign(); return; }
     if (ranked() && !confirm(G.spec.gameMode.kind === 'dice' && Modes.tier(G.spec.gameMode.tier).cost ? 'Resign? The stake is lost.' : G.spec.gameMode.kind === 'run' ? 'Resign? That ends the run.' : 'Resign this game?')) return;
     finish(G.auto ? { over: true, result: 'draw', reason: 'stopped' } : { over: true, result: R.other(mySide()), reason: 'resignation' });
   };
@@ -9862,13 +10112,448 @@
   if (setup.variant === 'custom') loadCustom();
   else if (!stdVariant(setup.variant)) Fairy.rules().catch(() => {});
   // the game from the last time the app was open; on the very first start, the welcome
-  resumeLive().then((back) => { if (!back && !introDone() && !archive.length && !Object.keys(stats).length) setTimeout(showIntro, 300); });
+  resumeLive(); // the welcome no longer opens by itself (Settings, Introduction)
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && G && !G.over) saveLive(); }); // the clocks as they stand
+
+  /* ---------- online play (js/online.js talks to online/server.py on the owner's Mac) ----------
+     An online game is a two-player game (G.local) with G.online: { id, side, n, draw, ... }. Only the side at this
+     device moves (canAct, mySide); what it does goes to the server as the app's own action texts (actionsOf), the
+     other's actions come back the same way and are played here by the same rules, so both boards stay one game. No
+     eval bar, hints, undo or take-backs while it runs; the server keeps the clocks and the result. */
+  var ON = window.PCOnline || null; // var: finish() may ask for it before this line has run
+  const onl = { view: 'play', msg: '', err: '', busy: false, history: null, histFor: '', owner: null, users: null, ownerTimer: null, form: { name: '', clock: 300, color: 'r', rated: true, priv: false, to: '' }, code: '', synced: false };
+  try { Object.assign(onl.form, JSON.parse(localStorage.getItem('powerchess_onlineset')) || {}); } catch (e) { /* first visit */ }
+  const ONLINE_CLOCKS = [[0, 'None'], [60, '1 min'], [180, '3 min'], [300, '5 min'], [600, '10 min'], [915, '15 | 10']];
+  const escH = (t) => String(t == null ? '' : t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&#39;' }[c]));
+  const onErr = (e) => ({
+    name: 'A name has 3 to 20 letters, digits, _ or -', password: 'The password needs at least 4 characters', taken: 'That name is taken', wrong: 'Name or password is wrong',
+    slow: 'Too many tries, wait a few minutes', banned: 'This account is blocked', login: 'Please sign in again', busy: 'You are already in a game',
+    toomany: 'You have three challenges open already', noseek: 'That challenge is gone', self: 'That is your own challenge', private: 'That challenge needs its code',
+    notforyou: 'That challenge is for someone else', offline: 'The server is not reachable', net: 'The server is not reachable', behind: 'The game moved on, it is loaded again',
+    notyourturn: 'It is not your turn', over: 'The game is over', flag: 'Your time ran out'
+  }[e && e.error] || 'Something went wrong (' + ((e && e.error) || 'unknown') + ')');
+  const labelH = (t) => String(t || '').split(' · ').map((x) => '<span>' + escH(x) + '</span>').join(' · '); // each part its own text, for the translation
+  const nameH = (t) => '<span class="notranslate">' + escH(t) + '</span>';
+  const clockName = (c) => { const x = ONLINE_CLOCKS.find((k) => k[0] === c); return x ? x[1] : Math.round(c / 60) + ' min'; };
+  function onlineLabel(spec, clock) {
+    const V = Fairy.byId(spec.variant), parts = [];
+    parts.push(V && V.id !== 'chess' ? V.name : 'Chess');
+    const pw = powerNames(spec.powers || {});
+    if (pw.length) parts.push(pw.join(', '));
+    if (spec.hc && ((spec.hc.w && Object.keys(spec.hc.w).some((k) => spec.hc.w[k])) || (spec.hc.b && Object.keys(spec.hc.b).some((k) => spec.hc.b[k])))) parts.push('handicaps');
+    if (spec.odds && (spec.odds.w || spec.odds.b)) parts.push('odds');
+    parts.push(clock ? clockName(clock) : 'no clock');
+    return parts.join(' · ');
+  }
+
+  // a game from the server, built here: the setup, then every action so far
+  async function onlineBuild(sg) {
+    const spec = JSON.parse(JSON.stringify(sg.spec));
+    spec.mode = 'online'; spec.flipEach = false;
+    const g = await createGame(spec);
+    replay(g, sg.actions);
+    g.view = g.states.length - 1;
+    g.legal = g.B.legal(g.states[g.view]);
+    g.keys = {};
+    g.states.forEach((st, i) => { if (i && g.log[i - 1].roll) return; const k = g.B.key(st); g.keys[k] = (g.keys[k] || 0) + 1; });
+    const side = ON.sideIn(sg);
+    g.online = { id: sg.id, side: side, n: sg.actions.length, draw: sg.draw, rated: sg.rated, wname: sg.wname, bname: sg.bname, ratings: sg.ratings || null, sent: false };
+    g.names = { w: sg.wname, b: sg.bname };
+    g.tags = { w: '', b: '' };
+    g.botName = side === 'w' ? sg.bname : sg.wname;
+    if (g.db) g.dbReveal = side; // Drawback Chess: each sees only his own
+    onlineClocks(g, sg);
+    return g;
+  }
+  function onlineClocks(g, sg) {
+    const c = sg.clock;
+    if (!c || !c.on) { g.clock.on = false; return; }
+    g.clock.on = true; g.clock.w = c.w; g.clock.b = c.b; g.clock.inc = c.inc; g.clock.last = performance.now();
+  }
+  let onStarting = false;
+  async function onlineStart(sg, quiet) {
+    if (onStarting || !ON) return;
+    if (G && !G.over && !G.online && G.log.length && !(G.spec && G.spec.gameMode)) {
+      if (!confirm('Your online game against ' + (ON.sideIn(sg) === 'w' ? sg.bname : sg.wname) + ' has started. End the game running here?')) { renderOnline(); return; }
+      finish(G.auto || G.local ? { over: true, result: 'draw', reason: 'stopped' } : { over: true, result: R.other(mySide()), reason: 'resignation' }, true);
+    }
+    onStarting = true;
+    let g;
+    try { g = await onlineBuild(sg); } catch (e) { toast('The online game could not be set up here: ' + (e.message || e)); onStarting = false; return; }
+    onStarting = false;
+    installGame(g);
+    ui.flipped = g.online.side === 'b';
+    buildSquares();
+    botBrain.fresh(); evalBrain.fresh();
+    if (!quiet) snd('start');
+    setTab('play');
+    if (sg.over) { G.over = null; finish(onlineOver(sg.over), true); return; }
+    afterAction(true);
+  }
+  const onlineOver = (o) => ({ over: true, result: o.result, reason: o.reason === 'time' ? 'timeout' : o.reason });
+
+  // the server has news of a game this player is in
+  function onlineGame(sg) {
+    if (!ON || !ON.user) return;
+    if (!G || !G.online || G.online.id !== sg.id) {
+      if (!sg.over) onlineStart(sg);
+      else if (ui.tab === 'online') renderOnline();
+      return;
+    }
+    const O = G.online;
+    O.draw = sg.draw;
+    if (sg.over && sg.delta) O.delta = sg.delta;
+    if (!G.over) onlineClocks(G, sg);
+    const have = actionsOf(G);
+    if (sg.n > O.n) {
+      const fresh = sg.actions.slice(O.n);
+      if (have.length !== O.n || have.join('\n') !== sg.actions.slice(0, O.n).join('\n')) { onlineReload(sg); return; } // the two copies parted: the server's is the game
+      O.applying = true;
+      try { fresh.forEach(onlineAct); } catch (e) { O.applying = false; onlineReload(sg); return; }
+      O.applying = false;
+      O.n = sg.n;
+      if (!sg.over && G.over && !O.reported) { O.reported = true; ON.over(O.id, sg.n, G.over.result, G.over.reason).catch(() => {}); } // the other's move ended it: say so, in case his app did not
+    }
+    if (sg.over && !G.over) finish(onlineOver(sg.over));
+    else if (sg.over && G.over && G.over.reason !== onlineOver(sg.over).reason && (sg.over.reason === 'time' || sg.over.reason === 'resignation' || sg.over.reason === 'agreement')) { G.over = null; finish(onlineOver(sg.over), true); }
+    renderAll();
+  }
+  async function onlineReload(sg) {
+    toast('The game is loaded again from the server');
+    const keepTab = ui.tab;
+    await onlineStart(sg, true);
+    if (keepTab !== 'play') setTab(keepTab);
+  }
+  // one action of the other player, played here
+  function onlineAct(a) {
+    const kind = a[0], arg = a.slice(2);
+    if (kind === 'm' || kind === 'M') {
+      const mm = G.legal.find((x) => moveKey(x) === arg);
+      if (mm) { applyMove(mm); return; }
+    }
+    // everything else (power-ups, throws, portals, a shot at a square): the replay's own way, on a scratch game
+    const s = live(), g2 = { B: G.B, W: G.W, H: G.H, cfg: G.cfg, states: [s], log: [] };
+    replay(g2, [a]);
+    if (g2.states.length === 1) { G.states[G.states.length - 1] = g2.states[0]; G.legal = G.B.legal(g2.states[0]); renderAll(); return; } // portals placed
+    const n = g2.states[1], e = g2.log[0];
+    if (G.clock.on && n.turn !== s.turn) G.clock[s.turn] += G.clock.inc;
+    G.clock.last = performance.now();
+    beforeMove(s.turn);
+    pushState(n, e);
+    renderAll(e.m ? moveAnims(s, e.m, n.fx || {}) : undefined);
+    snd(e.gild != null ? 'gold' : e.roll ? 'move' : 'move');
+    afterAction();
+  }
+  // what this player just did goes to the server (afterAction calls it, st: the game's status after it)
+  function onlineSend(st) {
+    if (!G || !G.online || G.online.applying || !ON) return;
+    const O = G.online, acts = actionsOf(G);
+    if (acts.length <= O.n) return;
+    const n0 = O.n, mine = acts.slice(n0), game = G;
+    O.n = acts.length;
+    const over = st && st.over ? { result: st.result, reason: st.reason } : null;
+    ON.play(O.id, n0, mine, live().turn, over).then((sg) => { if (G === game) { O.delta = sg.delta || O.delta; if (!G.over) onlineClocks(G, sg); renderAll(); } }, (e) => {
+      if (G !== game) return;
+      toast(onErr(e));
+      if (e.error !== 'net') ON.game(O.id).then(onlineReload, () => {});
+      else { O.n = n0; setTimeout(() => { if (G === game && G.online.n === n0) onlineSend(null); }, 3000); } // the line dropped: send again
+    });
+  }
+  function onlineResign() {
+    if (!G || !G.online || G.over) return false;
+    const O = G.online;
+    if (!confirm(O.n < 2 ? 'Call the game off?' : 'Resign the online game?')) return true;
+    ON.resign(O.id).then((sg) => onlineGame(sg), (e) => toast(onErr(e)));
+    return true;
+  }
+  // the row over the power-ups in an online game: who, the connection, a draw offer
+  function onlineRow(bar) {
+    const O = G.online, them = O.side === 'w' ? 'b' : 'w', row = h('div', 'prow on-row');
+    const st = ON.status === 'online' ? '<i class="on-led ok"></i>' : '<i class="on-led"></i>';
+    row.innerHTML = st + '<span><span>' + (ON.status === 'online' ? 'Online against' : 'Connection lost, trying again. Against') + '</span> <b>' + nameH(G.names[them]) + '</b>' + (O.ratings ? ' (' + O.ratings[them] + ')' : '') + (O.rated ? ' <span class="chip">Rated</span>' : '') + '</span>';
+    if (!G.over) {
+      if (O.draw === them) {
+        const y = h('button', 'btn green sm', 'Accept draw'), n = h('button', 'btn sm', 'Decline');
+        y.onclick = () => ON.offer(O.id, 'draw').then(onlineGame, (e) => toast(onErr(e)));
+        n.onclick = () => ON.offer(O.id, 'nodraw').then(onlineGame, (e) => toast(onErr(e)));
+        row.appendChild(y); row.appendChild(n);
+      } else if (O.draw === O.side) row.appendChild(h('span', 'on-wait', 'Draw offered'));
+      else if (O.n >= 2) {
+        const d = h('button', 'btn sm', 'Offer draw');
+        d.onclick = () => ON.offer(O.id, 'draw').then((sg) => { onlineGame(sg); toast('Draw offered'); }, (e) => toast(onErr(e)));
+        row.appendChild(d);
+      }
+    } else if (O.delta) row.appendChild(h('span', 'on-wait', 'Rating ' + (O.delta[O.side] >= 0 ? '+' : '') + O.delta[O.side]));
+    bar.appendChild(row);
+  }
+
+  /* ---------- the cloud save: the progress of this device, kept with the account on the Mac ---------- */
+  const CLOUD_KEY = 'powerchess_cloud';
+  let cloudMeta = {};
+  try { cloudMeta = JSON.parse(localStorage.getItem(CLOUD_KEY)) || {}; } catch (e) { cloudMeta = {}; }
+  const hashOf = (t) => { let x = 2166136261; for (let i = 0; i < t.length; i++) { x ^= t.charCodeAt(i); x = Math.imul(x, 16777619); } return (x >>> 0).toString(36) + ':' + t.length; };
+  const CLOUD = {
+    archive: { get: () => archive, set: (d) => { archive = Array.isArray(d) ? d : []; saveArchive(); },
+      merge: (a, b) => { const by = {}; (a || []).concat(b || []).forEach((r) => { if (r && r.id != null) by[r.id] = by[r.id] || r; }); return Object.keys(by).map((k) => by[k]).sort((x, y) => (y.date || 0) - (x.date || 0)).slice(0, ARCH_MAX); } },
+    stats: { get: () => stats, set: (d) => { Object.keys(stats).forEach((k) => { delete stats[k]; }); Object.assign(stats, d || {}); save(); },
+      merge: (a, b) => {
+        const out = JSON.parse(JSON.stringify(a || {}));
+        Object.keys(b || {}).forEach((k) => {
+          if (k === 'rating') { const ra = out.rating = out.rating || {}; Object.keys(b.rating || {}).forEach((c) => { if (!ra[c] || (b.rating[c].n || 0) > (ra[c].n || 0)) ra[c] = b.rating[c]; }); return; }
+          const x = out[k], y = b[k];
+          if (!x) { out[k] = y; return; }
+          if (y && typeof y === 'object') ['w', 'd', 'l'].forEach((f) => { x[f] = Math.max(x[f] || 0, y[f] || 0); });
+        });
+        return out;
+      } },
+    puzzles: { get: () => prof, set: (d) => { prof = Puzzles.load(JSON.stringify(d)); pzSave(); }, merge: (a, b) => (((b && b.solved + b.failed) || 0) > ((a && a.solved + a.failed) || 0) ? b : a) },
+    pzpower: { get: () => profP, set: (d) => { profP = Puzzles.load(JSON.stringify(d)); pzSaveP(); }, merge: (a, b) => (((b && b.solved + b.failed) || 0) > ((a && a.solved + a.failed) || 0) ? b : a) },
+    modes: { get: () => MS, set: (d) => { try { MS = Modes.migrate(d); MS.rev = Math.max(MS.rev || 0, (d && d.rev) || 0) + 1; localStorage.setItem(MODES_KEY, JSON.stringify(MS)); pushModes(); } catch (e) { /* a copy it cannot read stays out */ } }, merge: (a, b) => (((b && b.rev) || 0) > ((a && a.rev) || 0) ? b : a) }
+  };
+  let cloudBusy = null;
+  function cloudSync(quiet) {
+    if (!ON || !ON.user || ON.status !== 'online') return Promise.resolve(false);
+    if (cloudBusy) return cloudBusy;
+    cloudBusy = ON.syncGet().then((items) => {
+      const push = {};
+      let took = 0;
+      Object.keys(CLOUD).forEach((k) => {
+        const C = CLOUD[k], local = C.get(), text = JSON.stringify(local), hh = hashOf(text), meta = cloudMeta[k] || { at: 0, h: '' }, srv = items[k];
+        const changed = hh !== meta.h, newer = srv && srv.at > meta.at;
+        if (newer && !changed) { C.set(srv.data); cloudMeta[k] = { at: srv.at, h: hashOf(JSON.stringify(C.get())) }; took++; }
+        else if (newer && changed) {
+          const merged = C.merge(local, srv.data);
+          C.set(merged);
+          const at = Date.now();
+          push[k] = { at: at, data: C.get() }; cloudMeta[k] = { at: at, h: hashOf(JSON.stringify(C.get())) }; took++;
+        } else if (changed) { const at = Date.now(); push[k] = { at: at, data: local }; cloudMeta[k] = { at: at, h: hh }; }
+      });
+      try { localStorage.setItem(CLOUD_KEY, JSON.stringify(cloudMeta)); } catch (e) { /* private mode */ }
+      if (took) { renderSettings(); renderModesBadge(); if (ui.tab === 'archive') renderArchive(); }
+      if (!quiet && took) toast('Progress loaded from your account');
+      return Object.keys(push).length ? ON.syncPut(push).then(() => true) : true;
+    }).catch((e) => { if (!quiet) toast(onErr(e)); return false; }).then((r) => { cloudBusy = null; onl.synced = true; return r; });
+    return cloudBusy;
+  }
+
+  /* ---------- the Online tab ---------- */
+  function onlineSpec() {
+    // the setup on New Game, as a game for two (White's power-ups and Black's as set there)
+    const m0 = setup.mode;
+    setup.mode = 'local';
+    let spec;
+    try { spec = specFromSetup(); } finally { setup.mode = m0; }
+    spec.mode = 'online'; spec.flipEach = false; spec.side = 'w';
+    spec.clock = onl.form.clock;
+    return hcSpec(spec); // the handicaps and odds of White and Black, as set for two players
+  }
+  async function onlineSeek() {
+    if (onl.busy) return;
+    onl.busy = true; renderOnline();
+    try {
+      const spec = onlineSpec();
+      const g = await createGame(spec); // checks it can be played, and the clocks with any time odds
+      const clock = g.clock.on ? { w: g.clock.w, b: g.clock.b, inc: g.clock.inc } : { w: 0, b: 0, inc: 0 };
+      const turn0 = g.states[0].turn;
+      release(g.B);
+      const hasHc = !!(spec.hc && ['w', 'b'].some((c) => spec.hc[c] && Object.keys(spec.hc[c]).some((k) => spec.hc[c][k] && !(k === 'time' && spec.hc[c][k] === 1)))) || !!(spec.odds && (spec.odds.w || spec.odds.b));
+      await ON.seek({ spec: spec, color: onl.form.color, clock: clock, turn0: turn0, rated: onl.form.rated && !hasHc, private: onl.form.priv, to: onl.form.to, label: onlineLabel(spec, spec.clock) });
+      onl.msg = onl.form.priv ? 'Challenge posted. Give the code to your friend.' : 'Challenge posted. It starts when someone takes it.';
+    } catch (e) { toast(e && e.error ? onErr(e) : (e.message || 'The game could not be set up')); }
+    onl.busy = false; renderOnline();
+  }
+  function onlineSaveForm() { try { localStorage.setItem('powerchess_onlineset', JSON.stringify(onl.form)); } catch (e) { /* private mode */ } }
+  async function onlineOpenOld(id) {
+    try {
+      const sg = await ON.game(id);
+      let rec = archive.find((r) => r.onlineId === sg.id);
+      if (!rec) {
+        const side = ON.sideIn(sg);
+        rec = { id: sg.created + 1, onlineId: sg.id, date: sg.created, spec: Object.assign({}, sg.spec, { mode: 'online' }), actions: sg.actions, over: sg.over ? { over: true, result: sg.over.result, reason: onlineOver(sg.over).reason } : { over: true, result: 'draw', reason: 'stopped' }, white: sg.wname, black: sg.bname, tags: {}, vname: '', powers: powerNames(sg.spec.powers || {}), plies: sg.actions.filter((a) => a[0] === 'm').length, you: side, acc: null };
+        archive.unshift(rec);
+        saveArchive();
+      }
+      openArchived(rec.id);
+    } catch (e) { toast(onErr(e)); }
+  }
+
+  function renderOnline() {
+    const box = $('#onlineBox');
+    if (!box || !ON) return;
+    if (ui.tab !== 'online') return;
+    const O = ON, me = O.user, L = O.lobby;
+    let html = '';
+    // the owner's console: only in the app on the Mac
+    if (onl.owner) html += ownerHtml();
+    const led = O.status === 'online' ? 'ok' : O.status === 'finding' ? 'wait' : '';
+    const stText = O.status === 'online' ? 'Connected to the server' : O.status === 'finding' ? 'Looking for the server' : O.why === 'off' ? 'The server is switched off right now' : 'The server is not reachable right now';
+    html += '<div class="gm-card on-card"><div class="on-status"><i class="on-led ' + led + '"></i><b>' + stText + '</b>' + (O.status === 'offline' ? '<button class="btn sm" data-on="retry">Try again</button>' : '') + '</div>';
+    if (O.status !== 'online') html += '<p class="on-dim">Online games run on the owner\'s computer. When it is on, you can play here. Your games on this device keep working without it.</p>';
+    html += '</div>';
+    if (O.status === 'online' && !me) {
+      html += '<div class="gm-card on-card"><h3>Sign in</h3><p class="on-dim">An account needs only a name and a password, no mail address. It keeps your games, your rating and your progress.</p>' +
+        '<label class="on-field"><span>Name</span><input id="onName" autocomplete="username" maxlength="20" value="' + escH(onl.form.name) + '"></label>' +
+        '<label class="on-field"><span>Password</span><input id="onPass" type="password" autocomplete="current-password" maxlength="200"></label>' +
+        (onl.err ? '<div class="on-err">' + escH(onl.err) + '</div>' : '') +
+        '<div class="on-btns"><button class="btn green" data-on="login"' + (onl.busy ? ' disabled' : '') + '>Sign in</button><button class="btn" data-on="register"' + (onl.busy ? ' disabled' : '') + '>Create account</button></div>' +
+        '<p class="on-dim small">There is no mail address, so a forgotten password cannot be sent to you: the owner of the server can set a new one.</p></div>';
+    }
+    if (O.status === 'online' && me) {
+      const live = O.liveGame();
+      if (live) {
+        const them = O.sideIn(live) === 'w' ? live.bname : live.wname, here = G && G.online && G.online.id === live.id;
+        html += '<div class="gm-card on-card on-live"><b>Your game against ' + nameH(them) + ' is running</b><button class="btn green" data-on="back">' + (here ? 'Back to the board' : 'Open it') + '</button></div>';
+      }
+      // play
+      const tabs = [['play', 'Play'], ['profile', 'Profile'], ['history', 'Games']];
+      html += '<div class="on-tabs">' + tabs.map((t) => '<button class="btn sm' + (onl.view === t[0] ? ' on' : '') + '" data-onv="' + t[0] + '">' + t[1] + '</button>').join('') + '</div>';
+      if (onl.view === 'play') {
+        const mine = (L && L.seeks || []).filter((s) => s.mine), others = (L && L.seeks || []).filter((s) => !s.mine);
+        html += '<div class="gm-card on-card"><h3>New challenge</h3><p class="on-dim">The game is the one set up on New Game (variant, power-ups for White and Black, handicaps, board). <a href="#" data-on="setup">Change it</a></p>' +
+          '<div class="on-sum">' + labelH(onlineLabel(onlineSpecSafe(), onl.form.clock)) + '</div>' +
+          '<div class="on-grid"><label><span>Clock</span><select id="onClock">' + ONLINE_CLOCKS.map((c) => '<option value="' + c[0] + '"' + (onl.form.clock === c[0] ? ' selected' : '') + '>' + c[1] + '</option>').join('') + '</select></label>' +
+          '<label><span>You play</span><select id="onColor"><option value="r"' + (onl.form.color === 'r' ? ' selected' : '') + '>Random</option><option value="w"' + (onl.form.color === 'w' ? ' selected' : '') + '>White</option><option value="b"' + (onl.form.color === 'b' ? ' selected' : '') + '>Black</option></select></label>' +
+          '<label><span>Only for</span><input id="onTo" placeholder="anyone" maxlength="20" value="' + escH(onl.form.to) + '"></label></div>' +
+          '<label class="on-check"><input type="checkbox" id="onRated"' + (onl.form.rated ? ' checked' : '') + '> Rated (not with handicaps)</label>' +
+          '<label class="on-check"><input type="checkbox" id="onPriv"' + (onl.form.priv ? ' checked' : '') + '> Private: not in the list, joined by its code</label>' +
+          '<div class="on-btns"><button class="btn green" data-on="seek"' + (onl.busy || live ? ' disabled' : '') + '>Post challenge</button></div>' +
+          (onl.msg ? '<p class="on-ok">' + escH(onl.msg) + '</p>' : '') + '</div>';
+        if (mine.length) html += '<div class="gm-card on-card"><h3>Your challenges</h3>' + mine.map((s) => '<div class="on-seek"><div><b>' + labelH(s.label) + '</b><small><span>' + (s.color === 'r' ? 'random colours' : s.color === 'w' ? 'you play White' : 'you play Black') + '</span>' + (s.rated ? ' <span class="chip">Rated</span>' : '') + (s.to ? ', <span>only for</span> ' + nameH(s.to) : '') + (s.private || s.to ? ', <span>code</span> <b class="on-code notranslate">' + escH(s.code) + '</b>' : '') + '</small></div><button class="btn sm" data-oncancel="' + escH(s.id) + '">Cancel</button></div>').join('') + '<p class="on-dim small">Waiting for someone to take it.</p></div>';
+        html += '<div class="gm-card on-card"><h3>Open challenges</h3>' + (others.length ? others.map((s) => '<div class="on-seek"><div><b>' + nameH(s.name) + '</b> (' + s.rating + ')<small>' + labelH(s.label) + (s.rated ? ' <span class="chip">Rated</span>' : '') + (s.color === 'w' ? ', <span>plays White</span>' : s.color === 'b' ? ', <span>plays Black</span>' : '') + (s.to ? ', <span>for you</span>' : '') + '</small></div><button class="btn green sm" data-onaccept="' + escH(s.id) + '"' + (live ? ' disabled' : '') + '>Play</button></div>').join('') : '<p class="on-dim">None right now. Post one, or join a friend\'s by its code.</p>') +
+          '<div class="on-join"><input id="onCode" placeholder="Code" maxlength="6" value="' + escH(onl.code) + '"><button class="btn sm" data-on="join"' + (live ? ' disabled' : '') + '>Join</button></div></div>';
+        const ppl = (L && L.online) || [];
+        html += '<div class="gm-card on-card"><h3>Online now (' + ppl.length + ')</h3><div class="on-people">' + ppl.map((p) => '<span class="chip' + (p.playing ? ' ai' : '') + '">' + nameH(p.name) + ' <span class="notranslate">' + p.rating + '</span>' + (p.playing ? ' <span>playing</span>' : '') + '</span>').join('') + '</div></div>';
+      } else if (onl.view === 'profile') {
+        const p = onl.profile;
+        html += '<div class="gm-card on-card"><h3>' + nameH(me.name) + '</h3><div class="on-stats"><div><b>' + me.rating + '</b><small>Rating</small></div><div><b>' + me.best + '</b><small>Best</small></div>' +
+          (p ? '<div><b>' + p.won + '</b><small>Won</small></div><div><b>' + p.drawn + '</b><small>Drawn</small></div><div><b>' + p.lost + '</b><small>Lost</small></div>' : '') + '</div>' +
+          '<p class="on-dim">Online games count here. Your games against the bots, the puzzles and the Game Modes are kept with the account too (the cloud save), so another device signed in with it has them.</p>' +
+          '<div class="on-btns"><button class="btn" data-on="sync">Sync progress now</button><button class="btn" data-on="logout">Sign out</button></div></div>' +
+          '<div class="gm-card on-card"><h3>Change password</h3><label class="on-field"><span>Old password</span><input id="onOld" type="password" autocomplete="current-password"></label><label class="on-field"><span>New password</span><input id="onNew" type="password" autocomplete="new-password"></label><div class="on-btns"><button class="btn" data-on="pass">Change</button></div></div>';
+      } else {
+        const hs = onl.history;
+        html += '<div class="gm-card on-card"><h3>Your online games</h3>' + (!hs ? '<p class="on-dim">Loading</p>' : !hs.length ? '<p class="on-dim">No online games yet.</p>' : hs.map((g) => {
+          const side = O.sideIn(g), them = side === 'w' ? g.bname : g.wname, res = !g.over ? 'running' : g.over.result === 'draw' ? '½' : g.over.result === side ? 'won' : 'lost';
+          return '<div class="on-seek"><div><b>' + nameH(them) + '</b> <span class="on-res ' + (res === 'won' ? 'w' : res === 'lost' ? 'l' : 'd') + '">' + res + '</span><small>' + labelH(g.label || '') + ', <span class="notranslate">' + new Date(g.created).toLocaleDateString() + (g.delta ? ', ' + (g.delta[side] >= 0 ? '+' : '') + g.delta[side] : '') + '</span>' + (g.over ? ', <span>' + escH(resultText(onlineOver(g.over)).sub) + '</span>' : '') + '</small></div>' + (g.over ? '<button class="btn sm" data-onopen="' + escH(g.id) + '">Open</button>' : '') + '</div>';
+        }).join('')) + '</div>';
+      }
+    }
+    box.innerHTML = html;
+    onlineWire(box);
+  }
+  function onlineSpecSafe() { try { return onlineSpec(); } catch (e) { return { variant: setup.variant, powers: {} }; } }
+  function onlineWire(box) {
+    const val = (id) => { const el = $('#' + id); return el ? el.value : ''; };
+    const auth = (fn) => {
+      const name = val('onName').trim(), pass = val('onPass');
+      onl.form.name = name; onlineSaveForm();
+      onl.busy = true; onl.err = ''; renderOnline();
+      fn(name, pass).then(() => { onl.busy = false; onl.err = ''; onl.view = 'play'; renderOnline(); cloudSync(false); }, (e) => { onl.busy = false; onl.err = onErr(e); renderOnline(); });
+    };
+    box.querySelectorAll('[data-on]').forEach((b) => {
+      b.onclick = (e) => {
+        e.preventDefault();
+        const k = b.dataset.on;
+        if (k === 'retry') ON.retry();
+        else if (k === 'login') auth(ON.login);
+        else if (k === 'register') auth(ON.register);
+        else if (k === 'logout') { ON.logout(); onl.profile = null; onl.history = null; renderOnline(); }
+        else if (k === 'seek') onlineSeek();
+        else if (k === 'setup') setTab('new');
+        else if (k === 'join') { const c = val('onCode').trim(); if (c) ON.accept(c, true).then((sg) => onlineStart(sg), (er) => toast(onErr(er))); }
+        else if (k === 'back') { const lg = ON.liveGame(); if (G && G.online && lg && G.online.id === lg.id) setTab('play'); else if (lg) ON.game(lg.id).then((sg) => onlineStart(sg), (er) => toast(onErr(er))); }
+        else if (k === 'sync') cloudSync(false).then((ok) => { if (ok) toast('Progress saved with your account'); });
+        else if (k === 'pass') ON.password(val('onOld'), val('onNew')).then(() => toast('Password changed'), (er) => toast(onErr(er)));
+        else if (k.indexOf('own') === 0) ownerAct(k, b);
+      };
+    });
+    box.querySelectorAll('[data-onv]').forEach((b) => {
+      b.onclick = () => {
+        onl.view = b.dataset.onv;
+        if (onl.view === 'history') { onl.history = null; ON.history().then((r) => { onl.history = r.games; renderOnline(); }, (e) => toast(onErr(e))); }
+        if (onl.view === 'profile') ON.me().then((r) => { onl.profile = r.profile; renderOnline(); }, () => {});
+        renderOnline();
+      };
+    });
+    box.querySelectorAll('[data-oncancel]').forEach((b) => { b.onclick = () => ON.cancel(b.dataset.oncancel).then(() => { onl.msg = ''; }, (e) => toast(onErr(e))); });
+    box.querySelectorAll('[data-onaccept]').forEach((b) => { b.onclick = () => { b.disabled = true; ON.accept(b.dataset.onaccept).then((sg) => onlineStart(sg), (e) => { b.disabled = false; toast(onErr(e)); }); }; });
+    box.querySelectorAll('[data-onopen]').forEach((b) => { b.onclick = () => onlineOpenOld(b.dataset.onopen); });
+    box.querySelectorAll('[data-ownuser]').forEach((b) => { b.onclick = () => ownerUserAct(b.dataset.ownuser, b.dataset.what); });
+    box.querySelectorAll('[data-ownabort]').forEach((b) => { b.onclick = () => { if (confirm('Call this game off? Nobody wins, it is not rated.')) ON.ownerAbort(b.dataset.ownabort).then(ownerRefresh, (e) => toast(onErr(e))); }; });
+    const form = (id, key, num, check) => { const el = $('#' + id); if (el) el.onchange = () => { onl.form[key] = check ? el.checked : num ? +el.value : el.value.trim(); onlineSaveForm(); renderOnline(); }; };
+    form('onClock', 'clock', true); form('onColor', 'color'); form('onTo', 'to'); form('onRated', 'rated', false, true); form('onPriv', 'priv', false, true);
+    const code = $('#onCode'); if (code) code.oninput = () => { onl.code = code.value; };
+    const pass = $('#onPass'); if (pass) pass.onkeydown = (e) => { if (e.key === 'Enter') auth(ON.login); };
+    const as = $('#ownAuto'); if (as) as.onchange = () => ON.ownerAutostart(as.checked).then(ownerRefresh);
+  }
+
+  /* ---------- the Owner Console: the server on this Mac, switched on and off, its accounts and games ---------- */
+  function ownerHtml() {
+    const o = onl.owner, st = o.status, on = o.on, t = st && st.tunnel;
+    const ago = (ms) => { const s = Math.round(ms / 1000); return s < 60 ? s + ' s' : s < 3600 ? Math.round(s / 60) + ' min' : s < 86400 ? Math.round(s / 3600) + ' h' : Math.round(s / 86400) + ' days'; };
+    let html = '<div class="gm-card on-card on-owner"><div class="on-status"><h3>Owner Console</h3><button class="btn ' + (on ? '' : 'green') + '" data-on="' + (on ? 'ownstop' : 'ownstart') + '"' + (onl.ownerBusy ? ' disabled' : '') + '>' + (onl.ownerBusy ? 'One moment' : on ? 'Switch server off' : 'Switch server on') + '</button></div>';
+    html += '<div class="on-own-grid"><div><small>Server</small><b class="' + (on ? 'ok' : '') + '">' + (on ? 'On, port ' + o.port + ', for ' + ago(st.now - st.since) : 'Off') + '</b></div>';
+    if (on) {
+      const tt = !o.tunnel ? 'Off (test server)' : !t ? 'Off' : t.state === 'up' ? 'Up' : t.state === 'starting' ? 'Starting' : t.state === 'down' ? 'Down, restarting' : 'Error: ' + escH(t.error);
+      html += '<div><small>Tunnel</small><b class="' + (t && t.state === 'up' ? 'ok' : '') + '">' + tt + '</b></div>';
+      html += '<div><small>Found by the apps</small><b class="' + (t && t.published === 'on' ? 'ok' : '') + '">' + (t && t.published === 'on' ? 'Yes' : t && t.published ? escH(t.published) : 'Not yet') + '</b></div>';
+      html += '<div><small>Accounts, games</small><b>' + st.users + ', ' + st.games + ' played</b></div>';
+      html += '<div><small>Online now</small><b>' + st.online.length + (st.online.length ? ': ' + nameH(st.online.map((p) => p.name).join(', ')) : '') + '</b></div>';
+      html += '<div><small>Running games</small><b>' + st.live.length + '</b></div>';
+      if (t && t.url) html += '<div class="wide"><small>Address</small><b class="on-url notranslate">' + escH(t.url) + '</b></div>';
+    }
+    html += '</div><label class="on-check"><input type="checkbox" id="ownAuto"' + (o.autostart ? ' checked' : '') + '> Switch it on again when Power Chess starts (if it was on)</label>';
+    html += '<p class="on-dim small">The server is a process of its own: closing this window leaves it running. While it is on, players reach this Mac through a Cloudflare tunnel; the Mac has to stay awake for them.</p>';
+    if (on && st.live.length) html += '<h4>Running games</h4>' + st.live.map((g) => '<div class="on-seek"><div><b>' + nameH(g.wname) + '</b> against <b>' + nameH(g.bname) + '</b><small>' + labelH(g.label || '') + ', <span>' + g.n + ' actions</span></small></div><button class="btn sm" data-ownabort="' + escH(g.id) + '">Call off</button></div>').join('');
+    if (on && onl.users) html += '<h4>Accounts (' + onl.users.length + ')</h4>' + (onl.users.length ? onl.users.map((u) => '<div class="on-seek"><div><b>' + nameH(u.name) + '</b> <span class="notranslate">' + u.rating + '</span>' + (u.online ? ' <span class="chip">online</span>' : '') + (u.banned ? ' <span class="chip ai">blocked</span>' : '') + '<small><span>' + u.games + ' games</span>, <span>since</span> <span class="notranslate">' + new Date(u.created).toLocaleDateString() + '</span>' + (u.seen ? ', <span>last seen ' + ago(Date.now() - u.seen) + ' ago</span>' : '') + '</small></div><span class="on-acts"><button class="btn sm" data-ownuser="' + escH(u.name) + '" data-what="password">New password</button><button class="btn sm" data-ownuser="' + escH(u.name) + '" data-what="' + (u.banned ? 'unban' : 'ban') + '">' + (u.banned ? 'Unblock' : 'Block') + '</button><button class="btn sm" data-ownuser="' + escH(u.name) + '" data-what="delete">Delete</button></span></div>').join('') : '<p class="on-dim">No accounts yet.</p>');
+    if (on && st.log && st.log.length) html += '<details class="on-log"><summary>Log</summary><pre class="notranslate">' + escH(st.log.slice(-40).join('\n')) + '</pre></details>';
+    return html + '</div>';
+  }
+  function ownerRefresh() {
+    if (!ON || !ON.canOwn()) return Promise.resolve();
+    return ON.ownerStatus().then((o) => {
+      onl.owner = o;
+      return o.on ? ON.ownerUsers().then((r) => { onl.users = r.users; }, () => { onl.users = null; }) : null;
+    }, () => { onl.owner = null; }).then(() => renderOnline());
+  }
+  function ownerAct(k) {
+    if (k === 'ownstart' || k === 'ownstop') {
+      onl.ownerBusy = true; renderOnline();
+      (k === 'ownstart' ? ON.ownerStart() : ON.ownerStop()).then(() => toast(k === 'ownstart' ? 'The server is on' : 'The server is off'), (e) => toast('That did not work (' + (e.error || e) + ')')).then(() => { onl.ownerBusy = false; return ownerRefresh(); });
+    }
+  }
+  function ownerUserAct(name, what) {
+    if (what === 'delete' && !confirm('Delete the account ' + name + ' with its saved progress? Its games stay in the other players\' lists. This cannot be undone.')) return;
+    let pw;
+    if (what === 'password') { pw = prompt('New password for ' + name + ' (at least 4 characters). Tell it to the player yourself.'); if (!pw) return; }
+    if (what === 'ban' && !confirm('Block ' + name + '? The account is signed out and cannot sign in until unblocked.')) return;
+    ON.ownerUser(name, what, pw).then(() => { toast('Done'); ownerRefresh(); }, (e) => toast(onErr(e)));
+  }
+  function onlineEnter() {
+    if (!ON) return;
+    ON.start();
+    if (ON.canOwn()) { ownerRefresh(); clearInterval(onl.ownerTimer); onl.ownerTimer = setInterval(() => { if (ui.tab === 'online' && !document.hidden) ownerRefresh(); }, 4000); }
+    if (ON.user && onl.view === 'profile') ON.me().then((r) => { onl.profile = r.profile; renderOnline(); }, () => {});
+    renderOnline();
+  }
+  if (ON) {
+    let wasOnline = false;
+    ON.onChange(() => {
+      if (ui.tab === 'online') renderOnline();
+      if (G && G.online && ui.tab === 'play') renderAll();
+      const now = ON.status === 'online' && !!ON.user;
+      if (now && !wasOnline && !onl.synced) cloudSync(true);
+      wasOnline = now;
+    });
+    ON.onGame(onlineGame);
+    if (ON.token) ON.start(); // signed in: listen from the start, a game may be waiting
+  }
 
   // Debug handle for the console.
   window.PC = {
     get game() { return G; }, get modes() { return MS; }, saveModes: () => saveModes(), get custom() { return custom; }, ui: ui, setup: setup, settings: settings, engine: engine, rules: R,
     puzzle: (id) => pzPowerReady().then(() => { const it = (pz.power || []).concat(pz.list || []).find((x) => x.id === id); if (it) { setTab('puzzles'); pzStart(it, 'custom'); } return !!it; }), get pz() { return pz.cur; },
+    online: { get O() { return ON; }, ui: onl, render: () => renderOnline(), sync: (q) => cloudSync(q), start: (sg) => onlineStart(sg) },
     makeBrain: makeBrain, brains: { bot: botBrain, eval: evalBrain }, importPgn: importPgnText, pgn: (g) => pgn(g || G), exportArchive: exportArchive, get mine() { return mine; }, get puzzles() { return pz; }, get puzzleProfile() { return prof; }, puzzleStart: (item, kind) => pzStart(item, kind || 'custom'), get review() { return rv; }, get skins() { return SKIN; }, get analysis() { return A; }, get archive() { return archive; }, openArchived: openArchived, analyseGame: analyseGame, analyseFresh: analyseFresh, analyseText: analyseText, aMove: (uci) => { const m = A.B.find(A.legal, uci); if (m) analysisMove(m); return !!m; }, aGoto: aGoto, startReview: startReview, start: startGame, canAct: canAct, canPremove: canPremove, refresh: changed, sk: () => skData(), pb: { data: () => pbData(), ui: pbUi, down: (sq) => pbDown(sq), end: () => pbEnd(), act: (k) => pbAct(k) }, realm: { get S() { return realmS; }, get view() { return realmView; }, open: realmOpen, close: realmClose }, renderModes: () => renderModes(), sanMap: (st) => sanMap(st),
     play: (m) => { if (canAct()) applyMove(m); }, gild: (sq) => { if (canAct()) doGild(sq); }, freeze: (sq) => { if (canAct()) doFreeze(sq); }, shield: (sq) => { if (canAct()) doShield(sq); }, convert: (sq) => { if (canAct()) doConvert(sq); },
     move: (uci) => {

@@ -1182,6 +1182,22 @@ select.field{font-family:inherit;font-size:13.5px}
 #oppCard .oppc .btn{flex:none;padding:7px 12px;font-size:13px}
 #oppMore{display:none}
 #oppMore.on{display:block}
+/* Handicaps on the New Game tab: a card with what is set, the choices behind Change */
+#hcCard .setrow{border-bottom:0;padding:9px 11px;border-radius:8px;background:var(--panel2)}
+#hcCard .setrow b{font-weight:700;font-size:13px;line-height:1.35}
+#hcCard .btn{flex:none;padding:7px 12px;font-size:13px}
+#hcMore{display:none}
+#hcMore.on{display:block}
+#hcMore .bots-head{margin:12px 0 0}
+#hcMore .setrow{padding:7px 0}
+#hcMore .setrow select.field{width:auto;min-width:112px;max-width:55%;height:32px;flex:none}
+/* in the game: blindfold hides a piece (it can still be picked up), vanishing pieces fade the whole layer, a peek shows all */
+.piece.hcblind{visibility:hidden}
+.pieces.hcfaded{opacity:0;transition:opacity .8s}
+.pieces.hcpeek{opacity:1;transition:none}
+.pieces.hcpeek .piece.hcblind{visibility:visible}
+.hcpeekbtn{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none}
+@media (max-width:600px){#hcMore .setrow small{display:none}}
 #engNote{margin:6px 0 0}
 .kcinfo{padding:9px 11px;border-radius:6px;background:var(--panel2);font-size:13.5px}
 .kcinfo small{display:block;color:var(--muted);font-size:12px;line-height:1.4;margin-top:3px}
@@ -1456,10 +1472,10 @@ body.touch .keyskeys,body.touch .keyshead{display:none}
   .controls .cbtn{min-height:48px}
   #toast{bottom:calc(var(--navH) + 16px + env(safe-area-inset-bottom));max-width:calc(100vw - 32px)}
   .pm-box{width:100vw;height:100dvh;max-height:none;border-radius:0}
-  body[data-tab=settings] #boardcol,body[data-tab=archive] #boardcol{display:none}
+  body[data-tab=settings] #boardcol,body[data-tab=archive] #boardcol,body[data-tab=online] #boardcol{display:none}
   /* five tabs: the rest is under More */
   .nav.morebtn{display:flex}
-  #side > .nav[data-tab=review],#side > .nav[data-tab=analysis],#side > .nav[data-tab=archive],#side > .nav[data-tab=settings]{display:none}
+  #side > .nav[data-tab=puzzles],#side > .nav[data-tab=review],#side > .nav[data-tab=analysis],#side > .nav[data-tab=archive],#side > .nav[data-tab=settings]{display:none}
   #moreSheet.on{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;position:fixed;left:8px;right:8px;bottom:calc(var(--navH) + 8px + env(safe-area-inset-bottom));z-index:260;background:var(--panel);border-radius:14px;padding:10px;box-shadow:0 12px 36px rgba(0,0,0,.55)}
   #moreSheet .nav{flex-direction:column;justify-content:center;gap:5px;padding:12px 0;font-size:11.5px;border-radius:10px;background:var(--panel2)}
   #moreSheet .nav span{display:none !important}
@@ -1481,8 +1497,8 @@ body.touch .keyskeys,body.touch .keyshead{display:none}
   #setrows .setrow small{display:none}
   #setrows .setrow{min-height:44px}
   .controls #cReview:disabled,.controls #cAnalyse:disabled{display:none}
-  body[data-tab=settings] #panel,body[data-tab=archive] #panel{margin-top:0;border-radius:0}
-  body[data-tab=settings] .ptitle,body[data-tab=archive] .ptitle{display:flex}
+  body[data-tab=settings] #panel,body[data-tab=archive] #panel,body[data-tab=online] #panel{margin-top:0;border-radius:0}
+  body[data-tab=settings] .ptitle,body[data-tab=archive] .ptitle,body[data-tab=online] .ptitle{display:flex}
   /* the moves as one row to swipe, the newest at the right end (as the chess apps do); the buttons stay at the bottom */
   #moves{flex:none;display:flex;align-items:center;gap:0;overflow-x:auto;overflow-y:hidden;min-height:42px;padding:0 8px;scrollbar-width:none;border-top:1px solid var(--line)}
   #moves::-webkit-scrollbar{display:none}
@@ -1577,6 +1593,56 @@ body.touch .keyskeys,body.touch .keyshead{display:none}
   .ptitle{height:40px;font-size:15px}
   #toast{bottom:14px}
 }
+/* online play */
+.on-card h3{margin:0 0 8px;font-size:15px}
+.on-card h4{margin:14px 0 6px;font-size:13.5px;color:var(--dim)}
+.on-status{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.on-status h3{margin:0;flex:1}
+.on-status b{flex:1}
+.on-led{display:inline-block;width:10px;height:10px;border-radius:50%;background:#7a7672;flex:none}
+.on-led.ok{background:#81b64c;box-shadow:0 0 6px rgba(129,182,76,.7)}
+.on-led.wait{background:#e8b33a}
+.on-dim{color:var(--dim);font-size:13px;margin:8px 0 0;line-height:1.45}
+.on-dim.small{font-size:12px}
+.on-ok{color:#9fd16a;font-size:13px;margin:8px 0 0}
+.on-err{color:#ff8a7a;font-size:13px;margin:6px 0}
+.on-field{display:flex;flex-direction:column;gap:4px;margin:8px 0;font-size:13px;color:var(--dim)}
+.on-field input,.on-grid input,.on-grid select,.on-join input{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px 10px;font:inherit;font-size:14px;min-width:0}
+.on-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.on-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0 6px}
+.on-grid label{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--dim)}
+.on-check{display:flex;align-items:center;gap:8px;font-size:13.5px;margin:6px 0}
+.on-sum{background:var(--bg);border-radius:6px;padding:8px 10px;font-size:13.5px;margin-top:8px}
+.on-seek{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
+.on-seek:last-of-type{border-bottom:0}
+.on-seek small{display:block;color:var(--dim);font-size:12px;margin-top:2px}
+.on-code{font-family:ui-monospace,Menlo,monospace;letter-spacing:.12em;color:var(--text)}
+.on-join{display:flex;gap:8px;margin-top:10px}
+.on-join input{width:110px;text-transform:uppercase;font-family:ui-monospace,Menlo,monospace;letter-spacing:.1em}
+.on-people{display:flex;flex-wrap:wrap;gap:6px}
+.on-tabs{display:flex;gap:6px;margin:0 0 12px}
+.on-tabs .btn.on{background:var(--green,#81b64c);color:#fff}
+.on-stats{display:flex;gap:18px;flex-wrap:wrap;margin:4px 0 6px}
+.on-stats div{display:flex;flex-direction:column}
+.on-stats b{font-size:22px}
+.on-stats small{color:var(--dim);font-size:12px}
+.on-res{font-size:12px;padding:1px 6px;border-radius:4px;background:var(--bg)}
+.on-res.w{color:#9fd16a}.on-res.l{color:#ff8a7a}
+.on-live{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid rgba(129,182,76,.5)}
+.on-owner{border:1px solid rgba(232,179,58,.45)}
+.on-own-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:10px 0}
+.on-own-grid div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.on-own-grid .wide{grid-column:1 / -1}
+.on-own-grid small{color:var(--dim);font-size:11.5px}
+.on-own-grid b{font-size:13.5px;overflow-wrap:anywhere}
+.on-own-grid b.ok{color:#9fd16a}
+.on-url{font-family:ui-monospace,Menlo,monospace;font-size:12.5px !important}
+.on-acts{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
+.on-log pre{max-height:220px;overflow:auto;font-size:11.5px;background:var(--bg);padding:8px;border-radius:6px;white-space:pre-wrap}
+.prow.on-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.prow.on-row span{flex:1;min-width:0}
+.prow.on-row .on-wait{flex:none;color:var(--dim);font-size:12.5px}
+@media (max-width:700px){.on-grid,.on-own-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.on-seek{flex-wrap:wrap}}
 </style>
 </head>
 <body>
@@ -1587,6 +1653,7 @@ body.touch .keyskeys,body.touch .keyshead{display:none}
     <button class="nav" data-tab="play"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a3.5 3.5 0 0 0-2.1 6.3C8.6 9.2 8 10.4 8 12h1.6c-.3 2.6-1.5 4.3-3.6 6v2h12v-2c-2.1-1.7-3.3-3.4-3.6-6H16c0-1.6-.6-2.8-1.9-3.7A3.5 3.5 0 0 0 12 2z"/></svg><span>Play</span><span class="short">Play</span><i class="dot"></i></button>
     <button class="nav" data-tab="new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg><span>New Game</span><span class="short">New</span></button>
     <button class="nav" data-tab="modes"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 3h10v2h3v3a4 4 0 0 1-4 4h-.3A5 5 0 0 1 13 14.9V17h3v4H8v-4h3v-2.1A5 5 0 0 1 8.3 12H8a4 4 0 0 1-4-4V5h3zm0 4H6v1a2 2 0 0 0 1 1.7zm10 0v2.7A2 2 0 0 0 18 8V7z"/></svg><span>Game Modes</span><span class="short">Modes</span></button>
+    <button class="nav" data-tab="online"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.7 3.900 5.700 3.900 9s-1.300 6.300-3.900 9c-2.600-2.700-3.900-5.700-3.900-9S9.400 5.700 12 3z"/></svg><span>Online</span><span class="short">Online</span></button>
     <button class="nav" data-tab="puzzles"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 2a2.200 2.200 0 0 1 2.200 2.200c0 .4-.1.800-.3 1.100H16v4.100c.3-.2.700-.3 1.100-.3a2.200 2.200 0 1 1 0 4.400c-.4 0-.8-.1-1.100-.3V19H3V5.300h4.100c-.2-.3-.3-.7-.3-1.100A2.200 2.200 0 0 1 9 2z"/></svg><span>Puzzles</span><span class="short">Puzzles</span></button>
     <div class="navlabel">Study</div>
     <button class="nav" data-tab="review"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 3a7 7 0 1 0 4.200 12.600l4.600 4.600 1.400-1.400-4.600-4.600A7 7 0 0 0 10 3zm0 2a5 5 0 1 1 0 10 5 5 0 0 1 0-10zm0 1.800-1 2.200-2.300.300 1.700 1.600-.400 2.300 2-1.100 2 1.100-.400-2.300 1.700-1.600-2.300-.300z"/></svg><span>Review</span><span class="short">Review</span></button>
@@ -1759,6 +1826,11 @@ body.touch .keyskeys,body.touch .keyshead{display:none}
             <h3>Two players</h3>
             <div class="setrow"><div>Turn the board after each move<small>Whoever is to move sees the board from their side. White starts at the bottom. Can be switched during the game.</small></div><button class="sw" id="flipEach"></button></div>
           </div>
+          <div id="hcBox">
+            <h3>Handicaps and odds</h3>
+            <div id="hcCard"></div>
+            <div id="hcMore"></div>
+          </div>
         </div>
       </section>
 
@@ -1823,6 +1895,10 @@ body.touch .keyskeys,body.touch .keyshead{display:none}
 
       <section class="view" id="view-modes">
         <div class="scroll"><div id="modesBox"></div></div>
+      </section>
+
+      <section class="view" id="view-online">
+        <div class="scroll"><div id="onlineBox"></div></div>
       </section>
 
       <section class="view" id="view-settings">
@@ -1919,6 +1995,8 @@ body.touch .keyskeys,body.touch .keyshead{display:none}
 <script src="js/presets_more.js"></script>
 <script src="js/presets_checkers.js"></script>
 <div id="realmOverlay"></div>
+<script src="js/handicap.js"></script>
+<script src="js/online.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
